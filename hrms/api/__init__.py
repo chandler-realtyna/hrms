@@ -853,7 +853,7 @@ def save_timer_log(
 		"hours": hours,
 		"project": project or None,
 		"description": description or None,
-		"is_billable": 0,
+		"is_billable": 1,
 	}
 
 	existing_name = frappe.db.get_value(

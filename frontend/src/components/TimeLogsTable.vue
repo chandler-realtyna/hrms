@@ -191,6 +191,7 @@ function saveLog() {
 		hours,
 		from_time: `${today} 00:00:00`,
 		to_time:   toISO,
+		is_billable: 1,
 	}
 
 	if (editIndex.value !== null) {
