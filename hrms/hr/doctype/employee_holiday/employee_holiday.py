@@ -13,6 +13,14 @@ class EmployeeHoliday(Document):
 		self.validate_duplicate_submission()
 		self.validate_status_transition()
 
+	def before_save(self):
+		"""Capture the previous status so on_update can detect transitions."""
+		self._prev_status = (
+			frappe.db.get_value("Employee Holiday", self.name, "status")
+			if not self.is_new()
+			else None
+		)
+
 	# ── Validation helpers ──────────────────────────────────────────────────
 
 	def validate_dates(self):
@@ -75,9 +83,19 @@ class EmployeeHoliday(Document):
 	# ── Hooks ───────────────────────────────────────────────────────────────
 
 	def on_update(self):
-		"""Auto-create the Holiday List the first time the record is approved."""
-		if self.status == "Approved" and not self.holiday_list:
-			self._create_holiday_list()
+		"""Send email notifications and create holiday list on approval."""
+		prev = getattr(self, "_prev_status", None)
+
+		if self.status == "Submitted" and prev != "Submitted":
+			_notify_hr_holiday_submission(self)
+
+		elif self.status == "Approved" and prev != "Approved":
+			if not self.holiday_list:
+				self._create_holiday_list()
+			_notify_employee_holiday_approved(self)
+
+		elif self.status == "Rejected" and prev != "Rejected":
+			_notify_employee_holiday_rejected(self)
 
 	# ── Business logic ───────────────────────────────────────────────────────
 
@@ -113,7 +131,95 @@ class EmployeeHoliday(Document):
 		)
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Email notifications ───────────────────────────────────────────────────────
+
+
+def _notify_hr_holiday_submission(doc):
+	"""Email all HR Managers when an employee submits their holiday selection."""
+	hr_emails = _get_hr_emails()
+	if not hr_emails:
+		return
+
+	desk_url = frappe.utils.get_url(f"/app/employee-holiday/{doc.name}")
+	subject = f"[HRMS] Holiday Request Submitted – {doc.employee_name} ({doc.year})"
+	message = f"""
+	<p>Hello,</p>
+	<p><b>{doc.employee_name}</b> has submitted their personal holiday selection for <b>{doc.year}</b>
+	and is awaiting your approval.</p>
+	<p>
+		<a href="{desk_url}" style="background:#3b82f6;color:#fff;padding:8px 18px;
+		border-radius:6px;text-decoration:none;font-weight:600;">Review Request</a>
+	</p>
+	<p style="color:#6b7280;font-size:13px;">
+		Record: {doc.name} &nbsp;·&nbsp; Employee: {doc.employee}
+	</p>
+	"""
+	frappe.sendmail(recipients=hr_emails, subject=subject, message=message)
+
+
+def _notify_employee_holiday_approved(doc):
+	"""Email the employee when their holiday request is approved."""
+	email = _get_employee_email(doc.employee)
+	if not email:
+		return
+
+	subject = f"[HRMS] Your Holiday Request for {doc.year} has been Approved ✓"
+	hl_note = (
+		f"<p>Your personal holiday list <b>{doc.holiday_list}</b> has been created.</p>"
+		if doc.holiday_list
+		else ""
+	)
+	message = f"""
+	<p>Hi {doc.employee_name},</p>
+	<p>Your holiday selection for <b>{doc.year}</b> has been <b style="color:#16a34a;">approved</b>.</p>
+	{hl_note}
+	<p style="color:#6b7280;font-size:13px;">If you have any questions, please contact HR.</p>
+	"""
+	frappe.sendmail(recipients=[email], subject=subject, message=message)
+
+
+def _notify_employee_holiday_rejected(doc):
+	"""Email the employee when their holiday request is rejected."""
+	email = _get_employee_email(doc.employee)
+	if not email:
+		return
+
+	subject = f"[HRMS] Your Holiday Request for {doc.year} has been Rejected"
+	message = f"""
+	<p>Hi {doc.employee_name},</p>
+	<p>Your holiday selection for <b>{doc.year}</b> has been <b style="color:#dc2626;">rejected</b>.</p>
+	<p>Please contact HR for more information or to re-submit a revised selection.</p>
+	<p style="color:#6b7280;font-size:13px;">Record: {doc.name}</p>
+	"""
+	frappe.sendmail(recipients=[email], subject=subject, message=message)
+
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
+
+
+def _get_hr_emails():
+	"""Return a deduplicated list of email addresses for all HR Manager users."""
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"role": "HR Manager", "parenttype": "User"},
+		fields=["parent"],
+	)
+	emails = []
+	seen = set()
+	for r in rows:
+		email = frappe.db.get_value("User", r["parent"], "email")
+		if email and email not in seen and r["parent"] not in ("Guest", "Administrator"):
+			emails.append(email)
+			seen.add(email)
+	return emails
+
+
+def _get_employee_email(employee):
+	"""Return the email address for the given employee."""
+	user_id = frappe.db.get_value("Employee", employee, "user_id")
+	if not user_id:
+		return None
+	return frappe.db.get_value("User", user_id, "email") or user_id
 
 
 def _is_hr_or_admin():
