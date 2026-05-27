@@ -101,15 +101,15 @@ function slotClass(type) {
 
 function slotCellLabel(slot) {
 	if (slot.type === "off") return "Off"
-	if (slot.type === "on_call") return "On-Call"
 	if (slot.start && slot.end) return `${shortTime(slot.start)}–${shortTime(slot.end)}`
+	if (slot.type === "on_call") return "On-Call"
 	return "Work"
 }
 
 function shortTime(t) {
 	if (!t) return ""
 	const [h, m] = t.split(":").map(Number)
-	const ampm = h >= 12 ? "p" : "a"
+	const ampm = h >= 12 ? "pm" : "am"
 	const h12 = h % 12 || 12
 	return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`
 }

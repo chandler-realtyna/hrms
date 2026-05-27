@@ -1265,6 +1265,36 @@ def get_schedule_approval_detail(name: str) -> dict:
 # ── Team Availability API ─────────────────────────────────────────────────────
 
 
+def _norm_time(t) -> str | None:
+	"""
+	Return a zero-padded "HH:MM" string from a Frappe Time field.
+
+	Frappe stores Time fields as Python ``datetime.timedelta``.
+	``str(timedelta(hours=9))`` produces ``"9:00:00"`` — note the missing leading
+	zero.  Slicing ``[:5]`` then gives ``"9:00:"`` (trailing colon), which breaks
+	any downstream int conversion.  This helper handles all three possible types
+	that Frappe might hand back (timedelta, datetime.time, plain string).
+	"""
+	import datetime as _dt
+
+	if not t:
+		return None
+	if isinstance(t, _dt.timedelta):
+		total_secs = int(t.total_seconds())
+		h = total_secs // 3600
+		m = (total_secs % 3600) // 60
+		return f"{h:02d}:{m:02d}"
+	if isinstance(t, _dt.time):
+		return f"{t.hour:02d}:{t.minute:02d}"
+	# Fall back: parse the first two colon-separated tokens
+	parts = str(t).split(":")
+	try:
+		h, m = int(parts[0]), int(parts[1])
+		return f"{h:02d}:{m:02d}"
+	except (ValueError, IndexError):
+		return None
+
+
 @frappe.whitelist()
 def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 	"""
@@ -1303,8 +1333,8 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 			dow = int(day.day_of_week)
 			slot = {
 				"type": (day.day_type or "Off").lower().replace("-", "_").replace(" ", "_"),
-				"start": str(day.start_time)[:5] if day.start_time else None,
-				"end": str(day.end_time)[:5] if day.end_time else None,
+				"start": _norm_time(day.start_time),
+				"end": _norm_time(day.end_time),
 			}
 			schedule_map[row["employee"]]["days"].setdefault(dow, []).append(slot)
 
@@ -1346,11 +1376,12 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 
 	# 4. Build result for each employee × date
 	def _to_est(time_str, date_obj, emp_tz):
-		"""Convert HH:MM in emp_tz on date_obj to HH:MM in EST."""
+		"""Convert a "HH:MM" string from emp_tz on date_obj into EST "HH:MM"."""
 		if not time_str or emp_tz == est_tz:
 			return time_str
 		try:
-			h, m = int(time_str[:2]), int(time_str[3:5])
+			parts = str(time_str).split(":")
+			h, m = int(parts[0]), int(parts[1])
 			dt = emp_tz.localize(_dt.datetime(date_obj.year, date_obj.month, date_obj.day, h, m))
 			return dt.astimezone(est_tz).strftime("%H:%M")
 		except Exception:

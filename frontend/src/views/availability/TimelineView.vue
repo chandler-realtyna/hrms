@@ -111,8 +111,8 @@ function barBg(type) {
 
 function barLabel(slot) {
 	if (slot.type === "off") return "Off"
-	if (slot.type === "on_call") return "On-Call"
 	if (slot.start && slot.end) return `${shortTime(slot.start)} – ${shortTime(slot.end)}`
+	if (slot.type === "on_call") return "On-Call"
 	return "Work"
 }
 
