@@ -10,10 +10,10 @@
 				:showAttachmentView="true"
 				@validateForm="validateForm"
 			>
-				<template #time_logs="{ isFormReadOnly }">
+				<template #time_logs>
 					<TimeLogsTable
 						v-model:timesheet="timesheet"
-						:isReadOnly="isFormReadOnly"
+						:isReadOnly="isSubmitted"
 						@addLog="addLog"
 						@updateLog="updateLog"
 						@deleteLog="deleteLog"
@@ -26,12 +26,17 @@
 
 <script setup>
 import { IonPage, IonContent } from "@ionic/vue"
-import { ref, inject } from "vue"
+import { ref, computed, inject } from "vue"
 
 import FormView from "@/components/FormView.vue"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
 
 const employee = inject("$employee")
+
+// isSubmitted drives read-only state ourselves — we do NOT use FormView's
+// isFormReadOnly because FormView may enter an error state (e.g. a 403 on
+// System Settings for the currency formatter) and incorrectly lock the form.
+const isSubmitted = computed(() => timesheet.value.docstatus === 1)
 
 const today = dayjs().format("YYYY-MM-DD")
 
