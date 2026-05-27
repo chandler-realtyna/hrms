@@ -98,7 +98,10 @@ jinja = {
 
 # before_install = "hrms.install.before_install"
 after_install = "hrms.install.after_install"
-after_migrate = "hrms.setup.update_select_perm_after_install"
+after_migrate = [
+	"hrms.setup.update_select_perm_after_install",
+	"hrms.setup.after_migrate.add_scheduling_to_hr_setup_workspace",
+]
 
 setup_wizard_complete = "hrms.subscription_utils.update_erpnext_access"
 
