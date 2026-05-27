@@ -949,3 +949,469 @@ def get_employee_project_summary(employee: str, from_date: str, to_date: str) ->
 	)
 
 	return [{"project": r["project"], "hours": round(float(r["total_hours"]), 2)} for r in rows]
+
+
+# ── Employee Holiday API ──────────────────────────────────────────────────────
+
+
+def _get_employee_for_user(user=None):
+	user = user or frappe.session.user
+	return frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
+
+
+def _is_hr_or_admin():
+	hr_roles = {"HR Manager", "HR User", "System Manager", "Administrator"}
+	return bool(hr_roles & set(frappe.get_roles(frappe.session.user)))
+
+
+@frappe.whitelist()
+def get_employee_holiday_for_year(year: str = None) -> dict:
+	"""Return the current employee's Employee Holiday record for *year* (default: current year)."""
+	import datetime
+
+	year = int(year) if year else datetime.date.today().year
+	employee = _get_employee_for_user()
+	if not employee:
+		return None
+
+	names = frappe.get_list(
+		"Employee Holiday",
+		filters={"employee": employee, "year": year},
+		fields=["name"],
+		limit=1,
+		order_by="modified desc",
+	)
+	if not names:
+		return None
+
+	return frappe.get_doc("Employee Holiday", names[0]["name"]).as_dict()
+
+
+@frappe.whitelist()
+def save_employee_holiday_draft(year: str, dates: str) -> dict:
+	"""
+	Upsert a Draft Employee Holiday record for the current employee.
+	*dates* is a JSON array of 'YYYY-MM-DD' strings.
+	"""
+	import json
+
+	year = int(year)
+	dates_list = json.loads(dates) if isinstance(dates, str) else list(dates)
+
+	employee = _get_employee_for_user()
+	if not employee:
+		frappe.throw(_("No active employee record found for the current user."))
+
+	# Only allowed on Draft records
+	existing_name = frappe.db.get_value(
+		"Employee Holiday",
+		{"employee": employee, "year": year, "status": "Draft"},
+		"name",
+	)
+
+	if existing_name:
+		doc = frappe.get_doc("Employee Holiday", existing_name)
+	else:
+		# Make sure there isn't a non-Draft record already
+		non_draft = frappe.db.get_value(
+			"Employee Holiday",
+			{"employee": employee, "year": year, "status": ["not in", ["Draft", "Rejected"]]},
+			"name",
+		)
+		if non_draft:
+			frappe.throw(
+				_("A holiday request for {0} already exists and cannot be modified.").format(year)
+			)
+
+		doc = frappe.new_doc("Employee Holiday")
+		doc.employee = employee
+		doc.year = year
+		doc.status = "Draft"
+
+	doc.set("holidays", [])
+	for date_str in dates_list:
+		doc.append("holidays", {"date": date_str, "description": "Holiday"})
+
+	doc.save(ignore_permissions=True)
+	return doc.as_dict()
+
+
+@frappe.whitelist()
+def submit_employee_holidays(name: str) -> dict:
+	"""Submit an employee's Draft holiday request (locks it for HR review)."""
+	doc = frappe.get_doc("Employee Holiday", name)
+
+	# Ownership check
+	employee = _get_employee_for_user()
+	if doc.employee != employee and not _is_hr_or_admin():
+		frappe.throw(_("You can only submit your own holiday request."))
+
+	if doc.status != "Draft":
+		frappe.throw(_("Only Draft holiday requests can be submitted."))
+
+	if len(doc.holidays) != 15:
+		frappe.throw(
+			_("You must select exactly 15 holiday dates. Currently selected: {0}").format(
+				len(doc.holidays)
+			)
+		)
+
+	doc.status = "Submitted"
+	doc.save(ignore_permissions=True)
+	return doc.as_dict()
+
+
+@frappe.whitelist()
+def approve_employee_holiday(name: str) -> dict:
+	"""Approve a Submitted holiday request and auto-generate the Holiday List (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can approve holiday requests."))
+
+	doc = frappe.get_doc("Employee Holiday", name)
+	if doc.status != "Submitted":
+		frappe.throw(_("Only Submitted holiday requests can be approved."))
+
+	doc.status = "Approved"
+	doc.save(ignore_permissions=True)
+
+	# _create_holiday_list is called from on_update, but we also call it
+	# directly here so we can return the generated list name immediately.
+	if not doc.holiday_list:
+		doc._create_holiday_list()
+
+	doc.reload()
+	return {"status": "Approved", "holiday_list": doc.holiday_list, "name": doc.name}
+
+
+@frappe.whitelist()
+def reject_employee_holiday(name: str) -> dict:
+	"""Reject a Submitted holiday request (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can reject holiday requests."))
+
+	doc = frappe.get_doc("Employee Holiday", name)
+	if doc.status not in ("Submitted", "Approved"):
+		frappe.throw(_("Only Submitted or Approved holiday requests can be rejected."))
+
+	doc.status = "Rejected"
+	doc.save(ignore_permissions=True)
+	return {"status": "Rejected", "name": doc.name}
+
+
+@frappe.whitelist()
+def get_pending_holiday_approvals() -> list[dict]:
+	"""List all Submitted holiday requests (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can view pending holiday approvals."))
+
+	return frappe.get_list(
+		"Employee Holiday",
+		filters={"status": "Submitted"},
+		fields=["name", "employee", "employee_name", "year", "status", "modified"],
+		order_by="modified desc",
+	)
+
+
+@frappe.whitelist()
+def get_holiday_approval_detail(name: str) -> dict:
+	"""Full detail of a holiday request, including all dates (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can view holiday approval details."))
+
+	return frappe.get_doc("Employee Holiday", name).as_dict()
+
+
+# ── Employee Schedule API ─────────────────────────────────────────────────────
+
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@frappe.whitelist()
+def get_my_schedule(year: str = None) -> dict:
+	"""Return the current employee's approved/submitted/draft schedule for the year."""
+	import datetime as _dt
+
+	year = int(year) if year else _dt.date.today().year
+	employee = _get_employee_for_user()
+	if not employee:
+		return None
+
+	names = frappe.get_list(
+		"Employee Schedule",
+		filters={"employee": employee, "year": year},
+		fields=["name"],
+		limit=1,
+		order_by="modified desc",
+	)
+	if not names:
+		return None
+
+	return frappe.get_doc("Employee Schedule", names[0]["name"]).as_dict()
+
+
+@frappe.whitelist()
+def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
+	"""
+	Upsert a Draft Employee Schedule for the current employee.
+	*days* is a JSON list of {day_of_week, day_type, start_time, end_time}.
+	"""
+	import json, datetime as _dt
+
+	year = int(year)
+	days_list = json.loads(days) if isinstance(days, str) else list(days)
+	employee = _get_employee_for_user()
+	if not employee:
+		frappe.throw(_("No active employee record found for the current user."))
+
+	existing_name = frappe.db.get_value(
+		"Employee Schedule",
+		{"employee": employee, "year": year, "status": "Draft"},
+		"name",
+	)
+
+	if existing_name:
+		doc = frappe.get_doc("Employee Schedule", existing_name)
+	else:
+		non_draft = frappe.db.get_value(
+			"Employee Schedule",
+			{"employee": employee, "year": year, "status": ["not in", ["Draft", "Rejected"]]},
+			"name",
+		)
+		if non_draft:
+			frappe.throw(_("A schedule for {0} already exists and cannot be modified.").format(year))
+		doc = frappe.new_doc("Employee Schedule")
+		doc.employee = employee
+		doc.year = year
+		doc.status = "Draft"
+
+	doc.timezone = timezone or "America/New_York"
+	doc.set("schedule_days", [])
+	for d in days_list:
+		doc.append(
+			"schedule_days",
+			{
+				"day_of_week": int(d["day_of_week"]),
+				"day_name": _DAY_NAMES[int(d["day_of_week"])],
+				"day_type": d["day_type"],
+				"start_time": d.get("start_time") or None,
+				"end_time": d.get("end_time") or None,
+			},
+		)
+	doc.save(ignore_permissions=True)
+	return doc.as_dict()
+
+
+@frappe.whitelist()
+def submit_employee_schedule(name: str) -> dict:
+	"""Submit a Draft schedule for HR approval."""
+	doc = frappe.get_doc("Employee Schedule", name)
+	employee = _get_employee_for_user()
+	if doc.employee != employee and not _is_hr_or_admin():
+		frappe.throw(_("You can only submit your own schedule."))
+	if doc.status != "Draft":
+		frappe.throw(_("Only Draft schedules can be submitted."))
+	doc.status = "Submitted"
+	doc.save(ignore_permissions=True)
+	return doc.as_dict()
+
+
+@frappe.whitelist()
+def approve_employee_schedule(name: str) -> dict:
+	"""Approve a Submitted schedule (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can approve schedules."))
+	doc = frappe.get_doc("Employee Schedule", name)
+	if doc.status != "Submitted":
+		frappe.throw(_("Only Submitted schedules can be approved."))
+	doc.status = "Approved"
+	doc.save(ignore_permissions=True)
+	return {"status": "Approved", "name": doc.name}
+
+
+@frappe.whitelist()
+def reject_employee_schedule(name: str) -> dict:
+	"""Reject a Submitted schedule (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can reject schedules."))
+	doc = frappe.get_doc("Employee Schedule", name)
+	if doc.status not in ("Submitted", "Approved"):
+		frappe.throw(_("Only Submitted or Approved schedules can be rejected."))
+	doc.status = "Rejected"
+	doc.save(ignore_permissions=True)
+	return {"status": "Rejected", "name": doc.name}
+
+
+@frappe.whitelist()
+def get_pending_schedule_approvals() -> list[dict]:
+	"""List all Submitted schedules (HR only)."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can view pending schedule approvals."))
+	return frappe.get_list(
+		"Employee Schedule",
+		filters={"status": "Submitted"},
+		fields=["name", "employee", "employee_name", "year", "timezone", "status", "modified"],
+		order_by="modified desc",
+	)
+
+
+@frappe.whitelist()
+def get_schedule_approval_detail(name: str) -> dict:
+	"""Full schedule detail for HR review."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR can view schedule details."))
+	return frappe.get_doc("Employee Schedule", name).as_dict()
+
+
+# ── Team Availability API ─────────────────────────────────────────────────────
+
+
+@frappe.whitelist()
+def get_team_availability(start_date: str, end_date: str) -> list[dict]:
+	"""
+	Return availability for all employees with approved schedules.
+	Times are converted to EST (America/New_York).
+	"""
+	import datetime as _dt
+	import pytz
+
+	start = frappe.utils.getdate(start_date)
+	end = frappe.utils.getdate(end_date)
+	est_tz = pytz.timezone("America/New_York")
+
+	# 1. All approved schedules
+	schedule_rows = frappe.get_list(
+		"Employee Schedule",
+		filters={"status": "Approved"},
+		fields=["name", "employee", "employee_name", "timezone"],
+	)
+	if not schedule_rows:
+		return []
+
+	employee_ids = [r["employee"] for r in schedule_rows]
+
+	# Build schedule map: employee_id → {tz, name, days: {0..6 → [{type, start, end}]}}
+	# Multiple slots per day_of_week are supported.
+	schedule_map = {}
+	for row in schedule_rows:
+		doc = frappe.get_doc("Employee Schedule", row["name"])
+		schedule_map[row["employee"]] = {
+			"employee_name": row["employee_name"],
+			"timezone": row["timezone"] or "America/New_York",
+			"days": {},
+		}
+		for day in doc.schedule_days:
+			dow = int(day.day_of_week)
+			slot = {
+				"type": (day.day_type or "Off").lower().replace("-", "_").replace(" ", "_"),
+				"start": str(day.start_time)[:5] if day.start_time else None,
+				"end": str(day.end_time)[:5] if day.end_time else None,
+			}
+			schedule_map[row["employee"]]["days"].setdefault(dow, []).append(slot)
+
+	# 2. Approved leaves in range
+	leaves = frappe.db.get_all(
+		"Leave Application",
+		filters={
+			"employee": ["in", employee_ids],
+			"status": "Approved",
+			"from_date": ["<=", end_date],
+			"to_date": [">=", start_date],
+		},
+		fields=["employee", "from_date", "to_date", "leave_type"],
+	)
+	leave_dates: dict[str, dict] = {}
+	for lv in leaves:
+		emp = lv["employee"]
+		if emp not in leave_dates:
+			leave_dates[emp] = {}
+		d = frappe.utils.getdate(lv["from_date"])
+		while d <= frappe.utils.getdate(lv["to_date"]):
+			leave_dates[emp][str(d)] = lv["leave_type"]
+			d += _dt.timedelta(days=1)
+
+	# 3. Approved personal holidays in range
+	personal_holidays: dict[str, set] = {}
+	holiday_records = frappe.get_list(
+		"Employee Holiday",
+		filters={"employee": ["in", employee_ids], "status": "Approved"},
+		fields=["name", "employee"],
+	)
+	for hr_rec in holiday_records:
+		emp = hr_rec["employee"]
+		if emp not in personal_holidays:
+			personal_holidays[emp] = set()
+		hol_doc = frappe.get_doc("Employee Holiday", hr_rec["name"])
+		for h in hol_doc.holidays:
+			personal_holidays[emp].add(str(h.date)[:10])
+
+	# 4. Build result for each employee × date
+	def _to_est(time_str, date_obj, emp_tz):
+		"""Convert HH:MM in emp_tz on date_obj to HH:MM in EST."""
+		if not time_str or emp_tz == est_tz:
+			return time_str
+		try:
+			h, m = int(time_str[:2]), int(time_str[3:5])
+			dt = emp_tz.localize(_dt.datetime(date_obj.year, date_obj.month, date_obj.day, h, m))
+			return dt.astimezone(est_tz).strftime("%H:%M")
+		except Exception:
+			return time_str
+
+	result = []
+	for emp_id, sdata in schedule_map.items():
+		try:
+			emp_tz = pytz.timezone(sdata["timezone"])
+		except Exception:
+			emp_tz = est_tz
+
+		user_id = frappe.db.get_value("Employee", emp_id, "user_id") or ""
+		emp_days = {}
+		d = start
+		while d <= end:
+			date_str = str(d)
+			dow = d.weekday()  # 0=Mon, 6=Sun
+			day_slots = sdata["days"].get(dow, [])  # list of {type, start, end}
+
+			if emp_id in leave_dates and date_str in leave_dates[emp_id]:
+				emp_days[date_str] = {
+					"override": "leave",
+					"override_label": leave_dates[emp_id][date_str],
+					"slots": [],
+				}
+			elif emp_id in personal_holidays and date_str in personal_holidays[emp_id]:
+				emp_days[date_str] = {
+					"override": "holiday",
+					"override_label": "Holiday",
+					"slots": [],
+				}
+			else:
+				# Convert each slot's times to EST
+				converted_slots = []
+				for slot in day_slots:
+					s_est = _to_est(slot["start"], d, emp_tz)
+					e_est = _to_est(slot["end"], d, emp_tz)
+					converted_slots.append({
+						"type": slot["type"],
+						"start": s_est,
+						"end": e_est,
+					})
+				emp_days[date_str] = {
+					"override": None,
+					"override_label": None,
+					"slots": converted_slots,
+				}
+
+			d += _dt.timedelta(days=1)
+
+		result.append(
+			{
+				"employee": emp_id,
+				"employee_name": sdata["employee_name"],
+				"user_id": user_id,
+				"timezone": sdata["timezone"],
+				"days": emp_days,
+			}
+		)
+
+	# Sort by employee name
+	result.sort(key=lambda x: x["employee_name"] or "")
+	return result
