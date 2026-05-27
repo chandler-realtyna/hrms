@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { inject, markRaw } from "vue"
+import { inject, markRaw, computed } from "vue"
 import { useRoute } from "vue-router"
 import { FeatherIcon, Avatar } from "frappe-ui"
 
@@ -88,6 +88,9 @@ import TimesheetIcon from "@/components/icons/TimesheetIcon.vue"
 import LeaveIcon from "@/components/icons/LeaveIcon.vue"
 import ExpenseIcon from "@/components/icons/ExpenseIcon.vue"
 import SalaryIcon from "@/components/icons/SalaryIcon.vue"
+import HolidayIcon from "@/components/icons/HolidayIcon.vue"
+import ScheduleIcon from "@/components/icons/ScheduleIcon.vue"
+import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
 
 import { unreadNotificationsCount } from "@/data/notifications"
 
@@ -96,16 +99,47 @@ const __ = inject("$translate")
 const user = inject("$user")
 const employee = inject("$employee")
 
-const navItems = [
-	{ icon: markRaw(HomeIcon),       title: "Home",            route: "Home",                    path: "/home" },
-	{ type: "section", label: "Timesheets" },
-	{ icon: markRaw(TimerIcon),      title: "Start Timer",     route: "TimesheetTimer",          path: "/timesheets/timer", exact: true },
-	{ icon: markRaw(TimesheetIcon),  title: "My Timesheets",   route: "TimesheetListView",       path: "/timesheets" },
-	{ type: "section", label: "HR" },
-{ icon: markRaw(LeaveIcon),      title: "Leaves",          route: "LeavesDashboard",         path: "/dashboard/leaves" },
-	{ icon: markRaw(ExpenseIcon),    title: "Expenses",        route: "ExpenseClaimsDashboard",  path: "/dashboard/expense-claims" },
-	{ icon: markRaw(SalaryIcon),     title: "Salary Slips",    route: "SalarySlipsDashboard",   path: "/dashboard/salary-slips" },
-]
+const isHR = computed(() => {
+	const roles = user.data?.roles || []
+	return roles.some((r) =>
+		["HR Manager", "HR User", "System Manager", "Administrator"].includes(r)
+	)
+})
+
+const navItems = computed(() => {
+	const items = [
+		{ icon: markRaw(HomeIcon),       title: "Home",             route: "Home",                   path: "/home" },
+		{ type: "section", label: "Timesheets" },
+		{ icon: markRaw(TimerIcon),      title: "Start Timer",      route: "TimesheetTimer",         path: "/timesheets/timer", exact: true },
+		{ icon: markRaw(TimesheetIcon),  title: "My Timesheets",    route: "TimesheetListView",      path: "/timesheets" },
+		{ type: "section", label: "HR" },
+		{ icon: markRaw(LeaveIcon),      title: "Leaves",           route: "LeavesDashboard",        path: "/dashboard/leaves" },
+		{ icon: markRaw(ExpenseIcon),    title: "Expenses",         route: "ExpenseClaimsDashboard", path: "/dashboard/expense-claims" },
+		{ icon: markRaw(SalaryIcon),     title: "Salary Slips",     route: "SalarySlipsDashboard",  path: "/dashboard/salary-slips" },
+		{ icon: markRaw(HolidayIcon),       title: "My Holidays",        route: "MyHolidays",             path: "/holidays" },
+		{ icon: markRaw(ScheduleIcon),      title: "My Schedule",        route: "MySchedule",             path: "/schedule" },
+		{ icon: markRaw(AvailabilityIcon),  title: "Team Availability",  route: "Availability",           path: "/availability" },
+	]
+
+	if (isHR.value) {
+		items.push(
+			{
+				icon: markRaw(HolidayIcon),
+				title: "Holiday Approvals",
+				route: "HolidayApprovals",
+				path: "/holidays/approvals",
+			},
+			{
+				icon: markRaw(ScheduleIcon),
+				title: "Schedule Approvals",
+				route: "ScheduleApprovals",
+				path: "/schedule/approvals",
+			}
+		)
+	}
+
+	return items
+})
 
 function isActive(item) {
 	if (item.exact) return route.path === item.path
