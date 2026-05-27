@@ -177,12 +177,17 @@ function saveLog() {
 
 	const hours = parseFloat((minutes / 60).toFixed(4))
 
-	// Generate from_time / to_time silently for Frappe backend.
-	// Use today midnight as anchor; to_time = anchor + hours.
-	const today = new Date().toISOString().split("T")[0]
-	const fromMs = new Date(`${today}T00:00:00`).getTime()
-	const toMs   = fromMs + hours * 3_600_000
-	const toISO  = new Date(toMs).toISOString().replace("T", " ").substring(0, 19)
+	// Generate from_time / to_time as naive local-time strings for Frappe.
+	// Never use .toISOString() here — that converts to UTC and creates an
+	// offset equal to the user's timezone (e.g. +4 h for UTC+4 users).
+	const now = new Date()
+	const pad = n => String(n).padStart(2, "0")
+	const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+
+	const toTotalSec = minutes * 60
+	const toH = pad(Math.floor(toTotalSec / 3600) % 24)
+	const toM = pad(Math.floor((toTotalSec % 3600) / 60))
+	const toS = pad(toTotalSec % 60)
 
 	const log = {
 		activity_type: currentLog.value.activity_type || null,
@@ -190,7 +195,7 @@ function saveLog() {
 		description:   currentLog.value.description || null,
 		hours,
 		from_time: `${today} 00:00:00`,
-		to_time:   toISO,
+		to_time:   `${today} ${toH}:${toM}:${toS}`,
 		is_billable: 1,
 	}
 
