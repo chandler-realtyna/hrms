@@ -38,7 +38,7 @@ const employee = inject("$employee")
 // System Settings for the currency formatter) and incorrectly lock the form.
 const isSubmitted = computed(() => timesheet.value.docstatus === 1)
 
-const today = dayjs().format("YYYY-MM-DD")
+const today = new Date().toISOString().substring(0, 10)
 
 const props = defineProps({
 	id: {

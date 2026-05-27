@@ -299,9 +299,13 @@ global_search_doctypes = {
 	],
 }
 
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "hrms.event.get_events"
-# }
+override_whitelisted_methods = {
+	# frappe-ui fetches System Settings.number_format on every page load for its
+	# currency formatter.  Employees don't have System Settings read permission,
+	# which produces a 403 and breaks the form UI.  Our override allows the small
+	# set of non-sensitive formatting fields without granting blanket access.
+	"frappe.client.get_single_value": "hrms.overrides.whitelisted_methods.get_single_value",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

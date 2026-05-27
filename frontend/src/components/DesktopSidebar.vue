@@ -147,7 +147,7 @@ function isActive(item) {
 	if (route.path === item.path) return true
 	if (item.path && route.path.startsWith(item.path + "/")) {
 		// exclude exact child routes that have their own nav entry
-		const exactChildren = navItems.filter((n) => n.exact).map((n) => n.path)
+		const exactChildren = navItems.value.filter((n) => n.exact).map((n) => n.path)
 		if (exactChildren.some((p) => route.path === p)) return false
 		return true
 	}
