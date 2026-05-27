@@ -1,36 +1,16 @@
 """
 hrms.setup package
 
-Python resolves `hrms.setup` to this package (hrms/setup/) rather than to the
-sibling hrms/setup.py module, because packages take precedence over same-named
-modules.  The canonical install/migrate helpers still live in hrms/setup.py, but
-hooks.py references them as `hrms.setup.<function>`, so we re-export the symbols
-here so the dotted paths remain valid.
+Python resolves ``hrms.setup`` to this package (hrms/setup/) rather than to
+the sibling hrms/setup.py module, because packages take precedence over
+same-named modules.
+
+All installation/migration helpers now live in hrms/setup/_install.py.
+Everything is re-exported here so that all existing import paths continue to
+work without changes:
+
+  • hooks.py dotted paths  (hrms.setup.after_app_install, etc.)
+  • direct imports         (from hrms.setup import after_install, ...)
 """
 
-import frappe
-
-
-# ---------------------------------------------------------------------------
-# Re-exported from hrms/setup.py (shadowed by this package)
-# ---------------------------------------------------------------------------
-
-def update_select_perm_after_install():
-	"""
-	Re-export required by hooks.py → after_migrate.
-
-	Called by Frappe after every `bench migrate`.  Updates the Select
-	permission cache for all non-standard User Types so that field-level
-	select-perm changes made during the migration take effect immediately.
-	"""
-	if not frappe.flags.update_select_perm_after_migrate:
-		return
-
-	frappe.flags.ignore_select_perm = False
-	for row in frappe.get_all("User Type", filters={"is_standard": 0}):
-		print("Updating user type :- ", row.name)
-		doc = frappe.get_doc("User Type", row.name)
-		doc.flags.ignore_links = True
-		doc.save()
-
-	frappe.flags.update_select_perm_after_migrate = False
+from ._install import *  # noqa: F401, F403
