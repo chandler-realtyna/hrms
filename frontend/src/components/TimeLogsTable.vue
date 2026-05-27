@@ -16,31 +16,22 @@
 						<span class="text-sm font-medium text-gray-800">
 							{{ log.activity_type || __("No Activity") }}
 						</span>
-						<span class="text-sm font-semibold text-gray-700">
-							{{ log.hours ? log.hours + " hrs" : "" }}
+						<span class="text-sm font-semibold text-blue-600">
+							{{ formatDuration(log.hours) }}
 						</span>
 					</div>
-					<div class="text-xs text-gray-500 flex flex-row gap-2">
-						<span v-if="log.from_time">{{ formatTime(log.from_time) }}</span>
-						<span v-if="log.from_time && log.to_time">→</span>
-						<span v-if="log.to_time">{{ formatTime(log.to_time) }}</span>
-						<span v-if="log.project" class="ml-1 text-gray-400">· {{ log.project }}</span>
-					</div>
-					<div v-if="log.description" class="text-xs text-gray-400 truncate">
+					<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
 						{{ log.description }}
+					</div>
+					<div v-if="log.project" class="text-xs text-gray-400">
+						{{ log.project }}
 					</div>
 				</div>
 				<div v-if="!isReadOnly" class="flex flex-row items-center gap-2 ml-3">
-					<button
-						class="text-gray-400 hover:text-blue-500"
-						@click="openEdit(idx)"
-					>
+					<button class="text-gray-400 hover:text-blue-500" @click="openEdit(idx)">
 						<FeatherIcon name="edit-2" class="h-4 w-4" />
 					</button>
-					<button
-						class="text-gray-400 hover:text-red-500"
-						@click="$emit('deleteLog', idx)"
-					>
+					<button class="text-gray-400 hover:text-red-500" @click="$emit('deleteLog', idx)">
 						<FeatherIcon name="trash-2" class="h-4 w-4" />
 					</button>
 				</div>
@@ -67,22 +58,60 @@
 					</ion-buttons>
 				</ion-toolbar>
 			</ion-header>
-			<!-- plain div — ion-content body is blank in this Ionic version -->
+
 			<div class="overflow-y-auto flex flex-col gap-4 p-4 bg-white h-full">
+				<!-- Description — most prominent field -->
 				<FormField
-					v-for="field in LOG_FIELDS"
-					:key="field.fieldname"
-					:label="__(field.label)"
-					:fieldtype="field.fieldtype"
-					:fieldname="field.fieldname"
-					:options="field.options"
-					:placeholder="field.placeholder"
-					v-model="currentLog[field.fieldname]"
-					@change="field.fieldname === 'from_time' || field.fieldname === 'to_time' ? calcHours() : null"
+					fieldtype="Small Text"
+					fieldname="description"
+					:label="__('What did you work on?')"
+					:placeholder="__('Describe your work…')"
+					v-model="currentLog.description"
 				/>
+
+				<!-- Duration in minutes -->
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+						{{ __("Duration") }}
+					</label>
+					<div class="flex items-center gap-2">
+						<input
+							type="number"
+							min="1"
+							step="1"
+							v-model.number="currentLog._minutes"
+							class="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+							:placeholder="__('minutes')"
+						/>
+						<span class="text-sm text-gray-500">{{ __("min") }}</span>
+						<span v-if="currentLog._minutes > 0" class="text-xs text-gray-400 ml-1">
+							({{ formatDuration(currentLog._minutes / 60) }})
+						</span>
+					</div>
+				</div>
+
+				<!-- Activity Type -->
+				<FormField
+					fieldtype="Link"
+					fieldname="activity_type"
+					:label="__('Activity Type')"
+					options="Activity Type"
+					v-model="currentLog.activity_type"
+				/>
+
+				<!-- Project -->
+				<FormField
+					fieldtype="Link"
+					fieldname="project"
+					:label="__('Project')"
+					options="Project"
+					v-model="currentLog.project"
+				/>
+
 				<Button
 					variant="solid"
 					class="w-full mt-2"
+					:disabled="!currentLog._minutes || currentLog._minutes <= 0"
 					@click="saveLog"
 				>
 					{{ editIndex === null ? __("Add") : __("Update") }}
@@ -93,7 +122,8 @@
 </template>
 
 <script setup>
-import { ref, inject } from "vue"
+import { ref } from "vue"
+import { inject } from "vue"
 import {
 	IonModal, IonHeader, IonToolbar, IonTitle,
 	IonButtons, IonButton,
@@ -102,7 +132,6 @@ import { FeatherIcon, Button } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 
 const __ = inject("$translate")
-const dayjs = inject("$dayjs")
 
 const props = defineProps({
 	timesheet: { type: Object, required: true },
@@ -111,55 +140,26 @@ const props = defineProps({
 
 const emit = defineEmits(["update:timesheet", "addLog", "updateLog", "deleteLog"])
 
-const LOG_FIELDS = [
-	{
-		fieldname: "activity_type",
-		fieldtype: "Link",
-		label: "Activity Type",
-		options: "Activity Type",
-	},
-	{
-		fieldname: "from_time",
-		fieldtype: "Datetime",
-		label: "From Time",
-	},
-	{
-		fieldname: "to_time",
-		fieldtype: "Datetime",
-		label: "To Time",
-	},
-	{
-		fieldname: "hours",
-		fieldtype: "Float",
-		label: "Hours",
-		placeholder: "Calculated automatically",
-	},
-	{
-		fieldname: "project",
-		fieldtype: "Link",
-		label: "Project",
-		options: "Project",
-	},
-	{
-		fieldname: "description",
-		fieldtype: "Small Text",
-		label: "Description",
-	},
-]
-
 const showModal = ref(false)
 const currentLog = ref({})
 const editIndex = ref(null)
 
+// ── Modal open/close ────────────────────────────────────────────────────────
+
 function openAdd() {
 	editIndex.value = null
-	currentLog.value = {}
+	currentLog.value = { _minutes: null, activity_type: "", project: "", description: "" }
 	showModal.value = true
 }
 
 function openEdit(idx) {
 	editIndex.value = idx
-	currentLog.value = { ...props.timesheet.time_logs[idx] }
+	const log = props.timesheet.time_logs[idx]
+	currentLog.value = {
+		...log,
+		// Convert stored hours back to minutes for editing
+		_minutes: log.hours ? Math.round(log.hours * 60) : null,
+	}
 	showModal.value = true
 }
 
@@ -169,25 +169,48 @@ function closeModal() {
 	editIndex.value = null
 }
 
-function calcHours() {
-	if (currentLog.value.from_time && currentLog.value.to_time) {
-		const diff = dayjs(currentLog.value.to_time).diff(dayjs(currentLog.value.from_time), "minute")
-		if (diff > 0) currentLog.value.hours = parseFloat((diff / 60).toFixed(2))
-	}
-}
+// ── Save ────────────────────────────────────────────────────────────────────
 
 function saveLog() {
-	if (!currentLog.value.hours && !currentLog.value.from_time) return
+	const minutes = Number(currentLog.value._minutes)
+	if (!minutes || minutes <= 0) return
+
+	const hours = parseFloat((minutes / 60).toFixed(4))
+
+	// Generate from_time / to_time silently for Frappe backend.
+	// Use today midnight as anchor; to_time = anchor + hours.
+	const today = new Date().toISOString().split("T")[0]
+	const fromMs = new Date(`${today}T00:00:00`).getTime()
+	const toMs   = fromMs + hours * 3_600_000
+	const toISO  = new Date(toMs).toISOString().replace("T", " ").substring(0, 19)
+
+	const log = {
+		activity_type: currentLog.value.activity_type || null,
+		project:       currentLog.value.project || null,
+		description:   currentLog.value.description || null,
+		hours,
+		from_time: `${today} 00:00:00`,
+		to_time:   toISO,
+	}
+
 	if (editIndex.value !== null) {
-		emit("updateLog", { ...currentLog.value }, editIndex.value)
+		emit("updateLog", log, editIndex.value)
 	} else {
-		emit("addLog", { ...currentLog.value })
+		emit("addLog", log)
 	}
 	closeModal()
 }
 
-function formatTime(dt) {
-	if (!dt) return ""
-	return dayjs(dt).format("HH:mm")
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Format decimal hours as "Xh Ym" */
+function formatDuration(hours) {
+	if (!hours || hours <= 0) return ""
+	const totalMinutes = Math.round(hours * 60)
+	const h = Math.floor(totalMinutes / 60)
+	const m = totalMinutes % 60
+	if (h === 0) return `${m}m`
+	if (m === 0) return `${h}h`
+	return `${h}h ${m}m`
 }
 </script>

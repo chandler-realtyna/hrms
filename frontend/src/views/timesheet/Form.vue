@@ -32,7 +32,6 @@ import FormView from "@/components/FormView.vue"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
 
 const employee = inject("$employee")
-const dayjs = inject("$dayjs")
 
 const today = dayjs().format("YYYY-MM-DD")
 
@@ -77,21 +76,10 @@ function deleteLog(idx) {
 
 function recalculateTotals() {
 	const logs = timesheet.value.time_logs || []
-
-	// total hours
 	let total = 0
 	logs.forEach((log) => { total += parseFloat(log.hours || 0) })
 	timesheet.value.total_hours = parseFloat(total.toFixed(2))
-
-	// start_date = earliest from_time; end_date = latest to_time
-	const fromDates = logs.map((l) => l.from_time).filter(Boolean)
-	const toDates   = logs.map((l) => l.to_time).filter(Boolean)
-	if (fromDates.length) {
-		timesheet.value.start_date = dayjs(Math.min(...fromDates.map((d) => new Date(d)))).format("YYYY-MM-DD")
-	}
-	if (toDates.length) {
-		timesheet.value.end_date = dayjs(Math.max(...toDates.map((d) => new Date(d)))).format("YYYY-MM-DD")
-	}
+	// start_date / end_date stay as today — we no longer derive them from log times
 }
 
 function validateForm() {}
