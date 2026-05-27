@@ -2,7 +2,7 @@
  "app": "hrms",
  "charts": [],
  "content": "[{\"id\":\"HSmKHOvqMN\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Reports &amp; Masters</b></span>\",\"col\":12}},{\"id\":\"lKeffKf1va\",\"type\":\"card\",\"data\":{\"card_name\":\"Setup\",\"col\":4}},{\"id\":\"UnVtsnxLo_\",\"type\":\"card\",\"data\":{\"card_name\":\"Employee\",\"col\":4}},{\"id\":\"YXISc0V2sT\",\"type\":\"card\",\"data\":{\"card_name\":\"Leaves\",\"col\":4}},{\"id\":\"sched_card_hr\",\"type\":\"card\",\"data\":{\"card_name\":\"Scheduling\",\"col\":4}},{\"id\":\"TH5ZW37wDA\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"vx8pBTHNsf\",\"type\":\"card\",\"data\":{\"card_name\":\"Attendance\",\"col\":4}},{\"id\":\"wv3Sy37NgW\",\"type\":\"card\",\"data\":{\"card_name\":\"Expense Claim\",\"col\":4}},{\"id\":\"v82YqH3rek\",\"type\":\"card\",\"data\":{\"card_name\":\"Key Reports\",\"col\":4}},{\"id\":\"60GScqYEk0\",\"type\":\"card\",\"data\":{\"card_name\":\"Other Reports\",\"col\":4}}]",
- "creation": "2020-03-02 15:48:58.322521",
+ "creation": "2026-05-27 06:11:23.896550",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -414,7 +414,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-04-06 19:29:59.207478",
+ "modified": "2026-05-27 06:32:05.172588",
  "modified_by": "Administrator",
  "module": "HR",
  "name": "HR Setup",
@@ -426,7 +426,24 @@
  "restrict_to_domain": "",
  "roles": [],
  "sequence_id": 1.0,
- "shortcuts": [],
+ "shortcuts": [
+  {
+   "type": "DocType",
+   "link_to": "Employee Schedule",
+   "label": "Employee Schedule",
+   "icon": "calendar",
+   "color": "Grey",
+   "doc_view": ""
+  },
+  {
+   "type": "DocType",
+   "link_to": "Employee Holiday",
+   "label": "Employee Holiday",
+   "icon": "sun",
+   "color": "Grey",
+   "doc_view": ""
+  }
+ ],
  "title": "HR Setup",
  "type": "Workspace"
 }
