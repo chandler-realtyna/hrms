@@ -7,6 +7,8 @@ import json
 
 import frappe
 
+_SCHEDULING_DOCTYPES = ("Employee Schedule", "Employee Holiday")
+
 
 def add_scheduling_to_hr_setup_workspace():
 	"""
@@ -15,7 +17,7 @@ def add_scheduling_to_hr_setup_workspace():
 
 	We patch the live database record rather than relying on JSON file
 	sync, which silently skips files whose modified timestamp is older
-	than the record already in the database.
+	than the record already in the database.  The function is idempotent.
 	"""
 	if not frappe.db.exists("Workspace", "HR Setup"):
 		return
@@ -25,7 +27,8 @@ def add_scheduling_to_hr_setup_workspace():
 
 	# ── 1. Main-content links (powers the card grid) ─────────────────────
 	existing_links = {lnk.link_to for lnk in ws.links if lnk.link_to}
-	if not ("Employee Schedule" in existing_links and "Employee Holiday" in existing_links):
+	missing_links = [d for d in _SCHEDULING_DOCTYPES if d not in existing_links]
+	if missing_links:
 		changed = True
 		_patch_links(ws, existing_links)
 
@@ -49,15 +52,13 @@ def add_scheduling_to_hr_setup_workspace():
 			None,
 		)
 		new_card = {"id": "sched_card_hrms", "type": "card", "data": {"card_name": "Scheduling", "col": 4}}
-		if leaves_idx is not None:
-			content.insert(leaves_idx + 1, new_card)
-		else:
-			content.append(new_card)
+		content.insert(leaves_idx + 1, new_card) if leaves_idx is not None else content.append(new_card)
 		ws.content = json.dumps(content)
 
 	# ── 3. Shortcuts (powers the left-sidebar navigation) ─────────────────
 	existing_shortcuts = {s.link_to for s in ws.shortcuts if s.link_to}
-	if not ("Employee Schedule" in existing_shortcuts and "Employee Holiday" in existing_shortcuts):
+	missing_shortcuts = [d for d in _SCHEDULING_DOCTYPES if d not in existing_shortcuts]
+	if missing_shortcuts:
 		changed = True
 		_patch_shortcuts(ws, existing_shortcuts)
 
@@ -71,9 +72,9 @@ def add_scheduling_to_hr_setup_workspace():
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _patch_links(ws, existing_links):
 	"""Insert the Scheduling Card Break + two DocType links after the Leaves section."""
-	# Find insertion point: just before the section that follows "Leaves"
 	insert_idx = len(ws.links)
 	in_leaves = False
 	for i, lnk in enumerate(ws.links):
@@ -90,56 +91,39 @@ def _patch_links(ws, existing_links):
 			hidden=0, is_query_report=0, label="Scheduling",
 			link_count=2, onboard=0, type="Card Break",
 		))
-
-	if "Employee Schedule" not in existing_links:
-		new_rows.append(frappe._dict(
-			hidden=0, is_query_report=0, label="Employee Schedule",
-			link_count=0, link_to="Employee Schedule",
-			link_type="DocType", onboard=1, type="Link",
-		))
-
-	if "Employee Holiday" not in existing_links:
-		new_rows.append(frappe._dict(
-			hidden=0, is_query_report=0, label="Employee Holiday",
-			link_count=0, link_to="Employee Holiday",
-			link_type="DocType", onboard=1, type="Link",
-		))
+	for doctype in _SCHEDULING_DOCTYPES:
+		if doctype not in existing_links:
+			new_rows.append(frappe._dict(
+				hidden=0, is_query_report=0, label=doctype,
+				link_count=0, link_to=doctype,
+				link_type="DocType", onboard=1, type="Link",
+			))
 
 	for offset, row in enumerate(new_rows):
+		# frappe.get_doc on a child doctype wires up parent/child correctly
+		# when the parent document already has it in its child list.
 		ws.links.insert(insert_idx + offset, frappe.get_doc(dict(doctype="Workspace Link", **row)))
 
 
 def _patch_shortcuts(ws, existing_shortcuts):
-	"""Add sidebar shortcuts for Employee Schedule and Employee Holiday."""
-	# Find a good insertion point: after the last existing shortcut whose
-	# link_to is one of the "Leaves" doctypes, or append at the end.
-	leaves_doctypes = {"Leave Application", "Compensatory Leave Request"}
-	insert_idx = len(ws.shortcuts)
-	for i, s in enumerate(ws.shortcuts):
-		if s.link_to in leaves_doctypes:
-			insert_idx = i + 1
+	"""
+	Add sidebar shortcuts for Employee Schedule and Employee Holiday.
 
-	new_shortcuts = []
-	if "Employee Schedule" not in existing_shortcuts:
-		new_shortcuts.append(frappe._dict(
-			label="Employee Schedule",
-			link_to="Employee Schedule",
-			type="DocType",
-			icon="calendar",
-			color="Grey",
-		))
+	IMPORTANT: use ws.append() — NOT ws.shortcuts.insert() with frappe.get_doc().
+	ws.append() is the correct Frappe API: it sets parent/parentfield/parenttype
+	on the child row so it is persisted when the parent is saved.  Inserting a
+	bare frappe.get_doc() result into an empty child-table list leaves those
+	attributes unset and the rows are silently dropped at save time.
+	"""
+	icons = {"Employee Schedule": "calendar", "Employee Holiday": "sun"}
 
-	if "Employee Holiday" not in existing_shortcuts:
-		new_shortcuts.append(frappe._dict(
-			label="Employee Holiday",
-			link_to="Employee Holiday",
-			type="DocType",
-			icon="sun",
-			color="Grey",
-		))
-
-	for offset, row in enumerate(new_shortcuts):
-		ws.shortcuts.insert(
-			insert_idx + offset,
-			frappe.get_doc(dict(doctype="Workspace Shortcut", **row)),
-		)
+	for doctype in _SCHEDULING_DOCTYPES:
+		if doctype not in existing_shortcuts:
+			ws.append("shortcuts", {
+				"type": "DocType",
+				"link_to": doctype,
+				"label": doctype,
+				"icon": icons.get(doctype, "file"),
+				"color": "Grey",
+				"doc_view": "",
+			})
