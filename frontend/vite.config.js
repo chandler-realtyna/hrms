@@ -28,6 +28,7 @@ export default defineConfig({
 				name: "Frappe HR",
 				short_name: "Frappe HR",
 				start_url: "/hrms",
+				scope: "/hrms",
 				description: "Everyday HR & Payroll operations at your fingertips",
 				theme_color: "#ffffff",
 				icons: [

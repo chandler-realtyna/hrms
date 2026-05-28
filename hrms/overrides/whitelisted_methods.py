@@ -36,7 +36,7 @@ def get_single_value(doctype: str, field: str):
 	permission check.
 	"""
 	if doctype == "System Settings" and field in _SAFE_SYSTEM_SETTINGS_FIELDS:
-		return frappe.db.get_single_value(doctype, field, ignore_permissions=True)
+		return frappe.db.get_single_value(doctype, field)
 
 	# Standard path — will raise PermissionError for anything sensitive
 	if not frappe.has_permission(doctype):
