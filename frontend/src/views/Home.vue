@@ -27,6 +27,7 @@ import TimerIcon from "@/components/icons/TimerIcon.vue"
 import HolidayIcon from "@/components/icons/HolidayIcon.vue"
 import ScheduleIcon from "@/components/icons/ScheduleIcon.vue"
 import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
+import DocsIcon from "@/components/icons/DocsIcon.vue"
 
 const __ = inject("$translate")
 
@@ -89,6 +90,11 @@ const quickLinks = computed(() => {
 			icon: markRaw(SalaryIcon),
 			title: __("View Salary Slips"),
 			route: "SalarySlipsDashboard",
+		},
+		{
+			icon: markRaw(DocsIcon),
+			title: __("Documents"),
+			route: "Docs",
 		},
 	]
 

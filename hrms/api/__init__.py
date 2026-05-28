@@ -951,6 +951,64 @@ def get_employee_project_summary(employee: str, from_date: str, to_date: str) ->
 	return [{"project": r["project"], "hours": round(float(r["total_hours"]), 2)} for r in rows]
 
 
+@frappe.whitelist()
+def get_team_working_hours_summary(from_date: str, to_date: str) -> list[dict]:
+	"""
+	Returns working-hours totals for all active employees who logged time in the
+	given period, together with each employee's IANA timezone (sourced from their
+	approved Employee Schedule, if one exists).
+
+	The caller can use the timezone values to compute UTC-offset differences
+	and display how far ahead/behind each colleague is relative to the viewer.
+
+	Returns up to 25 employees, ordered by total hours descending.
+	"""
+	rows = frappe.db.sql(
+		"""
+		SELECT
+			ts.employee,
+			MAX(e.employee_name) AS employee_name,
+			ROUND(SUM(tsd.hours), 1) AS total_hours
+		FROM `tabTimesheet Detail` tsd
+		INNER JOIN `tabTimesheet`  ts ON tsd.parent = ts.name
+		INNER JOIN `tabEmployee`   e  ON e.name = ts.employee
+		WHERE ts.docstatus != 2
+		  AND e.status = 'Active'
+		  AND DATE(tsd.from_time) BETWEEN %(from_date)s AND %(to_date)s
+		GROUP BY ts.employee
+		ORDER BY total_hours DESC
+		LIMIT 25
+		""",
+		{"from_date": from_date, "to_date": to_date},
+		as_dict=True,
+	)
+
+	if not rows:
+		return []
+
+	# Look up each employee's timezone from their most-recently approved schedule
+	employee_ids = [r["employee"] for r in rows]
+	tz_map = {
+		s["employee"]: s["timezone"]
+		for s in frappe.get_all(
+			"Employee Schedule",
+			filters={"employee": ["in", employee_ids], "status": "Approved"},
+			fields=["employee", "timezone"],
+		)
+		if s.get("timezone")
+	}
+
+	return [
+		{
+			"employee": r["employee"],
+			"employee_name": r["employee_name"] or r["employee"],
+			"total_hours": float(r["total_hours"]),
+			"timezone": tz_map.get(r["employee"], ""),
+		}
+		for r in rows
+	]
+
+
 # ── Employee Holiday API ──────────────────────────────────────────────────────
 
 
@@ -1296,17 +1354,26 @@ def _norm_time(t) -> str | None:
 
 
 @frappe.whitelist()
-def get_team_availability(start_date: str, end_date: str) -> list[dict]:
+def get_team_availability(
+	start_date: str,
+	end_date: str,
+	viewer_timezone: str = "America/New_York",
+) -> list[dict]:
 	"""
 	Return availability for all employees with approved schedules.
-	Times are converted to EST (America/New_York).
+	Times are converted to viewer_timezone (IANA name, e.g. "America/New_York").
+	Defaults to EST for backward compatibility.
 	"""
 	import datetime as _dt
 	import pytz
 
 	start = frappe.utils.getdate(start_date)
 	end = frappe.utils.getdate(end_date)
-	est_tz = pytz.timezone("America/New_York")
+
+	try:
+		viewer_tz = pytz.timezone(viewer_timezone)
+	except Exception:
+		viewer_tz = pytz.timezone("America/New_York")
 
 	# 1. All approved schedules
 	schedule_rows = frappe.get_list(
@@ -1375,15 +1442,15 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 			personal_holidays[emp].add(str(h.date)[:10])
 
 	# 4. Build result for each employee × date
-	def _to_est(time_str, date_obj, emp_tz):
-		"""Convert a "HH:MM" string from emp_tz on date_obj into EST "HH:MM"."""
-		if not time_str or emp_tz == est_tz:
+	def _to_viewer_tz(time_str, date_obj, emp_tz):
+		"""Convert a "HH:MM" string from emp_tz on date_obj into viewer_tz "HH:MM"."""
+		if not time_str or emp_tz == viewer_tz:
 			return time_str
 		try:
 			parts = str(time_str).split(":")
 			h, m = int(parts[0]), int(parts[1])
 			dt = emp_tz.localize(_dt.datetime(date_obj.year, date_obj.month, date_obj.day, h, m))
-			return dt.astimezone(est_tz).strftime("%H:%M")
+			return dt.astimezone(viewer_tz).strftime("%H:%M")
 		except Exception:
 			return time_str
 
@@ -1392,7 +1459,7 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 		try:
 			emp_tz = pytz.timezone(sdata["timezone"])
 		except Exception:
-			emp_tz = est_tz
+			emp_tz = viewer_tz
 
 		user_id = frappe.db.get_value("Employee", emp_id, "user_id") or ""
 		emp_days = {}
@@ -1415,11 +1482,11 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 					"slots": [],
 				}
 			else:
-				# Convert each slot's times to EST
+				# Convert each slot's times to viewer's timezone
 				converted_slots = []
 				for slot in day_slots:
-					s_est = _to_est(slot["start"], d, emp_tz)
-					e_est = _to_est(slot["end"], d, emp_tz)
+					s_est = _to_viewer_tz(slot["start"], d, emp_tz)
+					e_est = _to_viewer_tz(slot["end"], d, emp_tz)
 					converted_slots.append({
 						"type": slot["type"],
 						"start": s_est,
@@ -1446,3 +1513,65 @@ def get_team_availability(start_date: str, end_date: str) -> list[dict]:
 	# Sort by employee name
 	result.sort(key=lambda x: x["employee_name"] or "")
 	return result
+
+
+# ── HR Documents ──────────────────────────────────────────────────────────────
+
+
+@frappe.whitelist()
+def get_hr_documents(category=None):
+	"""Return all active HR Documents, optionally filtered by category."""
+	filters = {"is_active": 1}
+	if category:
+		filters["category"] = category
+	return frappe.get_all(
+		"HR Document",
+		filters=filters,
+		fields=["name", "title", "url", "category", "description"],
+		order_by="category asc, title asc",
+	)
+
+
+@frappe.whitelist()
+def get_hr_document_categories():
+	"""Return a deduplicated sorted list of active category names."""
+	rows = frappe.db.sql(
+		"""SELECT DISTINCT category FROM `tabHR Document`
+		   WHERE is_active = 1 AND category IS NOT NULL AND category != ''
+		   ORDER BY category""",
+		as_dict=False,
+	)
+	return [r[0] for r in rows]
+
+
+@frappe.whitelist()
+def save_hr_document(title, url, category, description=None, name=None):
+	"""Create or update an HR Document. Requires HR Manager or HR User role."""
+	_require_hr_role()
+	if not url.startswith(("http://", "https://")):
+		url = "https://" + url
+	if name and frappe.db.exists("HR Document", name):
+		doc = frappe.get_doc("HR Document", name)
+	else:
+		doc = frappe.new_doc("HR Document")
+	doc.title = title
+	doc.url = url
+	doc.category = category.strip()
+	doc.description = description or ""
+	doc.is_active = 1
+	doc.save()
+	return doc.name
+
+
+@frappe.whitelist()
+def delete_hr_document(name):
+	"""Delete an HR Document. Requires HR Manager role."""
+	if not _is_hr_or_admin():
+		frappe.throw(_("Only HR Managers can delete documents."))
+	frappe.delete_doc("HR Document", name, ignore_permissions=False)
+
+
+def _require_hr_role():
+	hr_roles = {"HR Manager", "HR User", "System Manager", "Administrator"}
+	if not (hr_roles & set(frappe.get_roles(frappe.session.user))):
+		frappe.throw(_("Only HR can manage documents."))

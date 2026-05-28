@@ -95,6 +95,7 @@ import SalaryIcon from "@/components/icons/SalaryIcon.vue"
 import HolidayIcon from "@/components/icons/HolidayIcon.vue"
 import ScheduleIcon from "@/components/icons/ScheduleIcon.vue"
 import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
+import DocsIcon from "@/components/icons/DocsIcon.vue"
 
 import { unreadNotificationsCount } from "@/data/notifications"
 
@@ -130,6 +131,7 @@ const navItems = computed(() => {
 		{ icon: markRaw(HolidayIcon),       title: "My Holidays",        route: "MyHolidays",             path: "/holidays" },
 		{ icon: markRaw(ScheduleIcon),      title: "My Schedule",        route: "MySchedule",             path: "/schedule" },
 		{ icon: markRaw(AvailabilityIcon),  title: "Team Availability",  route: "Availability",           path: "/availability" },
+		{ icon: markRaw(DocsIcon),          title: "Documents",          route: "Docs",                   path: "/docs" },
 	]
 
 	if (isHR.value) {

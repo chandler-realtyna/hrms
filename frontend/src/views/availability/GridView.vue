@@ -115,7 +115,9 @@ function shortTime(t) {
 }
 
 function isToday(date) {
-	return date === new Date().toISOString().substring(0, 10)
+	const d = new Date()
+	const pad = n => String(n).padStart(2, "0")
+	return date === `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 function formatDayLabel(date) {
 	return new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" })

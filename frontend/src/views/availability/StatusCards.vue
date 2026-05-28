@@ -36,7 +36,7 @@
 						<p class="text-sm font-semibold text-gray-800 truncate">{{ entry.employee_name }}</p>
 						<!-- Slot hours -->
 						<p v-if="entry.slot?.start && entry.slot?.end" class="text-xs text-gray-400 mt-0.5">
-							{{ shortTime(entry.slot.start) }} – {{ shortTime(entry.slot.end) }} EST
+							{{ shortTime(entry.slot.start) }} – {{ shortTime(entry.slot.end) }} {{ viewerTzLabel }}
 						</p>
 						<!-- Override label -->
 						<p v-else-if="entry.overrideLabel" class="text-xs text-gray-400 mt-0.5">
@@ -55,8 +55,9 @@ import { FeatherIcon } from "frappe-ui"
 const __ = inject("$translate")
 
 const props = defineProps({
-	date: { type: String, required: true },
-	employees: { type: Array, required: true },
+	date:          { type: String, required: true },
+	employees:     { type: Array,  required: true },
+	viewerTzLabel: { type: String, default: "your timezone" },
 })
 
 // Enrich each employee with their day data

@@ -1,10 +1,14 @@
 <template>
 	<div>
 		<!-- Hour axis labels -->
-		<div class="flex mb-2 pl-28">
+		<div class="flex mb-1 pl-28">
 			<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
 				{{ formatHour(h) }}
 			</div>
+		</div>
+		<!-- Timezone label row -->
+		<div class="pl-28 mb-2">
+			<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
 		</div>
 
 		<div v-if="activeEmployees.length === 0" class="py-12 text-center text-gray-400 text-sm">
@@ -70,8 +74,9 @@ import { FeatherIcon } from "frappe-ui"
 const __ = inject("$translate")
 
 const props = defineProps({
-	date: { type: String, required: true },
-	employees: { type: Array, required: true },
+	date:          { type: String, required: true },
+	employees:     { type: Array,  required: true },
+	viewerTzLabel: { type: String, default: "your timezone" },
 })
 
 const START_HOUR = 7

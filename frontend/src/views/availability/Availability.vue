@@ -44,7 +44,7 @@
 						{{ weekRangeLabel }}
 					</p>
 					<p v-else class="text-sm font-semibold text-gray-800">{{ dayLabel }}</p>
-					<p class="text-xs text-gray-400 mt-0.5">{{ __("Times in EST") }}</p>
+					<p class="text-xs text-gray-400 mt-0.5">{{ __("Times in") }} {{ viewerTzLabel }}</p>
 				</div>
 
 				<button
@@ -74,11 +74,13 @@
 					v-else-if="activeView === 'timeline'"
 					:date="selectedDay"
 					:employees="availResource.data || []"
+					:viewerTzLabel="viewerTzLabel"
 				/>
 				<StatusCards
 					v-else
 					:date="selectedDay"
 					:employees="availResource.data || []"
+					:viewerTzLabel="viewerTzLabel"
 				/>
 			</div>
 
@@ -100,15 +102,25 @@ import { createResource } from "frappe-ui"
 import GridView     from "./GridView.vue"
 import TimelineView from "./TimelineView.vue"
 import StatusCards  from "./StatusCards.vue"
+import { getViewerTimezone, getTimezoneAbbr } from "@/utils/timezone.js"
 
 const __ = inject("$translate")
+
+// ── Viewer timezone ────────────────────────────────────────────────────────────
+const viewerTz      = getViewerTimezone()           // IANA name  e.g. "America/New_York"
+const viewerTzLabel = getTimezoneAbbr(viewerTz)     // Short abbr e.g. "EST", "CET", "GST"
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const activeView = ref("grid")   // "grid" | "timeline" | "cards"
 
 // Base anchor: start-of-week (Monday) for Grid view, or a single day for Timeline/Cards
 // Store as ISO string "YYYY-MM-DD"
-const todayStr = new Date().toISOString().substring(0, 10)
+// Use local date — toISOString() returns UTC which is wrong for non-UTC users.
+function localDateStr(d = new Date()) {
+	const pad = n => String(n).padStart(2, "0")
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const todayStr = localDateStr()
 
 // Compute the Monday of the current week
 function getMondayOf(dateStr) {
@@ -194,7 +206,8 @@ const availResource = createResource({
 function loadData() {
 	availResource.submit({
 		start_date: apiStartDate.value,
-		end_date: apiEndDate.value,
+		end_date:   apiEndDate.value,
+		viewer_timezone: viewerTz,
 	})
 }
 
