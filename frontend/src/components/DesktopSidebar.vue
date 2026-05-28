@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { inject, markRaw, computed, ref } from "vue"
+import { inject, markRaw, computed, ref, toRaw, watch } from "vue"
 import { useRoute } from "vue-router"
 import { FeatherIcon, Avatar } from "frappe-ui"
 
@@ -104,8 +104,25 @@ const __ = inject("$translate")
 const user = inject("$user")
 const employee = inject("$employee")
 
-// Sections collapsed by default; "HR" starts collapsed
-const collapsedSections = ref({ HR: true })
+const STORAGE_KEY = "sidebar_collapsed_sections"
+
+function loadCollapsedSections() {
+	const saved = localStorage.getItem(STORAGE_KEY)
+	if (saved) {
+		try { return JSON.parse(saved) } catch {}
+	}
+	return { HR: true }
+}
+
+const collapsedSections = ref(loadCollapsedSections())
+
+watch(
+	collapsedSections,
+	(val) => {
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(toRaw(val)))
+	},
+	{ deep: true },
+)
 
 function toggleSection(label) {
 	collapsedSections.value[label] = !collapsedSections.value[label]
