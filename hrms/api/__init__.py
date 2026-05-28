@@ -1382,6 +1382,7 @@ def get_team_availability(
 		"Employee Schedule",
 		filters={"status": "Approved"},
 		fields=["name", "employee", "employee_name", "timezone"],
+		ignore_permissions=True,
 	)
 	if not schedule_rows:
 		return []
@@ -1392,7 +1393,7 @@ def get_team_availability(
 	# Multiple slots per day_of_week are supported.
 	schedule_map = {}
 	for row in schedule_rows:
-		doc = frappe.get_doc("Employee Schedule", row["name"])
+		doc = frappe.get_doc("Employee Schedule", row["name"], ignore_permissions=True)
 		schedule_map[row["employee"]] = {
 			"employee_name": row["employee_name"],
 			"timezone": row["timezone"] or "America/New_York",
@@ -1417,6 +1418,7 @@ def get_team_availability(
 			"to_date": [">=", start_date],
 		},
 		fields=["employee", "from_date", "to_date", "leave_type"],
+		ignore_permissions=True,
 	)
 	leave_dates: dict[str, dict] = {}
 	for lv in leaves:
@@ -1434,12 +1436,13 @@ def get_team_availability(
 		"Employee Holiday",
 		filters={"employee": ["in", employee_ids], "status": "Approved"},
 		fields=["name", "employee"],
+		ignore_permissions=True,
 	)
 	for hr_rec in holiday_records:
 		emp = hr_rec["employee"]
 		if emp not in personal_holidays:
 			personal_holidays[emp] = set()
-		hol_doc = frappe.get_doc("Employee Holiday", hr_rec["name"])
+		hol_doc = frappe.get_doc("Employee Holiday", hr_rec["name"], ignore_permissions=True)
 		for h in hol_doc.holidays:
 			personal_holidays[emp].add(str(h.date)[:10])
 
