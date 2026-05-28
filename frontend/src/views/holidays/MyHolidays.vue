@@ -220,15 +220,6 @@
 				<!-- ── Action Buttons ── -->
 				<div v-if="isEditable" class="mx-4 mt-6 flex flex-col gap-3">
 					<button
-						:disabled="saveDraftResource.loading"
-						class="w-full py-3 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
-						@click="saveDraft"
-					>
-						<span v-if="saveDraftResource.loading">{{ __("Saving…") }}</span>
-						<span v-else>{{ __("Save Draft") }}</span>
-					</button>
-
-					<button
 						:disabled="selectedDates.length !== 15 || submitResource.loading"
 						:class="[
 							'w-full py-3 rounded-xl font-medium text-sm transition-colors',
@@ -420,17 +411,6 @@ const holidayRecord = createResource({
 	},
 })
 
-const saveDraftResource = createResource({
-	url: "hrms.api.save_employee_holiday_draft",
-	onSuccess(data) {
-		submission.value = data
-		showToast(__("Draft saved"), "success")
-	},
-	onError(err) {
-		showToast(err.message || __("Failed to save draft"), "danger")
-	},
-})
-
 const submitResource = createResource({
 	url: "hrms.api.submit_employee_holidays",
 	onSuccess(data) {
@@ -443,13 +423,6 @@ const submitResource = createResource({
 })
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
-
-function saveDraft() {
-	saveDraftResource.submit({
-		year: String(currentYear),
-		dates: JSON.stringify(selectedDates.value),
-	})
-}
 
 function submitHolidays() {
 	if (!submission.value?.name) {
