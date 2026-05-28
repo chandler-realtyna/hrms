@@ -35,18 +35,22 @@
 		<!-- Navigation -->
 		<nav class="flex-1 overflow-y-auto px-3 py-3">
 			<template v-for="item in navItems" :key="item.route ?? item.label">
-				<!-- Section header -->
-				<p
+				<!-- Section header (collapsible) -->
+				<button
 					v-if="item.type === 'section'"
-					class="px-3 pt-4 pb-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider"
+					class="w-full flex items-center justify-between px-3 pt-4 pb-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
+					@click="toggleSection(item.label)"
 				>
 					{{ item.label }}
-				</p>
+					<FeatherIcon
+						:name="collapsedSections[item.label] ? 'chevron-right' : 'chevron-down'"
+						class="h-3.5 w-3.5"
+					/>
+				</button>
 
-				<!-- Nav link: routerDirection="root" prevents Ionic from treating
-				     a previously-visited page as a "back" navigation -->
+				<!-- Nav link — hidden when its section is collapsed -->
 				<router-link
-					v-else
+					v-else-if="!item._section || !collapsedSections[item._section]"
 					:to="{ name: item.route }"
 					routerDirection="root"
 					class="flex items-center gap-3 px-3 py-2.5 mb-0.5 rounded-lg text-sm font-medium transition-colors"
@@ -77,7 +81,7 @@
 </template>
 
 <script setup>
-import { inject, markRaw, computed } from "vue"
+import { inject, markRaw, computed, ref } from "vue"
 import { useRoute } from "vue-router"
 import { FeatherIcon, Avatar } from "frappe-ui"
 
@@ -99,6 +103,13 @@ const __ = inject("$translate")
 const user = inject("$user")
 const employee = inject("$employee")
 
+// Sections collapsed by default; "HR" starts collapsed
+const collapsedSections = ref({ HR: true })
+
+function toggleSection(label) {
+	collapsedSections.value[label] = !collapsedSections.value[label]
+}
+
 const isHR = computed(() => {
 	const roles = user.data?.roles || []
 	return roles.some((r) =>
@@ -107,7 +118,7 @@ const isHR = computed(() => {
 })
 
 const navItems = computed(() => {
-	const items = [
+	const raw = [
 		{ icon: markRaw(HomeIcon),       title: "Home",             route: "Home",                   path: "/home" },
 		{ type: "section", label: "Timesheets" },
 		{ icon: markRaw(TimerIcon),      title: "Start Timer",      route: "TimesheetTimer",         path: "/timesheets/timer", exact: true },
@@ -122,7 +133,7 @@ const navItems = computed(() => {
 	]
 
 	if (isHR.value) {
-		items.push(
+		raw.push(
 			{
 				icon: markRaw(HolidayIcon),
 				title: "Holiday Approvals",
@@ -138,7 +149,12 @@ const navItems = computed(() => {
 		)
 	}
 
-	return items
+	// Annotate each nav item with the section it belongs to
+	let currentSection = null
+	return raw.map(item => {
+		if (item.type === "section") currentSection = item.label
+		return { ...item, _section: currentSection }
+	})
 })
 
 function isActive(item) {

@@ -60,7 +60,25 @@
 			</ion-header>
 
 			<div class="overflow-y-auto flex flex-col gap-4 p-4 bg-white h-full">
-				<!-- Description — most prominent field -->
+				<!-- Activity Type -->
+				<FormField
+					fieldtype="Link"
+					fieldname="activity_type"
+					:label="__('Activity Type')"
+					options="Activity Type"
+					v-model="currentLog.activity_type"
+				/>
+
+				<!-- Project -->
+				<FormField
+					fieldtype="Link"
+					fieldname="project"
+					:label="__('Project')"
+					options="Project"
+					v-model="currentLog.project"
+				/>
+
+				<!-- Description -->
 				<FormField
 					fieldtype="Small Text"
 					fieldname="description"
@@ -89,24 +107,6 @@
 						</span>
 					</div>
 				</div>
-
-				<!-- Activity Type -->
-				<FormField
-					fieldtype="Link"
-					fieldname="activity_type"
-					:label="__('Activity Type')"
-					options="Activity Type"
-					v-model="currentLog.activity_type"
-				/>
-
-				<!-- Project -->
-				<FormField
-					fieldtype="Link"
-					fieldname="project"
-					:label="__('Project')"
-					options="Project"
-					v-model="currentLog.project"
-				/>
 
 				<Button
 					variant="solid"

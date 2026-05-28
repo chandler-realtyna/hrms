@@ -38,7 +38,7 @@
 						</option>
 					</select>
 					<p class="text-xs text-gray-400 mt-1">
-						{{ __("Availability view shows times converted to EST.") }}
+						{{ __("Select the timezone your working hours are in.") }}
 					</p>
 				</div>
 
@@ -174,43 +174,42 @@ import { IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton,
 	IonContent, IonSpinner, toastController } from "@ionic/vue"
 import { ref, computed, inject, onMounted } from "vue"
 import { createResource, FeatherIcon } from "frappe-ui"
+import { getViewerTimezone, getUtcOffsetMinutes } from "../../utils/timezone"
 
 const __ = inject("$translate")
 
 const currentYear = new Date().getFullYear()
 const initialized = ref(false)
 const submission = ref(null)
-const selectedTimezone = ref("America/New_York")
+const selectedTimezone = ref(getViewerTimezone())
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ── Timezones (fetched from Frappe) ────────────────────────────────────────────
 
-const TIMEZONES = [
-	{ value: "America/New_York",    label: "EST / EDT  (New York)" },
-	{ value: "America/Chicago",     label: "CST / CDT  (Chicago)" },
-	{ value: "America/Denver",      label: "MST / MDT  (Denver)" },
-	{ value: "America/Los_Angeles", label: "PST / PDT  (Los Angeles)" },
-	{ value: "America/Phoenix",     label: "MST        (Phoenix)" },
-	{ value: "America/Anchorage",   label: "AKST/AKDT  (Anchorage)" },
-	{ value: "Pacific/Honolulu",    label: "HST        (Hawaii)" },
-	{ value: "America/Toronto",     label: "EST / EDT  (Toronto)" },
-	{ value: "America/Vancouver",   label: "PST / PDT  (Vancouver)" },
-	{ value: "America/Sao_Paulo",   label: "BRT        (São Paulo)" },
-	{ value: "Europe/London",       label: "GMT / BST  (London)" },
-	{ value: "Europe/Paris",        label: "CET / CEST (Paris)" },
-	{ value: "Europe/Berlin",       label: "CET / CEST (Berlin)" },
-	{ value: "Europe/Istanbul",     label: "TRT        (Istanbul)" },
-	{ value: "Africa/Cairo",        label: "EET        (Cairo)" },
-	{ value: "Asia/Dubai",          label: "GST        (Dubai)" },
-	{ value: "Asia/Tehran",         label: "IRST       (Tehran)" },
-	{ value: "Asia/Kolkata",        label: "IST        (India)" },
-	{ value: "Asia/Dhaka",          label: "BST        (Dhaka)" },
-	{ value: "Asia/Bangkok",        label: "ICT        (Bangkok)" },
-	{ value: "Asia/Singapore",      label: "SGT        (Singapore)" },
-	{ value: "Asia/Tokyo",          label: "JST        (Tokyo)" },
-	{ value: "Asia/Seoul",          label: "KST        (Seoul)" },
-	{ value: "Australia/Sydney",    label: "AEST/AEDT  (Sydney)" },
-	{ value: "Pacific/Auckland",    label: "NZST/NZDT  (Auckland)" },
-]
+const _rawTimezones = ref([])
+
+const TIMEZONES = computed(() => {
+	const now = new Date()
+	return [..._rawTimezones.value]
+		.sort((a, b) => {
+			const diff = getUtcOffsetMinutes(a, now) - getUtcOffsetMinutes(b, now)
+			return diff !== 0 ? diff : a.localeCompare(b)
+		})
+		.map(tz => {
+			const mins = getUtcOffsetMinutes(tz, now)
+			const sign = mins >= 0 ? "+" : "-"
+			const abs = Math.abs(mins)
+			const hh = String(Math.floor(abs / 60)).padStart(2, "0")
+			const mm = String(abs % 60).padStart(2, "0")
+			return { value: tz, label: `(UTC${sign}${hh}:${mm}) ${tz.replace(/_/g, " ")}` }
+		})
+})
+
+const timezonesResource = createResource({
+	url: "frappe.core.doctype.user.user.get_timezones",
+	onSuccess(data) {
+		_rawTimezones.value = data.timezones || []
+	},
+})
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -281,7 +280,7 @@ function buildDaysPayload() {
 
 function loadFromDoc(doc) {
 	submission.value = doc
-	selectedTimezone.value = doc.timezone || "America/New_York"
+	selectedTimezone.value = doc.timezone || getViewerTimezone()
 
 	// Group rows from doc by day_of_week
 	const grouped = {}
@@ -371,5 +370,8 @@ async function showToast(message, color = "primary") {
 	await toast.present()
 }
 
-onMounted(() => { scheduleRecord.reload() })
+onMounted(() => {
+	timezonesResource.reload()
+	scheduleRecord.reload()
+})
 </script>
