@@ -3,6 +3,7 @@
 		<template #body>
 			<div class="flex flex-col items-center my-7 p-4 gap-7">
 				<QuickLinks :items="quickLinks" :title="__('Quick Links')" />
+				<QuickLinks :items="meetingLinks" :title="__('Meetings')" />
 				<WorkingHoursDashboard />
 				<RequestPanel />
 			</div>
@@ -28,6 +29,7 @@ import HolidayIcon from "@/components/icons/HolidayIcon.vue"
 import ScheduleIcon from "@/components/icons/ScheduleIcon.vue"
 import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
 import DocsIcon from "@/components/icons/DocsIcon.vue"
+import MeetingIcon from "@/components/icons/MeetingIcon.vue"
 
 const __ = inject("$translate")
 
@@ -115,4 +117,12 @@ const quickLinks = computed(() => {
 
 	return links
 })
+
+const meetingLinks = computed(() => [
+	{
+		icon: markRaw(MeetingIcon),
+		title: __("Meeting Finder"),
+		route: "MeetingFinder",
+	},
+])
 </script>

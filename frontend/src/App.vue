@@ -21,8 +21,10 @@ import { Toasts } from "frappe-ui"
 import DesktopSidebar from "@/components/DesktopSidebar.vue"
 import InstallPrompt from "@/components/InstallPrompt.vue"
 import { showNotification } from "@/utils/pushNotifications"
+import { useDarkMode } from "@/utils/darkMode"
 
 const route = useRoute()
+useDarkMode() // initialises watchEffect to keep html class in sync
 
 // Only show the sidebar on authenticated pages
 const GUEST_ROUTES = ["Login", "InvalidEmployee"]

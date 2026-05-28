@@ -69,7 +69,7 @@
 		<!-- Footer -->
 		<div class="border-t border-gray-100 px-3 py-3">
 			<router-link
-				:to="{ name: 'Profile' }"
+				:to="{ name: 'Settings' }"
 				routerDirection="root"
 				class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
 			>
@@ -96,6 +96,7 @@ import HolidayIcon from "@/components/icons/HolidayIcon.vue"
 import ScheduleIcon from "@/components/icons/ScheduleIcon.vue"
 import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
 import DocsIcon from "@/components/icons/DocsIcon.vue"
+import MeetingIcon from "@/components/icons/MeetingIcon.vue"
 
 import { unreadNotificationsCount } from "@/data/notifications"
 
@@ -141,32 +142,21 @@ const navItems = computed(() => {
 		{ type: "section", label: "Timesheets" },
 		{ icon: markRaw(TimerIcon),      title: "Start Timer",      route: "TimesheetTimer",         path: "/timesheets/timer", exact: true },
 		{ icon: markRaw(TimesheetIcon),  title: "My Timesheets",    route: "TimesheetListView",      path: "/timesheets" },
+		{ type: "section", label: "Meetings" },
+		{ icon: markRaw(MeetingIcon),    title: "Meeting Finder",   route: "MeetingFinder",          path: "/meeting" },
 		{ type: "section", label: "HR" },
 		{ icon: markRaw(LeaveIcon),      title: "Leaves",           route: "LeavesDashboard",        path: "/dashboard/leaves" },
 		{ icon: markRaw(ExpenseIcon),    title: "Expenses",         route: "ExpenseClaimsDashboard", path: "/dashboard/expense-claims" },
 		{ icon: markRaw(SalaryIcon),     title: "Salary Slips",     route: "SalarySlipsDashboard",  path: "/dashboard/salary-slips" },
-		{ icon: markRaw(HolidayIcon),       title: "My Holidays",        route: "MyHolidays",             path: "/holidays" },
-		{ icon: markRaw(ScheduleIcon),      title: "My Schedule",        route: "MySchedule",             path: "/schedule" },
-		{ icon: markRaw(AvailabilityIcon),  title: "Team Availability",  route: "Availability",           path: "/availability" },
-		{ icon: markRaw(DocsIcon),          title: "Documents",          route: "Docs",                   path: "/docs" },
+		{ icon: markRaw(HolidayIcon),    title: "My Holidays",      route: "MyHolidays",             path: "/holidays" },
+		{ icon: markRaw(ScheduleIcon),   title: "My Schedule",      route: "MySchedule",             path: "/schedule" },
+		{ icon: markRaw(AvailabilityIcon), title: "Team Availability", route: "Availability",        path: "/availability" },
+		{ icon: markRaw(DocsIcon),       title: "Documents",        route: "Docs",                   path: "/docs" },
+		...(isHR.value ? [
+			{ icon: markRaw(HolidayIcon),  title: "Holiday Approvals",  route: "HolidayApprovals",  path: "/holidays/approvals" },
+			{ icon: markRaw(ScheduleIcon), title: "Schedule Approvals", route: "ScheduleApprovals", path: "/schedule/approvals" },
+		] : []),
 	]
-
-	if (isHR.value) {
-		raw.push(
-			{
-				icon: markRaw(HolidayIcon),
-				title: "Holiday Approvals",
-				route: "HolidayApprovals",
-				path: "/holidays/approvals",
-			},
-			{
-				icon: markRaw(ScheduleIcon),
-				title: "Schedule Approvals",
-				route: "ScheduleApprovals",
-				path: "/schedule/approvals",
-			}
-		)
-	}
 
 	// Annotate each nav item with the section it belongs to
 	let currentSection = null

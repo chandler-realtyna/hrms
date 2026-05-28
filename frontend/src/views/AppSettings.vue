@@ -19,6 +19,7 @@
 					</header>
 
 					<div class="flex flex-col gap-5 my-4 w-full p-4">
+						<!-- Push Notifications -->
 						<div class="flex flex-col bg-white rounded">
 							<Switch
 								size="md"
@@ -40,6 +41,115 @@
 								{{ pushNotificationState ? __("Disabling Push Notifications...") : __("Enabling Push Notifications...") }}
 							</span>
 						</div>
+
+						<!-- Dark Mode -->
+						<div class="flex flex-col bg-white rounded">
+							<Switch
+								size="md"
+								:label="__('Dark Mode')"
+								:model-value="isDark"
+								@update:model-value="toggleDarkMode"
+							/>
+						</div>
+
+						<!-- Google Calendar -->
+						<div class="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
+							<div class="flex items-center justify-between">
+								<div class="flex items-center gap-2">
+									<FeatherIcon name="calendar" class="w-4 h-4 text-gray-500" />
+									<h3 class="font-semibold text-gray-900 text-sm">{{ __("Google Calendar") }}</h3>
+								</div>
+								<span
+									:class="[
+										'text-xs font-semibold px-2.5 py-1 rounded-full',
+										calendarStatus.data?.is_connected
+											? 'bg-green-100 text-green-700'
+											: 'bg-gray-100 text-gray-500'
+									]"
+								>
+									{{ calendarStatus.data?.is_connected ? __("Connected") : __("Not Connected") }}
+								</span>
+							</div>
+
+							<Button
+								v-if="!calendarStatus.data?.is_connected"
+								variant="subtle"
+								class="w-full"
+								@click="goToCalendarConnect"
+							>
+								<template #prefix><FeatherIcon name="external-link" class="w-4 h-4" /></template>
+								{{ __("Connect Google Calendar") }}
+							</Button>
+
+							<!-- Booking settings (only when connected) -->
+							<template v-if="calendarStatus.data?.is_connected">
+								<div class="border-t border-gray-100 pt-4 space-y-3">
+									<div class="flex items-center justify-between">
+										<div>
+											<p class="text-sm font-medium text-gray-800">{{ __("Public Booking Page") }}</p>
+											<p class="text-xs text-gray-400">{{ __("Let anyone book time with you") }}</p>
+										</div>
+										<Switch
+											size="sm"
+											:model-value="bookingEnabled"
+											@update:model-value="bookingEnabled = $event"
+										/>
+									</div>
+
+									<div v-if="bookingEnabled">
+										<label class="block text-xs font-medium text-gray-600 mb-1">{{ __("Booking URL Slug") }}</label>
+										<div class="flex items-center gap-2">
+											<span class="text-xs text-gray-400 shrink-0">/book/</span>
+											<input
+												v-model="bookingSlug"
+												type="text"
+												class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+												:placeholder="__('your-name')"
+											/>
+										</div>
+										<div v-if="bookingSlug" class="flex items-center gap-2 mt-1 bg-gray-50 rounded-lg px-3 py-2">
+											<span class="text-xs text-gray-500 truncate flex-1">/hrms/book/{{ bookingSlug }}</span>
+											<button @click="copyBookingUrl" class="text-gray-400 hover:text-blue-600 shrink-0" :title="__('Copy link')">
+												<FeatherIcon name="copy" class="w-3.5 h-3.5" />
+											</button>
+											<a :href="`/hrms/book/${bookingSlug}`" target="_blank" class="text-gray-400 hover:text-blue-600 shrink-0" :title="__('Open booking page')">
+												<FeatherIcon name="external-link" class="w-3.5 h-3.5" />
+											</a>
+										</div>
+									</div>
+
+									<div class="grid grid-cols-2 gap-3">
+										<div>
+											<label class="block text-xs font-medium text-gray-600 mb-1">{{ __("Min Notice (hrs)") }}</label>
+											<input
+												v-model.number="minNoticeHours"
+												type="number"
+												min="0"
+												class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+											/>
+										</div>
+										<div>
+											<label class="block text-xs font-medium text-gray-600 mb-1">{{ __("Durations (min)") }}</label>
+											<input
+												v-model="slotDurationOptions"
+												type="text"
+												placeholder="30,60"
+												class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+											/>
+										</div>
+									</div>
+
+									<Button
+										variant="solid"
+										class="w-full"
+										:loading="savingSettings"
+										@click="saveSettings"
+									>
+										{{ __("Save Booking Settings") }}
+									</Button>
+								</div>
+							</template>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -50,14 +160,80 @@
 <script setup>
 import { IonPage, IonContent } from "@ionic/vue"
 import { useRouter } from "vue-router"
-import { FeatherIcon, Switch, toast, LoadingIndicator } from "frappe-ui"
+import { FeatherIcon, Switch, toast, LoadingIndicator, createResource, call } from "frappe-ui"
 
-import { computed, inject, ref } from "vue"
+import { computed, inject, ref, watch } from "vue"
 
 import { arePushNotificationsEnabled } from "@/data/notifications"
+import { useDarkMode } from "@/utils/darkMode"
 
 const __ = inject("$translate")
 const router = useRouter()
+const { isDark, toggleDarkMode } = useDarkMode()
+
+const goToCalendarConnect = () => {
+	window.location.href = "/hrms/calendar/connect"
+}
+
+const copyBookingUrl = () => {
+	const url = `${window.location.origin}/hrms/book/${bookingSlug.value}`
+	navigator.clipboard.writeText(url).then(() => {
+		toast({ title: __("Copied!"), text: url, icon: "check-circle", position: "bottom-center", iconClasses: "text-green-500" })
+	})
+}
+
+// Google Calendar status
+const calendarStatus = createResource({
+	url: "hrms.api.calendar.get_calendar_connection_status",
+	auto: true,
+})
+
+const bookingSettings = createResource({
+	url: "hrms.api.calendar.get_booking_settings",
+	auto: true,
+	onSuccess(data) {
+		bookingSlug.value = data.booking_slug || ""
+		bookingEnabled.value = Boolean(data.booking_enabled)
+		minNoticeHours.value = data.min_notice_hours ?? 1
+		slotDurationOptions.value = data.slot_duration_options || "30,60"
+	},
+})
+
+const bookingSlug = ref("")
+const bookingEnabled = ref(false)
+const minNoticeHours = ref(1)
+const slotDurationOptions = ref("30,60")
+const savingSettings = ref(false)
+
+async function saveSettings() {
+	savingSettings.value = true
+	try {
+		await call("hrms.api.calendar.save_booking_settings", {
+			booking_slug: bookingSlug.value.trim().toLowerCase(),
+			booking_enabled: bookingEnabled.value ? 1 : 0,
+			min_notice_hours: minNoticeHours.value,
+			slot_duration_options: slotDurationOptions.value,
+		})
+		toast({
+			title: __("Saved"),
+			text: __("Booking settings updated"),
+			icon: "check-circle",
+			position: "bottom-center",
+			iconClasses: "text-green-500",
+		})
+	} catch (e) {
+		toast({
+			title: __("Error"),
+			text: e?.message || __("Failed to save settings"),
+			icon: "alert-circle",
+			position: "bottom-center",
+			iconClasses: "text-red-500",
+		})
+	} finally {
+		savingSettings.value = false
+	}
+}
+
 const pushNotificationState = ref(
 	window.frappePushNotification?.isNotificationEnabled()
 )

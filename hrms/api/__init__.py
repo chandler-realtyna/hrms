@@ -74,6 +74,8 @@ def get_all_employees() -> list[dict]:
 			"image",
 			"status",
 		],
+		filters={"status": "Active"},
+		ignore_permissions=True,
 		limit=999999,
 	)
 

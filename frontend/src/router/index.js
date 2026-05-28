@@ -10,6 +10,7 @@ import holidayRoutes from "./holidays"
 import scheduleRoutes from "./schedule"
 import availabilityRoutes from "./availability"
 import docsRoutes from "./docs"
+import meetingRoutes from "./meeting"
 
 const routes = [
 	{
@@ -80,6 +81,7 @@ const routes = [
 	...scheduleRoutes,
 	...availabilityRoutes,
 	...docsRoutes,
+	...meetingRoutes,
 ]
 
 const router = createRouter({

@@ -109,6 +109,11 @@ router.isReady().then(async () => {
 })
 
 router.beforeEach(async (to, _, next) => {
+	// Public routes (e.g. booking page) skip auth entirely
+	if (to.meta?.isPublic) {
+		return next()
+	}
+
 	let isLoggedIn = session.isLoggedIn
 
 	try {

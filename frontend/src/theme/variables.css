@@ -81,3 +81,114 @@ http://ionicframework.com/docs/theming/ */
 	--ion-color-light-shade: #d7d8da;
 	--ion-color-light-tint: #f5f6f9;
 }
+
+/* ── Dark Mode ─────────────────────────────────────────────── */
+
+.dark {
+	color-scheme: dark;
+
+	/* Core backgrounds */
+	--ion-background-color:           #0f0f11;
+	--ion-background-color-rgb:       15, 15, 17;
+	--ion-text-color:                 #f3f4f6;
+	--ion-text-color-rgb:             243, 244, 246;
+
+	/* Toolbar / header */
+	--ion-toolbar-background:         #1a1a1d;
+	--ion-toolbar-border-color:       #2d2d31;
+	--ion-toolbar-color:              #f3f4f6;
+
+	/* Tab bar */
+	--ion-tab-bar-background:         #1a1a1d;
+	--ion-tab-bar-border-color:       #2d2d31;
+	--ion-tab-bar-color:              #6b7280;
+	--ion-tab-bar-color-selected:     #818cf8;
+	--ion-tab-bar-background-focused: #27272a;
+
+	/* Items / lists */
+	--ion-item-background:            #1a1a1d;
+	--ion-item-color:                 #f3f4f6;
+	--ion-item-border-color:          #2d2d31;
+
+	/* Cards */
+	--ion-card-background:            #1a1a1d;
+	--ion-card-color:                 #f3f4f6;
+
+	/* Borders */
+	--ion-border-color:               #2d2d31;
+
+	/* Inputs */
+	--ion-input-background:           #27272a;
+	--ion-input-color:                #f3f4f6;
+	--ion-input-placeholder-color:    #6b7280;
+}
+
+/* ── Global Tailwind utility overrides for dark mode ───────── */
+/* Covers all existing components without modifying each one  */
+
+.dark .bg-white               { background-color: #1a1a1d !important; }
+.dark .bg-gray-50             { background-color: #111113 !important; }
+.dark .bg-gray-100            { background-color: #1e1e21 !important; }
+.dark .bg-gray-200            { background-color: #27272a !important; }
+.dark .bg-neutral-50          { background-color: #111113 !important; }
+
+.dark .text-gray-900          { color: #f9fafb !important; }
+.dark .text-gray-800          { color: #f3f4f6 !important; }
+.dark .text-gray-700          { color: #e5e7eb !important; }
+.dark .text-gray-600          { color: #d1d5db !important; }
+.dark .text-gray-500          { color: #9ca3af !important; }
+.dark .text-gray-400          { color: #6b7280 !important; }
+.dark .text-gray-300          { color: #4b5563 !important; }
+
+.dark .border-gray-100        { border-color: #27272a !important; }
+.dark .border-gray-200        { border-color: #2d2d31 !important; }
+.dark .border-gray-300        { border-color: #3f3f46 !important; }
+
+.dark .divide-gray-100 > * + * { border-color: #27272a !important; }
+.dark .divide-gray-200 > * + * { border-color: #2d2d31 !important; }
+
+.dark .shadow-sm  { box-shadow: 0 1px 3px rgba(0,0,0,.5), 0 4px 16px rgba(0,0,0,.3) !important; }
+.dark .shadow     { box-shadow: 0 2px 8px rgba(0,0,0,.6) !important; }
+
+/* Form inputs */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="date"],
+.dark input[type="number"],
+.dark textarea,
+.dark select {
+	background-color: #27272a !important;
+	color: #f3f4f6 !important;
+	border-color: #3f3f46 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #6b7280 !important; }
+
+/* Sticky headers / backgrounds used in list views */
+.dark .bg-white.shadow-sm,
+.dark .bg-white.sticky { background-color: #1a1a1d !important; }
+
+/* RequestPanel, QuickLinks cards */
+.dark .rounded-2xl.bg-white  { background-color: #1a1a1d !important; }
+.dark .rounded-xl.bg-white   { background-color: #1a1a1d !important; }
+.dark .rounded-lg.bg-white   { background-color: #1a1a1d !important; }
+
+/* Highlighted / active states */
+.dark .bg-blue-50   { background-color: #1e3a5f !important; }
+.dark .bg-blue-100  { background-color: #1e3a5f !important; }
+.dark .bg-green-50  { background-color: #14301f !important; }
+.dark .bg-red-50    { background-color: #3b1c1c !important; }
+.dark .bg-yellow-50 { background-color: #3b2e0a !important; }
+.dark .bg-orange-50 { background-color: #3b2000 !important; }
+.dark .bg-purple-50 { background-color: #2e1a47 !important; }
+
+/* Text in coloured contexts */
+.dark .text-blue-800    { color: #93c5fd !important; }
+.dark .text-green-800   { color: #6ee7b7 !important; }
+.dark .text-red-800     { color: #fca5a5 !important; }
+.dark .text-orange-800  { color: #fdba74 !important; }
+
+/* Borders in coloured contexts */
+.dark .border-blue-100  { border-color: #1e3a5f !important; }
+.dark .border-green-100 { border-color: #14301f !important; }
+.dark .border-red-100   { border-color: #3b1c1c !important; }
