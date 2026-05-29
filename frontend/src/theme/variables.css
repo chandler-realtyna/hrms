@@ -179,6 +179,7 @@ http://ionicframework.com/docs/theming/ */
 .dark .bg-green-50  { background-color: #14301f !important; }
 .dark .bg-red-50    { background-color: #3b1c1c !important; }
 .dark .bg-yellow-50 { background-color: #3b2e0a !important; }
+.dark .bg-amber-50  { background-color: #2d1e00 !important; }
 .dark .bg-orange-50 { background-color: #3b2000 !important; }
 .dark .bg-purple-50 { background-color: #2e1a47 !important; }
 
@@ -189,6 +190,141 @@ http://ionicframework.com/docs/theming/ */
 .dark .text-orange-800  { color: #fdba74 !important; }
 
 /* Borders in coloured contexts */
-.dark .border-blue-100  { border-color: #1e3a5f !important; }
-.dark .border-green-100 { border-color: #14301f !important; }
-.dark .border-red-100   { border-color: #3b1c1c !important; }
+.dark .border-blue-100   { border-color: #1e3a5f !important; }
+.dark .border-green-100  { border-color: #14301f !important; }
+.dark .border-red-100    { border-color: #3b1c1c !important; }
+.dark .border-orange-100 { border-color: #3b1e00 !important; }
+.dark .border-purple-100 { border-color: #2e1a47 !important; }
+
+/* ── Missing bg overrides for coloured badge backgrounds ───── */
+.dark .bg-orange-100 { background-color: #3b1e00 !important; }
+.dark .bg-purple-100 { background-color: #2e1a47 !important; }
+.dark .bg-green-100  { background-color: #14301f !important; }
+
+/* ── Missing text overrides for coloured badges/slots ───────── */
+/* Without these, e.g. text-blue-700 renders as Tailwind's      */
+/* #1d4ed8 — nearly invisible on the dark #1e3a5f bg-blue-100   */
+.dark .text-blue-700   { color: #93c5fd !important; }
+.dark .text-blue-600   { color: #60a5fa !important; }
+.dark .text-blue-500   { color: #93c5fd !important; }
+.dark .text-orange-700 { color: #fdba74 !important; }
+.dark .text-orange-600 { color: #fb923c !important; }
+.dark .text-amber-600  { color: #fcd34d !important; }
+.dark .text-amber-700  { color: #fbbf24 !important; }
+.dark .text-purple-700 { color: #c4b5fd !important; }
+.dark .text-purple-600 { color: #a78bfa !important; }
+.dark .text-green-700  { color: #6ee7b7 !important; }
+.dark .text-green-600  { color: #34d399 !important; }
+
+/* ── Hover-variant dark mode overrides ──────────────────────── */
+/* Tailwind hover: generates .hover\:bg-gray-50:hover, a         */
+/* different selector from .bg-gray-50 — base overrides above    */
+/* don't affect hover states at all, causing a jarring           */
+/* near-white flash on dark backgrounds.                         */
+.dark .hover\:bg-gray-50:hover   { background-color: #1e1e21 !important; }
+.dark .hover\:bg-gray-100:hover  { background-color: #27272a !important; }
+.dark .hover\:bg-gray-200:hover  { background-color: #2d2d31 !important; }
+
+.dark .hover\:text-gray-600:hover { color: #d1d5db !important; }
+.dark .hover\:text-gray-700:hover { color: #e5e7eb !important; }
+.dark .hover\:text-gray-800:hover { color: #f3f4f6 !important; }
+.dark .hover\:text-gray-900:hover { color: #f9fafb !important; }
+
+.dark .active\:bg-gray-100:active { background-color: #27272a !important; }
+.dark .active\:bg-gray-200:active { background-color: #2d2d31 !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   COMPREHENSIVE DARK MODE OVERRIDES — full audit pass
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Background: grays ──────────────────────────────────────── */
+.dark .bg-gray-300    { background-color: #3f3f46 !important; }
+
+/* ── Background: reds ───────────────────────────────────────── */
+.dark .bg-red-100     { background-color: #3b1c1c !important; }
+.dark .bg-red-200     { background-color: #4a1c1c !important; }
+
+/* ── Background: yellows / sky ──────────────────────────────── */
+.dark .bg-yellow-100  { background-color: #3b2e0a !important; }
+.dark .bg-yellow-200  { background-color: #4a3a0a !important; }
+.dark .bg-sky-50      { background-color: #0c2a40 !important; }
+
+/* ── Text: reds (dark reds become unreadable on dark bg) ─────── */
+.dark .text-red-600   { color: #fca5a5 !important; }
+.dark .text-red-700   { color: #fca5a5 !important; }
+
+/* ── Text: blues ────────────────────────────────────────────── */
+.dark .text-blue-400  { color: #93c5fd !important; }
+.dark .text-blue-900  { color: #93c5fd !important; }
+
+/* ── Text: yellows / sky ────────────────────────────────────── */
+.dark .text-yellow-700 { color: #fde047 !important; }
+.dark .text-sky-700    { color: #7dd3fc !important; }
+
+/* ── Borders: grays ─────────────────────────────────────────── */
+.dark .border-gray-50   { border-color: #1e1e21 !important; }
+
+/* ── Borders: blues ─────────────────────────────────────────── */
+.dark .border-blue-200  { border-color: #1e3a5f !important; }
+.dark .border-blue-300  { border-color: #1e3a5f !important; }
+.dark .border-blue-400  { border-color: #2d4a7a !important; }
+.dark .border-blue-500  { border-color: #2d4a7a !important; }
+.dark .border-blue-600  { border-color: #2d4a7a !important; }
+
+/* ── Borders: oranges / reds ────────────────────────────────── */
+.dark .border-orange-200 { border-color: #3b2000 !important; }
+.dark .border-red-200    { border-color: #4a1c1c !important; }
+
+/* ── Borders: white (notification badge separator) ──────────── */
+/* Map to card background so the dot separates naturally         */
+.dark .border-white      { border-color: #1a1a1d !important; }
+
+/* ── Dividers ───────────────────────────────────────────────── */
+.dark .divide-gray-50 > * + * { border-color: #1e1e21 !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   BUTTON DARK MODE OVERRIDES
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Dark CTA / toggle-active buttons ───────────────────────── */
+/* bg-gray-800/900 used for active toggles and submit buttons;   */
+/* without override they blend into the #0f0f11 background.      */
+.dark .bg-gray-800 { background-color: #374151 !important; }
+.dark .bg-gray-900 { background-color: #27272a !important; }
+
+/* ── Hover states on dark buttons ───────────────────────────── */
+.dark .hover\:bg-gray-700:hover { background-color: #3f3f46 !important; }
+.dark .hover\:bg-gray-800:hover { background-color: #4b5563 !important; }
+
+/* ── Ghost-button hover (hover:bg-white) ─────────────────────── */
+/* ListView, FormView, AppSettings use hover:bg-white for         */
+/* ghost buttons — without override it flashes pure white.        */
+.dark .hover\:bg-white:hover { background-color: #27272a !important; }
+
+/* ── Red button hover (bg-red-50 buttons hover to bg-red-100) ── */
+.dark .hover\:bg-red-100:hover { background-color: #4a1c1c !important; }
+
+/* ── Hover text on links / icon buttons ─────────────────────── */
+/* Tailwind's blue-600/700 are dark blues — unreadable on dark bg */
+.dark .hover\:text-blue-600:hover { color: #60a5fa !important; }
+.dark .hover\:text-blue-700:hover { color: #93c5fd !important; }
+
+/* ── Active states ───────────────────────────────────────────── */
+.dark .active\:bg-gray-300:active { background-color: #3f3f46 !important; }
+.dark .active\:bg-gray-50:active  { background-color: #1e1e21 !important; }
+.dark .active\:bg-gray-700:active { background-color: #374151 !important; }
+.dark .active\:text-blue-800:active { color: #93c5fd !important; }
+
+/* ── Disabled states ─────────────────────────────────────────── */
+/* Tailwind disabled: variants generate different selectors than  */
+/* base classes, so .dark .bg-gray-700 doesn't cover             */
+/* .disabled\:bg-gray-700:disabled                               */
+.dark .disabled\:bg-gray-700:disabled { background-color: #3f3f46 !important; }
+.dark .disabled\:bg-gray-50:disabled  { background-color: #1e1e21 !important; }
+.dark .disabled\:text-gray-400:disabled { color: #6b7280 !important; }
+.dark .disabled\:text-gray-500:disabled { color: #6b7280 !important; }
+.dark .disabled\:text-white:disabled    { color: #9ca3af !important; }
+
+/* ── Border hover states ─────────────────────────────────────── */
+.dark .hover\:border-blue-300:hover { border-color: #1e3a5f !important; }
+.dark .hover\:border-blue-400:hover { border-color: #2d4a7a !important; }

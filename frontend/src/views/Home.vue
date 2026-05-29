@@ -1,9 +1,13 @@
 <template>
 	<BaseLayout>
 		<template #body>
-			<div class="flex flex-col items-center my-7 p-4 gap-7">
-				<QuickLinks :items="quickLinks" :title="__('Quick Links')" />
-				<QuickLinks :items="meetingLinks" :title="__('Meetings')" />
+			<div class="p-4 md:p-6 flex flex-col gap-6">
+				<!-- Mobile: Quick Links as card lists at the top -->
+				<div class="md:hidden flex flex-col">
+					<QuickLinks :items="quickLinks" :title="__('Quick Links')" />
+					<QuickLinks :items="meetingLinks" :title="__('Meetings')" />
+				</div>
+
 				<WorkingHoursDashboard />
 				<RequestPanel />
 			</div>

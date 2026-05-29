@@ -13,8 +13,10 @@ function applyDarkMode(dark) {
 	const html = document.documentElement
 	if (dark) {
 		html.classList.add("dark", "ion-palette-dark")
+		html.setAttribute("data-theme", "dark")
 	} else {
 		html.classList.remove("dark", "ion-palette-dark")
+		html.removeAttribute("data-theme")
 	}
 	localStorage.setItem(STORAGE_KEY, dark)
 }
