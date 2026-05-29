@@ -681,20 +681,10 @@ def send_meeting_invitation(
 	start_dt = get_datetime(start)
 	end_dt = get_datetime(end)
 
-	# Use the organizer's employee schedule timezone so the declared event time
-	# matches what the meeting finder showed them. site_tz is the fallback only.
-	organizer_employee = frappe.db.get_value(
-		"Employee", {"user_id": organizer_user, "status": "Active"}, "name"
-	)
-	organizer_slots = (
-		_get_employee_schedule_for_date(organizer_employee, start_dt.date())
-		if organizer_employee else []
-	)
-	org_tz_str = (
-		organizer_slots[0].get("timezone")
-		if organizer_slots
-		else frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
-	)
+	# find_meeting_slots returns slot times in UTC (start/end fields are %H:%M
+	# formatted from UTC datetimes). Declare UTC so Google Calendar places the
+	# event at the correct moment without any offset shift.
+	org_tz_str = "UTC"
 
 	# Collect participant emails (excluding organizer — they are added automatically)
 	attendees = []
