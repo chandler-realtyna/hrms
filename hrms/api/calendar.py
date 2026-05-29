@@ -399,20 +399,19 @@ def get_available_slots(slug: str, date: str, duration_minutes: int) -> list[dic
 		# confirmed bookings block the slot (even though cancellations won't sync).
 		busy.extend(_get_existing_bookings_for_date(employee, date_obj))
 
-	# Cutoff in the employee's local timezone so the comparison is consistent
-	# with slot times (which are also in emp_tz_str). Using site tz here would
-	# hide future slots or reveal past ones whenever site tz ≠ employee tz.
-	now_emp = _dt.datetime.now(pytz.timezone(emp_tz_str)).replace(tzinfo=None)
-	cutoff_emp = now_emp + _dt.timedelta(hours=min_notice_hours)
-	cutoff_date = cutoff_emp.date()
-	cutoff_minutes = (
-		_minutes(cutoff_emp.time()) if cutoff_date == date_obj
-		else (0 if cutoff_date < date_obj else 24 * 60)
-	)
+	# Filter past / too-soon slots by comparing slot UTC datetimes to the UTC
+	# cutoff. This avoids any naive timezone comparison: slot times are in
+	# emp_tz, we localise them, convert to UTC, then compare.
+	emp_tz_obj = pytz.timezone(emp_tz_str)
+	now_utc = _dt.datetime.now(pytz.utc)
+	cutoff_utc = now_utc + _dt.timedelta(hours=min_notice_hours)
+
+	def _slot_start_utc(hhmm_minutes: int) -> _dt.datetime:
+		naive = _dt.datetime(date_obj.year, date_obj.month, date_obj.day) + _dt.timedelta(minutes=hhmm_minutes)
+		return emp_tz_obj.localize(naive).astimezone(pytz.utc)
 
 	slots = _compute_free_slots(working_slots, busy, duration_minutes)
-	if cutoff_date == date_obj:
-		slots = [s for s in slots if _parse_hhmm_str_to_minutes(s["start"]) >= cutoff_minutes]
+	slots = [s for s in slots if _slot_start_utc(_parse_hhmm_str_to_minutes(s["start"])) >= cutoff_utc]
 
 	return {"slots": slots, "timezone": emp_tz_str}
 
@@ -431,6 +430,7 @@ def create_booking(
 	booker_email: str,
 	title: str,
 	description: str = "",
+	timezone: str = "",
 ) -> dict:
 	"""Create a confirmed meeting booking and a Google Calendar event with Meet link."""
 	settings = frappe.db.get_value(
@@ -467,21 +467,21 @@ def create_booking(
 			from frappe.integrations.doctype.google_calendar.google_calendar import get_google_calendar_object
 			google_service, _ = get_google_calendar_object(gcal_name)
 
-			# Slot times are in the employee's local timezone — use that when declaring the
-			# event time so Google Calendar interprets them correctly. Fall back to site tz
-			# only if no schedule is found.
-			working_slots = _get_employee_schedule_for_date(settings["employee"], start_dt.date())
-			emp_tz_str = (
-				working_slots[0].get("timezone")
-				if working_slots
-				else frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
-			)
+			# Use the timezone the booking page already showed the user (passed from
+			# the frontend). If not provided, fall back to the employee's schedule tz.
+			if not timezone:
+				_ws = _get_employee_schedule_for_date(settings["employee"], start_dt.date())
+				timezone = (
+					_ws[0].get("timezone")
+					if _ws
+					else frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+				)
 
 			event_body = {
 				"summary": title.strip(),
 				"description": description.strip() or "",
-				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": emp_tz_str},
-				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": emp_tz_str},
+				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": timezone},
+				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": timezone},
 				# Only add booker as guest — host is the organizer automatically
 				"attendees": [
 					{
