@@ -461,15 +461,21 @@ def create_booking(
 			from frappe.integrations.doctype.google_calendar.google_calendar import get_google_calendar_object
 			google_service, _ = get_google_calendar_object(gcal_name)
 
-			# Use site timezone so slot times map correctly to the calendar
-			site_tz = frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+			# Slot times are in the employee's local timezone — use that when declaring the
+			# event time so Google Calendar interprets them correctly. Fall back to site tz
+			# only if no schedule is found.
+			working_slots = _get_employee_schedule_for_date(settings["employee"], start_dt.date())
+			emp_tz_str = (
+				working_slots[0].get("timezone")
+				if working_slots
+				else frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+			)
 
 			event_body = {
 				"summary": title.strip(),
 				"description": description.strip() or "",
-				# Slot times are in site/employee local timezone — declare that explicitly
-				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": site_tz},
-				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": site_tz},
+				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": emp_tz_str},
+				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": emp_tz_str},
 				# Only add booker as guest — host is the organizer automatically
 				"attendees": [
 					{
