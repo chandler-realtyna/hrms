@@ -1,6 +1,6 @@
 <template>
 	<ion-page>
-		<ion-content :scroll-y="true">
+		<ion-content :scroll-y="true" style="--background:#f1f5f9">
 			<div class="booking-root">
 
 				<!-- Loading -->
@@ -50,7 +50,7 @@
 									</span>
 									<span v-if="selectedSlot" class="chip chip-green">
 										<svg style="width:10px;height:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-										{{ selectedSlot.start }}
+										{{ displayTime(selectedDate, selectedSlot.start) }}
 									</span>
 								</div>
 							</div>
@@ -208,7 +208,7 @@
 												@click="selectedSlot = slot"
 												class="slot-btn"
 												:style="selectedSlot?.start===slot.start ? 'background:#2563eb;color:#fff;border-color:#2563eb;box-shadow:0 4px 12px rgba(37,99,235,.25)' : ''"
-											>{{ slot.start }}</button>
+											>{{ displayTime(selectedDate, slot.start) }}</button>
 										</div>
 									</div>
 								</transition>
@@ -222,7 +222,7 @@
 											</div>
 											<div>
 												<h3 class="section-title">Your Details</h3>
-												<p class="section-desc">{{ selectedDate }} · {{ selectedSlot.start }}–{{ selectedSlot.end }} · {{ selectedDuration }}min</p>
+												<p class="section-desc">{{ selectedDate }} · {{ displayTime(selectedDate, selectedSlot.start) }}–{{ displayTime(selectedDate, selectedSlot.end) }} · {{ selectedDuration }}min</p>
 											</div>
 										</div>
 
@@ -235,7 +235,7 @@
 												</div>
 												<div class="sum-item">
 													<span class="sum-label">Time</span>
-													<span class="sum-val">{{ selectedSlot.start }} – {{ selectedSlot.end }}</span>
+													<span class="sum-val">{{ displayTime(selectedDate, selectedSlot.start) }} – {{ displayTime(selectedDate, selectedSlot.end) }}</span>
 												</div>
 												<div class="sum-item">
 													<span class="sum-label">With</span>
@@ -341,8 +341,11 @@ const slots             = ref([])
 const slotsTimezone     = ref("")
 const slotsLoading      = ref(false)
 
+// Viewer's browser timezone — slots are converted to this for display
+const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 const formattedTimezone = computed(() => {
-	const tz = slotsTimezone.value
+	const tz = userTz
 	if (!tz) return ""
 	try {
 		const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "long" })
@@ -355,6 +358,34 @@ const formattedTimezone = computed(() => {
 		return tz
 	}
 })
+
+// Convert an HH:MM slot time (in slotsTimezone) to the viewer's local timezone.
+// The raw slot times are still sent to the backend unchanged — only display is converted.
+function displayTime(dateStr, hhmm) {
+	if (!slotsTimezone.value || !dateStr || !hhmm) return hhmm
+	try {
+		const [y, mo, d] = dateStr.split('-').map(Number)
+		const [h, m] = hhmm.split(':').map(Number)
+		// Step 1: treat hhmm as UTC and ask Intl how slotsTimezone renders it
+		const guessMs = Date.UTC(y, mo - 1, d, h, m)
+		const tzParts = new Intl.DateTimeFormat('en-US', {
+			timeZone: slotsTimezone.value,
+			year: 'numeric', month: 'numeric', day: 'numeric',
+			hour: 'numeric', minute: 'numeric', hour12: false
+		}).formatToParts(new Date(guessMs))
+		const get = type => parseInt(tzParts.find(p => p.type === type)?.value || '0')
+		const tzH = get('hour')
+		// Step 2: compute UTC offset and derive the true UTC ms for this slot
+		const tzMs = Date.UTC(get('year'), get('month') - 1, get('day'), tzH === 24 ? 0 : tzH, get('minute'))
+		const utcMs = guessMs + (guessMs - tzMs)
+		// Step 3: render in user's browser timezone
+		return new Intl.DateTimeFormat('en-US', {
+			timeZone: userTz, hour: '2-digit', minute: '2-digit', hour12: false
+		}).format(new Date(utcMs))
+	} catch {
+		return hhmm
+	}
+}
 const submitting        = ref(false)
 const bookingError      = ref("")
 const confirmed         = ref(false)
@@ -538,7 +569,7 @@ function resetForm() {
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
 
-.booking-root { font-family:'DM Sans',system-ui,sans-serif; }
+.booking-root { font-family:'DM Sans',system-ui,sans-serif; min-height:100%; background:#f1f5f9; }
 .booking-root .display-font { font-family:'DM Serif Display',Georgia,serif; }
 
 /* Page shell */
