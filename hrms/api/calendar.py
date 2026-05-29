@@ -551,6 +551,7 @@ def find_meeting_slots(
 		user_id = frappe.db.get_value("Employee", emp, "user_id")
 		gcal_map[emp] = _get_google_calendar_for_user(user_id) if user_id else None
 
+	now_utc = _dt.datetime.now(pytz.utc)
 	results = []
 	d = start_date
 	while d <= end_date:
@@ -614,11 +615,14 @@ def find_meeting_slots(
 		for other in per_employee_free[1:]:
 			intersection = _intersect_intervals(intersection, other)
 
-		# Build slots from intersected windows
+		# Build slots from intersected windows, skipping ones already past
 		for (win_start, win_end) in intersection:
 			cursor = win_start
 			while cursor + duration_minutes <= win_end:
 				slot_start_utc = _dt.datetime(d.year, d.month, d.day, tzinfo=pytz.utc) + _dt.timedelta(minutes=cursor)
+				if slot_start_utc < now_utc:
+					cursor += duration_minutes
+					continue
 				slot_end_utc = slot_start_utc + _dt.timedelta(minutes=duration_minutes)
 				results.append({
 					"date": str(d),
