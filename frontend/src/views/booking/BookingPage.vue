@@ -517,6 +517,7 @@ async function submitBooking() {
 			slug, start:startStr, end:endStr,
 			booker_name:bookerName.value.trim(), booker_email:bookerEmail.value.trim().toLowerCase(),
 			title:meetingTitle.value.trim(), description:meetingDescription.value.trim(),
+			timezone: slotsTimezone.value,
 		})
 		confirmedTitle.value   = meetingTitle.value
 		confirmedStart.value   = startStr
