@@ -31,7 +31,7 @@
 						<!-- Employee header -->
 						<div class="booking-card" style="padding:1.25rem 1.5rem;margin-bottom:.75rem">
 							<div style="display:flex;align-items:center;gap:1rem">
-								<div style="width:52px;height:52px;border-radius:.875rem;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+								<div class="avatar-bg" style="width:52px;height:52px;border-radius:.875rem;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
 									<img v-if="pageInfo.data.image" :src="pageInfo.data.image" style="width:100%;height:100%;object-fit:cover"/>
 									<span v-else class="display-font" style="font-size:1.25rem;font-weight:700;color:#2563eb">{{ pageInfo.data.employee_name?.charAt(0) }}</span>
 								</div>
