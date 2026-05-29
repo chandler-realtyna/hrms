@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.integrations.doctype.google_calendar.google_calendar import authorize_access
 
 # Fields from System Settings that are safe to expose to all logged-in users.
 # These are pure formatting/locale values — no credentials, no sensitive config.
@@ -43,3 +44,24 @@ def get_single_value(doctype: str, field: str):
 		frappe.throw(_("No permission for {0}").format(_(doctype)), frappe.PermissionError)
 
 	return frappe.db.get_single_value(doctype, field)
+
+
+@frappe.whitelist()
+def google_callback(code=None):
+	"""
+	Override of ``frappe.integrations.doctype.google_calendar.google_calendar.google_callback``.
+
+	Identical to Frappe's implementation but redirects the OAuth popup to
+	/google-calendar-success (a self-closing page) instead of the Frappe Desk,
+	so the popup closes itself and the CalendarConnect UI can detect success.
+	"""
+	google_calendar = frappe.cache.hget("google_calendar", "google_calendar")
+	frappe.db.set_value("Google Calendar", google_calendar, "authorization_code", code)
+	frappe.db.commit()
+
+	authorize_access(google_calendar)
+
+	# Override the redirect set by authorize_access (which points to Frappe Desk)
+	# with a lightweight page that closes the popup window.
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = "/google-calendar-success"

@@ -308,6 +308,9 @@ override_whitelisted_methods = {
 	# which produces a 403 and breaks the form UI.  Our override allows the small
 	# set of non-sensitive formatting fields without granting blanket access.
 	"frappe.client.get_single_value": "hrms.overrides.whitelisted_methods.get_single_value",
+	# Redirect the Google OAuth popup to a self-closing success page instead of
+	# Frappe Desk, so CalendarConnect.vue can detect completion automatically.
+	"frappe.integrations.doctype.google_calendar.google_calendar.google_callback": "hrms.overrides.whitelisted_methods.google_callback",
 }
 #
 # each overriding function accepts a `data` argument;
