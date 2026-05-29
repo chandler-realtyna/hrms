@@ -14,7 +14,7 @@ import datetime as _dt
 import frappe
 import pytz
 from frappe import _
-from frappe.utils import get_datetime, now_datetime
+from frappe.utils import get_datetime
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
