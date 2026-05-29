@@ -234,15 +234,14 @@ onMounted(() => {
 	}
 })
 const employeeSearch = ref("")
-const fromDate = ref("")
-const toDate = ref("")
+const today = new Date().toISOString().split("T")[0]
+const fromDate = ref(today)
+const toDate = ref(today)
 const slots = ref([])
 const searching = ref(false)
 const searched = ref(false)
 const showInviteModal = ref(false)
 const activeSlot = ref(null)
-
-const today = new Date().toISOString().split("T")[0]
 
 // User's system timezone
 const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
