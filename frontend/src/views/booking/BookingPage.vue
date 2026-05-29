@@ -313,7 +313,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 
@@ -348,10 +348,20 @@ const slotsTimezone     = ref("")
 const slotsLoading      = ref(false)
 
 // ── Theme ──────────────────────────────────────────
-const darkMode = ref(
-	localStorage.getItem('booking-theme') === 'dark' ||
-	(!localStorage.getItem('booking-theme') && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-)
+// Initial value: user's saved preference, or system preference if none saved.
+const _sysDark  = window.matchMedia?.('(prefers-color-scheme: dark)')
+const _saved    = localStorage.getItem('booking-theme')
+const darkMode  = ref(_saved ? _saved === 'dark' : (_sysDark?.matches ?? false))
+
+// While no user preference is saved, follow live system changes.
+// Once the user explicitly toggles, we write to localStorage and stop
+// reacting to the system — their choice takes over permanently.
+function _onSysChange(e) {
+	if (!localStorage.getItem('booking-theme')) darkMode.value = e.matches
+}
+onMounted(()   => _sysDark?.addEventListener('change', _onSysChange))
+onUnmounted(() => _sysDark?.removeEventListener('change', _onSysChange))
+
 function toggleDark() {
 	darkMode.value = !darkMode.value
 	localStorage.setItem('booking-theme', darkMode.value ? 'dark' : 'light')
