@@ -93,28 +93,57 @@ const connected = ref(false)
 const polling = ref(false)
 
 let pollInterval = null
+let popupMonitorInterval = null
+let popup = null
 
 const stopPolling = () => {
 	if (pollInterval) {
 		clearInterval(pollInterval)
 		pollInterval = null
 	}
+	if (popupMonitorInterval) {
+		clearInterval(popupMonitorInterval)
+		popupMonitorInterval = null
+	}
 	polling.value = false
+}
+
+const checkConnection = async () => {
+	try {
+		const status = await call("hrms.api.calendar.get_calendar_connection_status")
+		if (status?.is_connected) {
+			stopPolling()
+			connected.value = true
+			return true
+		}
+	} catch (_) {}
+	return false
 }
 
 const startPolling = () => {
 	polling.value = true
-	pollInterval = setInterval(async () => {
-		try {
-			const status = await call("hrms.api.calendar.get_calendar_connection_status")
-			if (status?.is_connected) {
+
+	// Poll every 2.5s as a background check
+	pollInterval = setInterval(checkConnection, 2500)
+
+	// Also watch for the popup closing so we can give immediate feedback
+	popupMonitorInterval = setInterval(async () => {
+		if (!popup || popup.closed) {
+			clearInterval(popupMonitorInterval)
+			popupMonitorInterval = null
+			const isConnected = await checkConnection()
+			if (!isConnected) {
 				stopPolling()
-				connected.value = true
+				error.value = __("Connection was not completed. Please try again.")
 			}
-		} catch (_) {
-			// ignore poll errors
 		}
-	}, 2500)
+	}, 500)
+}
+
+const onMessage = async (event) => {
+	if (event.data?.type === "google_calendar_connected") {
+		await checkConnection()
+	}
 }
 
 const connectCalendar = async () => {
@@ -127,7 +156,8 @@ const connectCalendar = async () => {
 		const authUrl = result?.auth_url
 		if (!authUrl) throw new Error("No authorization URL returned")
 
-		window.open(authUrl, "_blank", "width=600,height=700")
+		popup = window.open(authUrl, "_blank", "width=600,height=700")
+		window.addEventListener("message", onMessage)
 		startPolling()
 	} catch (e) {
 		error.value = e?.message || __("Failed to initiate Google Calendar connection")
@@ -140,5 +170,8 @@ const goToSettings = () => {
 	window.location.href = "/hrms/settings"
 }
 
-onUnmounted(stopPolling)
+onUnmounted(() => {
+	stopPolling()
+	window.removeEventListener("message", onMessage)
+})
 </script>
