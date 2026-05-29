@@ -399,13 +399,19 @@ def get_available_slots(slug: str, date: str, duration_minutes: int) -> list[dic
 		# confirmed bookings block the slot (even though cancellations won't sync).
 		busy.extend(_get_existing_bookings_for_date(employee, date_obj))
 
-	# Notice-period cutoff: remove slots that start too soon
-	now = now_datetime()
-	cutoff_naive = now + _dt.timedelta(hours=min_notice_hours)
-	cutoff_minutes = _minutes(cutoff_naive.time()) if cutoff_naive.date() == date_obj else (0 if cutoff_naive.date() < date_obj else 24 * 60)
+	# Cutoff in the employee's local timezone so the comparison is consistent
+	# with slot times (which are also in emp_tz_str). Using site tz here would
+	# hide future slots or reveal past ones whenever site tz ≠ employee tz.
+	now_emp = _dt.datetime.now(pytz.timezone(emp_tz_str)).replace(tzinfo=None)
+	cutoff_emp = now_emp + _dt.timedelta(hours=min_notice_hours)
+	cutoff_date = cutoff_emp.date()
+	cutoff_minutes = (
+		_minutes(cutoff_emp.time()) if cutoff_date == date_obj
+		else (0 if cutoff_date < date_obj else 24 * 60)
+	)
 
 	slots = _compute_free_slots(working_slots, busy, duration_minutes)
-	if cutoff_naive.date() == date_obj:
+	if cutoff_date == date_obj:
 		slots = [s for s in slots if _parse_hhmm_str_to_minutes(s["start"]) >= cutoff_minutes]
 
 	return {"slots": slots, "timezone": emp_tz_str}
@@ -674,7 +680,21 @@ def send_meeting_invitation(
 
 	start_dt = get_datetime(start)
 	end_dt = get_datetime(end)
-	site_tz = frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+
+	# Use the organizer's employee schedule timezone so the declared event time
+	# matches what the meeting finder showed them. site_tz is the fallback only.
+	organizer_employee = frappe.db.get_value(
+		"Employee", {"user_id": organizer_user, "status": "Active"}, "name"
+	)
+	organizer_slots = (
+		_get_employee_schedule_for_date(organizer_employee, start_dt.date())
+		if organizer_employee else []
+	)
+	org_tz_str = (
+		organizer_slots[0].get("timezone")
+		if organizer_slots
+		else frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+	)
 
 	# Collect participant emails (excluding organizer — they are added automatically)
 	attendees = []
@@ -698,8 +718,8 @@ def send_meeting_invitation(
 			event_body = {
 				"summary": title,
 				"description": description or "",
-				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": site_tz},
-				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": site_tz},
+				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
+				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
 				"attendees": attendees,
 				"conferenceData": {
 					"createRequest": {
