@@ -436,8 +436,8 @@ const canGoBack = computed(() => {
 function isDateDisabled(day) {
 	if (!day) return true
 	const date = new Date(calendarYear.value, calendarMonth.value, day)
-	const tomorrow = new Date(); tomorrow.setHours(0,0,0,0); tomorrow.setDate(tomorrow.getDate()+1)
-	if (date < tomorrow) return true
+	const today = new Date(); today.setHours(0,0,0,0)
+	if (date < today) return true
 	const dow = date.getDay()
 	return dow === 0 || dow === 6
 }
