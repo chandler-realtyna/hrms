@@ -50,6 +50,11 @@
 			@scroll="() => handleScroll()"
 		>
 			<div class="w-full">
+				<!-- Optional content above the list (e.g. a summary widget) -->
+				<div v-if="$slots.header" class="mt-5">
+					<slot name="header" />
+				</div>
+
 				<TabButtons
 					v-if="props.tabButtons"
 					class="mt-5"

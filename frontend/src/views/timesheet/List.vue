@@ -6,7 +6,11 @@
 			:tabButtons="TAB_BUTTONS"
 			:fields="TIMESHEET_FIELDS"
 			:filterConfig="FILTER_CONFIG"
-		/>
+		>
+			<template #header>
+				<WorkingHoursDashboard :detailed="true" />
+			</template>
+		</ListView>
 	</ion-page>
 </template>
 
@@ -14,6 +18,7 @@
 import { IonPage } from "@ionic/vue"
 import { inject } from "vue"
 import ListView from "@/components/ListView.vue"
+import WorkingHoursDashboard from "@/components/WorkingHoursDashboard.vue"
 
 const __ = inject("$translate")
 

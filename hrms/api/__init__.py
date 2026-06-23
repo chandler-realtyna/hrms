@@ -966,6 +966,39 @@ def get_employee_project_summary(employee: str, from_date: str, to_date: str) ->
 
 
 @frappe.whitelist()
+def get_employee_activity_summary(employee: str, from_date: str, to_date: str) -> list:
+	"""
+	Returns the employee's hours broken down by activity type for the given date
+	range, ordered by hours descending (top 8).
+	"""
+	rows = frappe.db.sql(
+		"""
+		SELECT
+			CASE
+				WHEN tsd.activity_type IS NULL OR tsd.activity_type = '' THEN 'No Activity'
+				ELSE tsd.activity_type
+			END            AS activity_type,
+			SUM(tsd.hours) AS total_hours
+		FROM `tabTimesheet Detail` tsd
+		INNER JOIN `tabTimesheet` ts ON tsd.parent = ts.name
+		WHERE ts.employee   = %(employee)s
+		  AND ts.docstatus  != 2
+		  AND DATE(tsd.from_time) BETWEEN %(from_date)s AND %(to_date)s
+		GROUP BY activity_type
+		ORDER BY total_hours DESC
+		LIMIT 8
+		""",
+		{"employee": employee, "from_date": from_date, "to_date": to_date},
+		as_dict=True,
+	)
+
+	return [
+		{"activity_type": r["activity_type"], "hours": round(float(r["total_hours"]), 2)}
+		for r in rows
+	]
+
+
+@frappe.whitelist()
 def get_team_working_hours_summary(from_date: str, to_date: str) -> list[dict]:
 	"""
 	Returns working-hours totals for all active employees who logged time in the

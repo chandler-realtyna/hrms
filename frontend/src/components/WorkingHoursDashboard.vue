@@ -131,6 +131,22 @@
 					<p v-else class="text-sm text-gray-400 text-center py-6">
 						{{ __("No hours logged in this period") }}
 					</p>
+
+					<!-- Detailed stats (timesheet page) -->
+					<div v-if="detailed && hasHours" class="grid grid-cols-3 gap-2 mt-4 pt-4 border-t">
+						<div class="flex flex-col">
+							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ stats.daysLogged }}</span>
+							<span class="text-[11px] text-gray-400">{{ __("Days logged") }}</span>
+						</div>
+						<div class="flex flex-col">
+							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ stats.avgPerDay }}h</span>
+							<span class="text-[11px] text-gray-400">{{ __("Avg / logged day") }}</span>
+						</div>
+						<div class="flex flex-col">
+							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ stats.busiest.hours }}h</span>
+							<span class="text-[11px] text-gray-400 truncate">{{ stats.busiest.label }}</span>
+						</div>
+					</div>
 				</template>
 			</div>
 
@@ -155,6 +171,54 @@
 								:style="{ width: `${Math.max((proj.hours / projectData[0].hours) * 100, 4)}%` }"
 							/>
 						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Activity breakdown card (detailed / timesheet page) -->
+			<div v-if="detailed && activityData.length > 0" class="bg-white rounded-xl border p-4">
+				<h3 class="text-sm font-semibold text-gray-700 mb-3">{{ __("By Activity") }}</h3>
+				<div class="flex flex-col gap-3">
+					<div
+						v-for="act in activityData"
+						:key="act.activity_type"
+						class="flex flex-col gap-1"
+					>
+						<div class="flex justify-between items-baseline gap-2">
+							<span class="text-sm text-gray-700 truncate">{{ act.activity_type }}</span>
+							<span class="text-xs font-semibold text-gray-500 shrink-0 tabular-nums">
+								{{ act.hours }}h
+							</span>
+						</div>
+						<div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+							<div
+								class="h-full bg-emerald-400 rounded-full transition-all duration-500"
+								:style="{ width: `${Math.max((act.hours / activityData[0].hours) * 100, 4)}%` }"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Per-day breakdown (detailed / timesheet page) -->
+			<div v-if="detailed && loggedDays.length > 0" class="bg-white rounded-xl border p-4">
+				<h3 class="text-sm font-semibold text-gray-700 mb-3">{{ __("By Day") }}</h3>
+				<div class="flex flex-col divide-y divide-gray-50">
+					<div
+						v-for="day in loggedDays"
+						:key="day.date"
+						class="flex items-center justify-between py-2 first:pt-0 last:pb-0"
+					>
+						<span
+							class="text-sm"
+							:class="isToday(day.date) ? 'text-blue-600 font-semibold' : 'text-gray-700'"
+						>
+							{{ formatDateFull(day.date) }}
+							<span v-if="isToday(day.date)" class="text-[10px] text-blue-400 ml-1">
+								{{ __("Today") }}
+							</span>
+						</span>
+						<span class="text-sm font-semibold text-gray-800 tabular-nums">{{ day.hours }}h</span>
 					</div>
 				</div>
 			</div>
@@ -260,6 +324,11 @@ import { ref, computed, inject, watch } from "vue"
 import { createResource, LoadingIndicator } from "frappe-ui"
 import { getViewerTimezone, getTimezoneAbbr, getOffsetDiffHours, formatOffsetDiff } from "@/utils/timezone.js"
 
+const props = defineProps({
+	// When true, render extra breakdowns (stats, activity, per-day list).
+	detailed: { type: Boolean, default: false },
+})
+
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")
 const employee = inject("$employee")
@@ -313,11 +382,29 @@ const periodLabel = computed(() => {
 
 const hoursResource = createResource({ url: "hrms.api.get_working_hours_summary",    auto: false })
 const projectResource = createResource({ url: "hrms.api.get_employee_project_summary", auto: false })
+const activityResource = createResource({ url: "hrms.api.get_employee_activity_summary", auto: false })
 const teamResource  = createResource({ url: "hrms.api.get_team_working_hours_summary", auto: false })
 
-const hoursData   = computed(() => hoursResource.data  || { daily: [], total: 0 })
-const projectData = computed(() => projectResource.data || [])
-const hasHours    = computed(() => (hoursData.value.daily || []).some((d) => d.hours > 0))
+const hoursData    = computed(() => hoursResource.data  || { daily: [], total: 0 })
+const projectData  = computed(() => projectResource.data || [])
+const activityData = computed(() => activityResource.data || [])
+const hasHours     = computed(() => (hoursData.value.daily || []).some((d) => d.hours > 0))
+
+// Only the days that actually have logged hours (for the detailed per-day list).
+const loggedDays = computed(() => (hoursData.value.daily || []).filter((d) => d.hours > 0))
+
+// Aggregate stats derived from the daily data (detailed mode).
+const stats = computed(() => {
+	const days = loggedDays.value
+	if (!days.length) return { daysLogged: 0, avgPerDay: 0, busiest: { hours: 0, label: "" } }
+	const total = days.reduce((sum, d) => sum + d.hours, 0)
+	const busiest = days.reduce((a, b) => (b.hours > a.hours ? b : a), days[0])
+	return {
+		daysLogged: days.length,
+		avgPerDay: parseFloat((total / days.length).toFixed(1)),
+		busiest: { hours: busiest.hours, label: __("Busiest: {0}", [dayjs(busiest.date).format("ddd D MMM")]) },
+	}
+})
 
 // ── Team data enriched with timezone deltas ────────────────────────────────────
 const teamData = computed(() => {
@@ -358,6 +445,7 @@ function fetchMe() {
 	}
 	hoursResource.submit(params)
 	projectResource.submit(params)
+	if (props.detailed) activityResource.submit(params)
 }
 
 function fetchTeam() {
