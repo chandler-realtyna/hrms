@@ -136,6 +136,8 @@ const __ = inject("$translate")
 const props = defineProps({
 	timesheet: { type: Object, required: true },
 	isReadOnly: { type: Boolean, default: false },
+	// The whole timesheet shares one date — chosen on the form, not per row.
+	date: { type: String, default: "" },
 })
 
 const emit = defineEmits(["update:timesheet", "addLog", "updateLog", "deleteLog"])
@@ -144,11 +146,23 @@ const showModal = ref(false)
 const currentLog = ref({})
 const editIndex = ref(null)
 
+// Local "today" as a naive YYYY-MM-DD string (never UTC — see saveLog note).
+const pad = (n) => String(n).padStart(2, "0")
+function localDateStr(d) {
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const todayStr = localDateStr(new Date())
+
 // ── Modal open/close ────────────────────────────────────────────────────────
 
 function openAdd() {
 	editIndex.value = null
-	currentLog.value = { _minutes: null, activity_type: "", project: "", description: "" }
+	currentLog.value = {
+		_minutes: null,
+		activity_type: "",
+		project: "",
+		description: "",
+	}
 	showModal.value = true
 }
 
@@ -180,9 +194,8 @@ function saveLog() {
 	// Generate from_time / to_time as naive local-time strings for Frappe.
 	// Never use .toISOString() here — that converts to UTC and creates an
 	// offset equal to the user's timezone (e.g. +4 h for UTC+4 users).
-	const now = new Date()
-	const pad = n => String(n).padStart(2, "0")
-	const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+	// The date is the timesheet-level date chosen on the form (defaults to today).
+	const date = props.date || todayStr
 
 	const toTotalSec = minutes * 60
 	const toH = pad(Math.floor(toTotalSec / 3600) % 24)
@@ -194,8 +207,8 @@ function saveLog() {
 		project:       currentLog.value.project || null,
 		description:   currentLog.value.description || null,
 		hours,
-		from_time: `${today} 00:00:00`,
-		to_time:   `${today} ${toH}:${toM}:${toS}`,
+		from_time: `${date} 00:00:00`,
+		to_time:   `${date} ${toH}:${toM}:${toS}`,
 		is_billable: 1,
 	}
 

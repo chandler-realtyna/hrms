@@ -41,6 +41,36 @@
 			</div>
 		</div>
 
+		<!-- ── Custom date range pickers (only when 'Custom' is selected) ── -->
+		<div
+			v-if="period === 'custom'"
+			class="flex items-end gap-3 flex-wrap bg-white rounded-xl border p-3"
+		>
+			<label class="flex flex-col gap-1">
+				<span class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+					{{ __("From") }}
+				</span>
+				<input
+					type="date"
+					:max="customTo"
+					v-model="customFrom"
+					class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+				/>
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+					{{ __("To") }}
+				</span>
+				<input
+					type="date"
+					:min="customFrom"
+					:max="todayStr"
+					v-model="customTo"
+					class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+				/>
+			</label>
+		</div>
+
 		<!-- ══════════════════════════════════════════════════ -->
 		<!-- ME view                                           -->
 		<!-- ══════════════════════════════════════════════════ -->
@@ -226,7 +256,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject } from "vue"
+import { ref, computed, inject, watch } from "vue"
 import { createResource, LoadingIndicator } from "frappe-ui"
 import { getViewerTimezone, getTimezoneAbbr, getOffsetDiffHours, formatOffsetDiff } from "@/utils/timezone.js"
 
@@ -246,21 +276,35 @@ const VIEWS = [
 ]
 
 const PERIODS = [
-	{ label: "Week",  value: "week",   days: 7  },
-	{ label: "2W",    value: "2weeks", days: 14 },
-	{ label: "Month", value: "month",  days: 30 },
+	{ label: "Week",   value: "week",   days: 7  },
+	{ label: "2W",     value: "2weeks", days: 14 },
+	{ label: "Month",  value: "month",  days: 30 },
+	{ label: "Custom", value: "custom" },
 ]
 
 const view   = ref("me")
 const period = ref("week")
 
-const toDate   = computed(() => dayjs().format("YYYY-MM-DD"))
+const todayStr = dayjs().format("YYYY-MM-DD")
+
+// Custom range — defaults to the last 7 days until the user picks dates.
+const customFrom = ref(dayjs().subtract(6, "day").format("YYYY-MM-DD"))
+const customTo   = ref(todayStr)
+
+const toDate   = computed(() => {
+	if (period.value === "custom") return customTo.value
+	return todayStr
+})
 const fromDate = computed(() => {
+	if (period.value === "custom") return customFrom.value
 	const days = PERIODS.find((p) => p.value === period.value)?.days ?? 7
 	return dayjs().subtract(days - 1, "day").format("YYYY-MM-DD")
 })
 
 const periodLabel = computed(() => {
+	if (period.value === "custom") {
+		return `${dayjs(fromDate.value).format("D MMM")} – ${dayjs(toDate.value).format("D MMM")}`
+	}
 	const days = PERIODS.find((p) => p.value === period.value)?.days ?? 7
 	return `last ${days} days`
 })
@@ -331,9 +375,18 @@ function selectView(value) {
 
 function selectPeriod(value) {
 	period.value = value
+	refetch()
+}
+
+function refetch() {
 	if (view.value === "me")   fetchMe()
 	if (view.value === "team") fetchTeam()
 }
+
+// Re-fetch when the user adjusts the custom range (only relevant in 'custom' mode).
+watch([customFrom, customTo], () => {
+	if (period.value === "custom") refetch()
+})
 
 // ── Me chart helpers ───────────────────────────────────────────────────────────
 
