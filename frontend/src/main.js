@@ -126,8 +126,8 @@ router.beforeEach(async (to, _, next) => {
 		// password reset page is outside the PWA scope
 		if (to.path === "/update-password") {
 			return next(false)
-		} else if (to.name !== "Login") {
-			next({ name: "Login" })
+		} else if (!["Login", "ForgotPassword"].includes(to.name)) {
+			return next({ name: "Login" })
 		}
 	}
 
@@ -140,7 +140,7 @@ router.beforeEach(async (to, _, next) => {
 			employeeResource?.data?.user_id !== userResource.data.name
 		) {
 			next({ name: "InvalidEmployee" })
-		} else if (to.name === "Login") {
+		} else if (["Login", "ForgotPassword"].includes(to.name)) {
 			next({ name: "Home" })
 		} else {
 			next()

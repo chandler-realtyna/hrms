@@ -21,6 +21,31 @@
 					<div class="flex flex-col gap-5 my-4 w-full p-4">
 						<!-- Push Notifications -->
 						<div class="flex flex-col bg-white rounded">
+							<div
+								class="flex flex-row cursor-pointer flex-start p-4 items-center justify-between border-b"
+							>
+								<router-link
+									:to="{ name: 'ChangePassword' }"
+									class="flex flex-row items-center justify-between w-full"
+								>
+									<div class="flex flex-row items-center gap-3 grow">
+										<FeatherIcon
+											name="lock"
+											class="h-5 w-5 text-gray-500"
+										/>
+										<div class="text-base font-normal text-gray-800">
+											{{ __("Change Password") }}
+										</div>
+									</div>
+									<FeatherIcon
+										name="chevron-right"
+										class="h-5 w-5 text-gray-500"
+									/>
+								</router-link>
+							</div>
+						</div>
+
+						<div class="flex flex-col bg-white rounded">
 							<Switch
 								size="md"
 								:label="__('Enable Push Notifications')"
@@ -31,7 +56,7 @@
 								@update:model-value="togglePushNotifications"
 							/>
 						</div>
-						<!-- Loading Indicator -->
+
 						<div
 							v-if="isLoading"
 							class="flex -mt-2 items-center justify-center gap-2"
@@ -160,7 +185,7 @@
 <script setup>
 import { IonPage, IonContent } from "@ionic/vue"
 import { useRouter } from "vue-router"
-import { FeatherIcon, Switch, toast, LoadingIndicator, createResource, call } from "frappe-ui"
+import { FeatherIcon, Switch, toast, LoadingIndicator, createResource, call, Button } from "frappe-ui"
 
 import { computed, inject, ref, watch } from "vue"
 
@@ -264,9 +289,8 @@ const togglePushNotifications = (newValue) => {
 		isLoading.value = true
 		window.frappePushNotification
 			.disableNotification()
-			.then((data) => {
-				pushNotificationState.value = false // Disable the switch
-				// TODO: add commonfied toast util for success and error messages
+			.then(() => {
+				pushNotificationState.value = false
 				toast({
 					title: __("Success"),
 					text: __("Push notifications disabled"),
@@ -289,7 +313,6 @@ const togglePushNotifications = (newValue) => {
 			})
 	}
 }
-
 const enablePushNotifications = () => {
 	isLoading.value = true
 
@@ -323,4 +346,5 @@ const enablePushNotifications = () => {
 			isLoading.value = false
 		})
 }
+
 </script>
