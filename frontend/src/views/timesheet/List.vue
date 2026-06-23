@@ -7,7 +7,7 @@
 			:fields="TIMESHEET_FIELDS"
 			:filterConfig="FILTER_CONFIG"
 		>
-			<template #header>
+			<template #aside>
 				<WorkingHoursDashboard :detailed="true" />
 			</template>
 		</ListView>

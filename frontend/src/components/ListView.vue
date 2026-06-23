@@ -49,59 +49,65 @@
 			ref="scrollContainer"
 			@scroll="() => handleScroll()"
 		>
-			<div class="w-full">
-				<!-- Optional content above the list (e.g. a summary widget) -->
-				<div v-if="$slots.header" class="mt-5">
-					<slot name="header" />
-				</div>
+			<div class="w-full flex flex-col md:flex-row md:items-start gap-5">
+				<!-- List column -->
+				<div :class="$slots.aside ? 'w-full md:w-1/2 order-2 md:order-1' : 'w-full'">
+					<TabButtons
+						v-if="props.tabButtons"
+						class="mt-5"
+						:buttons="props.tabButtons"
+						v-model="activeTab"
+					/>
 
-				<TabButtons
-					v-if="props.tabButtons"
-					class="mt-5"
-					:buttons="props.tabButtons"
-					v-model="activeTab"
-				/>
-
-				<div
-					class="flex flex-col bg-white rounded mt-5"
-					v-if="!documents.loading && documents.data?.length"
-				>
 					<div
-						class="p-3.5 items-center justify-between border-b cursor-pointer"
-						v-for="link in documents.data"
-						:key="link.name"
+						class="flex flex-col bg-white rounded mt-5"
+						v-if="!documents.loading && documents.data?.length"
 					>
-						<component
-							v-if="props.doctype === 'Employee Checkin'"
-							:is="listItemComponent[doctype]"
-							:doc="link"
-							:isTeamRequest="isTeamRequest"
-							:workflowStateField="workflowStateField"
-							@click="openRequestModal(link)"
-						/>
-						<router-link
-							v-else
-							:to="{ name: detailViewRoute, params: { id: link.name } }"
-							v-slot="{ navigate }"
+						<div
+							class="p-3.5 items-center justify-between border-b cursor-pointer"
+							v-for="link in documents.data"
+							:key="link.name"
 						>
 							<component
+								v-if="props.doctype === 'Employee Checkin'"
 								:is="listItemComponent[doctype]"
 								:doc="link"
 								:isTeamRequest="isTeamRequest"
 								:workflowStateField="workflowStateField"
-								@click="navigate"
+								@click="openRequestModal(link)"
 							/>
-						</router-link>
+							<router-link
+								v-else
+								:to="{ name: detailViewRoute, params: { id: link.name } }"
+								v-slot="{ navigate }"
+							>
+								<component
+									:is="listItemComponent[doctype]"
+									:doc="link"
+									:isTeamRequest="isTeamRequest"
+									:workflowStateField="workflowStateField"
+									@click="navigate"
+								/>
+							</router-link>
+						</div>
+					</div>
+					<EmptyState
+						:message="__('No {0} found', [props.doctype?.toLowerCase()])"
+						v-else-if="!documents.loading"
+					/>
+
+					<!-- Loading Indicator -->
+					<div v-if="documents.loading" class="flex mt-2 items-center justify-center">
+						<LoadingIndicator class="w-8 h-8 text-gray-800" />
 					</div>
 				</div>
-				<EmptyState
-					:message="__('No {0} found', [props.doctype?.toLowerCase()])"
-					v-else-if="!documents.loading"
-				/>
 
-				<!-- Loading Indicator -->
-				<div v-if="documents.loading" class="flex mt-2 items-center justify-center">
-					<LoadingIndicator class="w-8 h-8 text-gray-800" />
+				<!-- Optional aside column (e.g. a summary widget) — sticky on desktop -->
+				<div
+					v-if="$slots.aside"
+					class="w-full md:w-1/2 order-1 md:order-2 mt-5 md:self-start md:sticky md:top-0"
+				>
+					<slot name="aside" />
 				</div>
 			</div>
 		</div>
