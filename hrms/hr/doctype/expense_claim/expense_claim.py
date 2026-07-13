@@ -624,6 +624,7 @@ def get_advances(expense_claim: str | dict | Document, advance_id: str | None = 
 	if isinstance(expense_claim, str):
 		expense_claim = frappe._dict(json.loads(expense_claim))
 	expense_claim_doc = frappe.get_doc(expense_claim)
+	frappe.has_permission("Employee", "read", expense_claim_doc.employee, throw=True)
 	expense_claim_doc.advances = []
 
 	advance = frappe.qb.DocType("Employee Advance")
@@ -648,6 +649,10 @@ def get_advances(expense_claim: str | dict | Document, advance_id: str | None = 
 	else:
 		query = query.where((advance.name == advance_id) & (advance.employee == expense_claim_doc.employee))
 
+	# advance can only be adjusted in its own currency
+	if expense_claim_doc.currency:
+		query = query.where(advance.currency == expense_claim_doc.currency)
+
 	advances = query.run(as_dict=True)
 
 	for advance in advances:
@@ -657,6 +662,7 @@ def get_advances(expense_claim: str | dict | Document, advance_id: str | None = 
 
 @frappe.whitelist()
 def get_expense_claim(employee_advance: str | dict) -> Document:
+	frappe.has_permission("Employee Advance", "read", employee_advance, throw=True)
 	if isinstance(employee_advance, str):
 		employee_advance = frappe.get_doc("Employee Advance", employee_advance)
 
@@ -690,6 +696,7 @@ def get_expense_claim_advances(expense_claim, employee_advance):
 			"against_voucher_no": employee_advance.name,
 			"event": "Submit",
 			"delinked": False,
+			"amount": [">", 0],
 		},
 		fields=["voucher_type", "voucher_no", "amount", "base_amount", "exchange_rate", "creation"],
 	)
@@ -728,7 +735,7 @@ def get_expense_claim_advances(expense_claim, employee_advance):
 		unclaimed_amount = paid_amount - claimed_amount
 		return_amount = flt(employee_advance.return_amount)
 		allocated_amount = get_allocation_amount(
-			paid_amount=(paid_amount), claimed_amount=(claimed_amount), return_amount=(return_amount)
+			paid_amount=paid_amount, claimed_amount=claimed_amount, return_amount=return_amount
 		)
 
 		expense_claim.append(
