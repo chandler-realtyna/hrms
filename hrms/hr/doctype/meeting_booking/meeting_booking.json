@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "HR-MBOOKING-.YYYY.-.#####",
+ "creation": "2026-05-28 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "host_employee", "host_employee_name", "column_break_1",
+  "status", "section_break_booker", "booker_name", "booker_email",
+  "column_break_2", "title", "description",
+  "section_break_time", "start_datetime", "end_datetime",
+  "column_break_3", "frappe_event"
+ ],
+ "fields": [
+  {
+   "fieldname": "host_employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Host Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "host_employee.employee_name",
+   "fieldname": "host_employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Host Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Confirmed",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Confirmed\nCancelled"
+  },
+  {
+   "fieldname": "section_break_booker",
+   "fieldtype": "Section Break",
+   "label": "Booker Details"
+  },
+  {
+   "fieldname": "booker_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Booker Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "booker_email",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Booker Email",
+   "options": "Email",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Meeting Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_break_time",
+   "fieldtype": "Section Break",
+   "label": "Time"
+  },
+  {
+   "fieldname": "start_datetime",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Start",
+   "reqd": 1
+  },
+  {
+   "fieldname": "end_datetime",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "End",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "frappe_event",
+   "fieldtype": "Link",
+   "label": "Frappe Event",
+   "options": "Event",
+   "read_only": 1
+  }
+ ],
+ "idx": 0,
+ "links": [],
+ "modified": "2026-05-28 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "HR",
+ "name": "Meeting Booking",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 0,
+   "print": 1,
+   "read": 1,
+   "report": 0,
+   "role": "Employee",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "start_datetime",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

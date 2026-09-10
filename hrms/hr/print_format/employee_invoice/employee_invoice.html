@@ -1,0 +1,103 @@
+<style>
+  .invoice-wrap { color: #182230; font-size: 12px; }
+  .invoice-head { display: flex; justify-content: space-between; border-bottom: 2px solid #182230; padding-bottom: 14px; margin-bottom: 18px; }
+  .invoice-head h1 { margin: 0 0 4px; font-size: 28px; }
+  .muted { color: #667085; }
+  .status { border: 1px solid #98a2b3; border-radius: 20px; padding: 4px 10px; display: inline-block; }
+  .draft { color: #b54708; border-color: #fdb022; }
+  .final { color: #027a48; border-color: #12b76a; }
+  .cols { display: flex; gap: 24px; margin-bottom: 18px; }
+  .col { width: 50%; }
+  .box { border: 1px solid #d0d5dd; border-radius: 8px; padding: 12px; }
+  .box h3 { font-size: 13px; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #eaecf0; padding: 8px 6px; text-align: left; }
+  th { color: #475467; font-weight: 600; }
+  .num { text-align: right; }
+  .total { font-size: 17px; font-weight: 700; }
+  .section { margin-top: 18px; }
+  .watermark { position: fixed; top: 42%; left: 16%; transform: rotate(-28deg); font-size: 72px; color: rgba(180, 35, 24, .08); z-index: -1; }
+</style>
+
+<div class="invoice-wrap">
+  {% if doc.status != "Paid" %}<div class="watermark">DRAFT</div>{% endif %}
+  <div class="invoice-head">
+    <div>
+      <h1>Employee Invoice</h1>
+      <div class="muted">{{ doc.name }}</div>
+    </div>
+    <div style="text-align:right">
+      <span class="status {{ 'final' if doc.status == 'Paid' else 'draft' }}">{{ 'FINAL / PAID' if doc.status == 'Paid' else doc.status }}</span><br>
+      <span class="muted">Invoice date: {{ frappe.utils.formatdate(doc.invoice_date) }}</span><br>
+      <span class="muted">Due date: {{ frappe.utils.formatdate(doc.due_date) }}</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="col box">
+      <h3>Payable to</h3>
+      <strong>{{ doc.payee_name }}</strong><br>
+      {{ (doc.payee_address or '') | replace('\n', '<br>') }}
+      <div class="section"><strong>Preferred payment</strong><br>{{ doc.preferred_payment_method }}{% if doc.payment_details %}<br>{{ doc.payment_details | replace('\n', '<br>') }}{% endif %}</div>
+      {% if doc.bank_name or doc.bank_account_no or doc.iban %}<div class="section"><strong>Bank details</strong><br>{{ doc.bank_name or '' }}<br>{{ doc.bank_account_no or '' }}<br>{{ doc.iban or '' }}</div>{% endif %}
+    </div>
+    <div class="col box">
+      <h3>Bill to</h3>
+      <strong>{{ doc.bill_to_name }}</strong><br>
+      {{ (doc.bill_to_address or '') | replace('\n', '<br>') }}
+      <div class="section"><strong>Period</strong><br>{{ frappe.utils.formatdate(doc.period_start) }} – {{ frappe.utils.formatdate(doc.period_end) }}</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Base calculation</h3>
+    <table>
+      <thead><tr><th>Method</th><th class="num">Due hours</th><th class="num">Rate / monthly amount</th><th class="num">Base amount</th><th class="num">Unpaid leave deduction</th></tr></thead>
+      <tbody><tr><td>{{ doc.calculation_method }}</td><td class="num">{{ '%.2f'|format(doc.due_hours) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.monthly_amount if doc.calculation_method == 'Fixed Monthly' else doc.hourly_rate, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.base_amount, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.unpaid_leave_deduction, currency=doc.currency) }}</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="box section">
+    <h3>Time and approved leave</h3>
+    <table>
+      <thead><tr><th class="num">Worked hours</th><th class="num">Paid leave</th><th class="num">Sick leave</th><th class="num">Unpaid leave</th><th class="num">Payable hours</th></tr></thead>
+      <tbody><tr><td class="num">{{ '%.2f'|format(doc.worked_hours) }}</td><td class="num">{{ '%.2f'|format(doc.paid_leave_hours) }}</td><td class="num">{{ '%.2f'|format(doc.sick_leave_hours) }}</td><td class="num">{{ '%.2f'|format(doc.unpaid_leave_hours) }}</td><td class="num">{{ '%.2f'|format(doc.payable_hours) }}</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="box section">
+    <h3>Recorded time</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Timesheet</th><th>Approval</th><th class="num">Hours</th></tr></thead>
+      <tbody>
+      {% for row in doc.time_summary %}<tr><td>{{ frappe.utils.formatdate(row.work_date) }}</td><td>{{ row.timesheet }}</td><td>{{ row.approval_status }}</td><td class="num">{{ '%.2f'|format(row.hours) }}</td></tr>{% else %}<tr><td colspan="4" class="muted">No recorded hours</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box section">
+    <h3>Adjustments</h3>
+    <table>
+      <thead><tr><th>Type</th><th>Effect</th><th>Reason</th><th class="num">Quantity</th><th class="num">Unit amount</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+      {% for row in doc.adjustments %}<tr><td>{{ row.adjustment_type }}</td><td>{{ row.effect }}</td><td>{{ row.note }}</td><td class="num">{{ row.quantity }}</td><td class="num">{{ frappe.utils.fmt_money(row.unit_amount, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(row.amount, currency=doc.currency) }}</td></tr>{% else %}<tr><td colspan="6" class="muted">No adjustments</td></tr>{% endfor %}
+      <tr><td colspan="5" class="num"><strong>Total additions</strong></td><td class="num">{{ frappe.utils.fmt_money(doc.total_additions, currency=doc.currency) }}</td></tr>
+      <tr><td colspan="5" class="num"><strong>Total deductions</strong></td><td class="num">{{ frappe.utils.fmt_money(doc.total_deductions, currency=doc.currency) }}</td></tr>
+      <tr><td colspan="5" class="num total">Total</td><td class="num total">{{ frappe.utils.fmt_money(doc.grand_total, currency=doc.currency) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if doc.status == "Paid" %}
+  <div class="box section">
+    <h3>Payment</h3>
+    <strong>{{ doc.actual_payment_method }}</strong><br>
+    Date: {{ frappe.utils.formatdate(doc.payment_date) }}<br>
+    Reference: {{ doc.payment_reference }}
+  </div>
+  {% endif %}
+
+  {% if doc.leave_summary %}<div class="box section"><h3>Leave information</h3>{{ doc.leave_summary | replace('\n', '<br>') }}<div class="muted">Only approved leave inside this invoice period is included.</div></div>{% endif %}
+  {% if doc.employee_note or doc.hr_note %}<div class="box section"><h3>Notes</h3>{% if doc.employee_note %}<strong>Employee:</strong> {{ doc.employee_note }}<br>{% endif %}{% if doc.hr_note %}<strong>HR:</strong> {{ doc.hr_note }}{% endif %}</div>{% endif %}
+  <div class="muted section">Operational payment document. It is not a tax invoice or an accounting entry.</div>
+</div>

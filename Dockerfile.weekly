@@ -1,0 +1,7 @@
+FROM realtyna-erpnext-hrms:fixed
+
+USER root
+COPY --chown=frappe:frappe . /home/frappe/frappe-bench/apps/hrms
+
+USER frappe
+WORKDIR /home/frappe/frappe-bench

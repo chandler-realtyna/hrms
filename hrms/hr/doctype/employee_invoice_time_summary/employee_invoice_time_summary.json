@@ -1,0 +1,22 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["work_date", "timesheet", "hours", "approval_status"],
+ "fields": [
+  {"fieldname": "work_date", "fieldtype": "Date", "in_list_view": 1, "label": "Date", "reqd": 1},
+  {"fieldname": "timesheet", "fieldtype": "Link", "in_list_view": 1, "label": "Timesheet", "options": "Timesheet", "reqd": 1},
+  {"fieldname": "hours", "fieldtype": "Float", "in_list_view": 1, "label": "Hours", "precision": "2", "reqd": 1},
+  {"fieldname": "approval_status", "fieldtype": "Data", "in_list_view": 1, "label": "Approval Status", "read_only": 1}
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "module": "HR",
+ "name": "Employee Invoice Time Summary",
+ "permissions": [],
+ "sort_field": "work_date",
+ "sort_order": "ASC",
+ "states": []
+}
