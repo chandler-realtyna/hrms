@@ -17,6 +17,24 @@
 				</header>
 
 				<main class="max-w-4xl mx-auto p-4 md:p-6 flex flex-col gap-5">
+					<section class="bg-white border rounded-xl p-4">
+						<div class="font-medium text-gray-900">{{ __("Complete another week") }}</div>
+						<p class="text-xs text-gray-500 mt-1">
+							{{ __("Choose any date in the week you need to complete.") }}
+						</p>
+						<div class="flex flex-col sm:flex-row gap-2 mt-3">
+							<input
+								v-model="selectedWeekDate"
+								type="date"
+								:max="today"
+								class="w-full sm:max-w-xs border rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+							/>
+							<Button variant="subtle" :disabled="!selectedWeekDate" @click="openSelectedWeek">
+								{{ __("Open week") }}
+							</Button>
+						</div>
+					</section>
+
 					<router-link
 						v-if="data.project_approvals?.length"
 						:to="{ name: 'TimesheetProjectApprovals' }"
@@ -118,6 +136,13 @@ const dayjs = inject("$dayjs")
 const router = useRouter()
 const loading = ref(true)
 const data = ref({ weekly: [], legacy: [], project_approvals: [] })
+const today = dayjs().format("YYYY-MM-DD")
+const selectedWeekDate = ref(dayjs().subtract(7, "day").format("YYYY-MM-DD"))
+
+function openSelectedWeek() {
+	if (!selectedWeekDate.value) return
+	router.push({ name: "TimesheetFormView", query: { week_start: selectedWeekDate.value } })
+}
 
 function formatWeek(start, end) {
 	if (!start) return ""

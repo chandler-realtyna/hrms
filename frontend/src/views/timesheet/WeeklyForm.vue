@@ -138,7 +138,7 @@
 
 <script setup>
 import { computed, inject, onMounted, ref, watch } from "vue"
-import { useRouter } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call, toast } from "frappe-ui"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
@@ -146,6 +146,7 @@ import TimeLogsTable from "@/components/TimeLogsTable.vue"
 const props = defineProps({ id: { type: String, required: false } })
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")
+const route = useRoute()
 const router = useRouter()
 const timesheet = ref({ time_logs: [], custom_weekly_status: "Draft" })
 const loading = ref(true)
@@ -226,6 +227,7 @@ async function load() {
 	try {
 		timesheet.value = await call("hrms.api.weekly_timesheet.get_weekly_timesheet", {
 			name: props.id || undefined,
+			week_start: props.id ? undefined : route.query.week_start || undefined,
 		})
 		hasEverSaved.value = Boolean(timesheet.value.name)
 	} finally {
