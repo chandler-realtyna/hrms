@@ -175,13 +175,18 @@ let longRunningTimeout = null
 // ─── Computed ────────────────────────────────────────────────────────────────
 
 const formattedTime = computed(() => {
-	const h = Math.floor(elapsed.value / 3600)
+	// Depend on the ticker so the active project's display updates every second.
+	void elapsed.value
+	const currentSeconds = startTime.value
+		? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+		: (segments.value.length ? Number(segments.value[segments.value.length - 1].seconds || 0) : 0)
+	const h = Math.floor(currentSeconds / 3600)
 		.toString()
 		.padStart(2, "0")
-	const m = Math.floor((elapsed.value % 3600) / 60)
+	const m = Math.floor((currentSeconds % 3600) / 60)
 		.toString()
 		.padStart(2, "0")
-	const s = (elapsed.value % 60).toString().padStart(2, "0")
+	const s = (currentSeconds % 60).toString().padStart(2, "0")
 	return `${h}:${m}:${s}`
 })
 
