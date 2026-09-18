@@ -209,22 +209,6 @@ def _blank_weekly(employee, week_start, week_end):
 	}
 
 
-def _release_cancelled_week_key(week_key: str):
-	cancelled = frappe.get_all(
-		"Timesheet",
-		filters={"custom_week_key": week_key, "docstatus": 2},
-		pluck="name",
-	)
-	for name in cancelled:
-		frappe.db.set_value(
-			"Timesheet",
-			name,
-			"custom_week_key",
-			f"{week_key}|cancelled|{name}",
-			update_modified=False,
-		)
-
-
 @frappe.whitelist()
 def get_timesheet_mode(name: str):
 	doc = frappe.get_doc("Timesheet", name)
@@ -384,7 +368,6 @@ def save_weekly_timesheet(payload):
 		doc.flags.ignore_mandatory = True
 
 	if doc.is_new():
-		_release_cancelled_week_key(week_key)
 		doc.insert()
 	else:
 		doc.save()
@@ -666,6 +649,7 @@ def _validate_time_rows(doc):
 	week_start_dt = datetime.combine(week_start, time.min)
 	week_end_exclusive = datetime.combine(add_days(week_end, 1), time.min)
 
+	intervals = []
 	for row in doc.time_logs:
 		if not row.project:
 			frappe.throw(_("Row {0}: Project is required.").format(row.idx))
@@ -681,6 +665,15 @@ def _validate_time_rows(doc):
 			frappe.throw(_("Row {0}: Start time must be inside the selected week.").format(row.idx))
 		if to_time <= from_time:
 			frappe.throw(_("Row {0}: End time must be after start time.").format(row.idx))
+		if to_time > week_end_exclusive:
+			frappe.throw(_("Row {0}: End time must be inside the selected week.").format(row.idx))
+		intervals.append((from_time, to_time, row.idx))
+
+	for previous, current in zip(sorted(intervals), sorted(intervals)[1:]):
+		if current[0] < previous[1]:
+			frappe.throw(
+				_("Time entries cannot overlap: rows {0} and {1}.").format(previous[2], current[2])
+			)
 
 
 def prepare_weekly_document(doc):
@@ -806,7 +799,6 @@ def save_weekly_timer_log(
 		)
 		doc.flags.weekly_action = "employee_save"
 		if doc.is_new():
-			_release_cancelled_week_key(week_key)
 			doc.insert()
 		else:
 			doc.save()
