@@ -62,7 +62,10 @@
 						:reqd="true"
 						@change="persistState"
 					/>
-					<div v-if="availableProjects.length" class="max-h-40 overflow-y-auto rounded-lg border bg-gray-50 p-1">
+					<button type="button" class="-mt-2 self-start text-xs text-gray-500" @click="showProjectList = !showProjectList">
+						{{ showProjectList ? __("Hide project list") : __("Browse projects") }}
+					</button>
+					<div v-if="showProjectList && availableProjects.length" class="max-h-40 overflow-y-auto rounded-lg border bg-gray-50 p-1">
 						<div v-for="project in availableProjects" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm">
 							<button class="min-w-0 flex-1 truncate text-left text-gray-700" @click="selectProject(project.name)">{{ project.label || project.name }}</button>
 							<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')">
@@ -162,6 +165,7 @@ const isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([])
 const availableProjects = ref([])
+const showProjectList = ref(false)
 const longRunningNotified = ref(false)
 
 let ticker = null
