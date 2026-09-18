@@ -177,9 +177,12 @@ let longRunningTimeout = null
 const formattedTime = computed(() => {
 	// Depend on the ticker so the active project's display updates every second.
 	void elapsed.value
-	const currentSeconds = startTime.value
+	const projectSeconds = segments.value
+		.filter((segment) => segment.project === form.value.project)
+		.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
+	const currentSeconds = projectSeconds + (startTime.value
 		? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
-		: (segments.value.length ? Number(segments.value[segments.value.length - 1].seconds || 0) : 0)
+		: 0)
 	const h = Math.floor(currentSeconds / 3600)
 		.toString()
 		.padStart(2, "0")
