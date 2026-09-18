@@ -33,11 +33,7 @@
 			</div>
 
 			<div class="mt-3 flex items-center justify-end gap-2">
-				<button
-					type="button"
-					class="mr-auto text-xs text-gray-500 underline underline-offset-2 hover:text-gray-700"
-					@click="disablePrompt"
-				>
+				<button type="button" class="mr-auto text-xs text-gray-500 underline" @click="disablePrompt">
 					{{ __("Don't show again") }}
 				</button>
 				<Button variant="subtle" @click="dismiss">{{ __("Not now") }}</Button>
@@ -70,12 +66,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
+import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
 import { FeatherIcon } from "frappe-ui"
 
 const DISABLED_KEY = "hrms:install_prompt_disabled"
 const SNOOZE_KEY = "hrms:install_prompt_snooze_until"
-const SNOOZE_DAYS = 7
+const SNOOZE_DAYS = 30
+const __ = inject("$translate") || ((value) => value)
 
 const deferredPrompt = shallowRef(null)
 const showPrompt = ref(false)
@@ -95,9 +92,11 @@ const isChromiumDesktop = /chrome|edg|opr/i.test(userAgent) && !isAndroid && !is
 const isInstalled = () =>
 	window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true
 
-const isPermanentlyDisabled = () => window.localStorage.getItem(DISABLED_KEY) === "1"
-const isSnoozed = () => Number(window.localStorage.getItem(SNOOZE_KEY) || 0) > Date.now()
-const canOfferInstall = () => !isInstalled() && !isPermanentlyDisabled() && !isSnoozed()
+const canOfferInstall = () => {
+	if (isInstalled()) return false
+	if (window.localStorage.getItem(DISABLED_KEY) === "1") return false
+	return Number(window.localStorage.getItem(SNOOZE_KEY) || 0) <= Date.now()
+}
 
 const canInstall = computed(() => Boolean(deferredPrompt.value))
 const showChromeRecovery = computed(
@@ -172,30 +171,19 @@ function handleInstallPrompt(event) {
 }
 
 function handleInstalled() {
-	window.localStorage.removeItem(SNOOZE_KEY)
 	showPrompt.value = false
 	deferredPrompt.value = null
+	window.localStorage.removeItem(SNOOZE_KEY)
 }
 
 function dismiss() {
-	window.localStorage.setItem(
-		SNOOZE_KEY,
-		String(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000)
-	)
+	window.localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_DAYS * 86400000))
 	showPrompt.value = false
 	showInstructions.value = false
 }
 
 function disablePrompt() {
-	if (
-		!window.confirm(
-			__(
-				"Stop showing HRMS install prompts on this device? You can enable them later by clearing this site's data."
-			)
-		)
-	) {
-		return
-	}
+	if (!window.confirm(__("Stop showing HRMS install prompts on this device? You can enable them later by clearing this site's data."))) return
 	window.localStorage.setItem(DISABLED_KEY, "1")
 	window.localStorage.removeItem(SNOOZE_KEY)
 	showPrompt.value = false
@@ -228,10 +216,7 @@ async function install() {
 	if (choice.outcome === "accepted") {
 		window.localStorage.removeItem(SNOOZE_KEY)
 	} else {
-		window.localStorage.setItem(
-			SNOOZE_KEY,
-			String(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000)
-		)
+		dismiss()
 	}
 }
 
