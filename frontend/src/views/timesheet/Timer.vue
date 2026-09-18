@@ -43,8 +43,8 @@
 								<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
 								<span class="truncate text-sm font-medium text-gray-800">{{ project.label || project.name }}</span>
 							</button>
-							<button class="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-semibold text-white" @click="startProject(project.name)">
-								{{ __("Start") }}
+							<button class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
+								{{ projectButtonLabel(project.name) }}
 							</button>
 						</div>
 					</div>
@@ -260,6 +260,28 @@ function startProject(project) {
 	if (isRunning.value && form.value.project !== project) pause()
 	form.value.project = project
 	if (!isRunning.value) resume()
+}
+function projectStatus(project) {
+	if (form.value.project !== project || (!isRunning.value && !isPaused.value)) return "idle"
+	return isRunning.value ? "running" : "paused"
+}
+function projectButtonLabel(project) {
+	const status = projectStatus(project)
+	if (status === "running") return __("Pause")
+	if (status === "paused") return __("Resume")
+	return isRunning.value ? __("Switch") : __("Start")
+}
+function projectButtonClass(project) {
+	const status = projectStatus(project)
+	if (status === "running") return "bg-amber-500"
+	if (status === "paused") return "bg-green-500"
+	return "bg-blue-500"
+}
+function toggleProjectTimer(project) {
+	const status = projectStatus(project)
+	if (status === "running") return pause()
+	if (status === "paused") return resume()
+	startProject(project)
 }
 
 function pushCurrentSegment() {
