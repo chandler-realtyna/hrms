@@ -209,6 +209,22 @@ def _blank_weekly(employee, week_start, week_end):
 	}
 
 
+def _release_cancelled_week_key(week_key: str):
+	cancelled = frappe.get_all(
+		"Timesheet",
+		filters={"custom_week_key": week_key, "docstatus": 2},
+		pluck="name",
+	)
+	for name in cancelled:
+		frappe.db.set_value(
+			"Timesheet",
+			name,
+			"custom_week_key",
+			f"{week_key}|cancelled|{name}",
+			update_modified=False,
+		)
+
+
 @frappe.whitelist()
 def get_timesheet_mode(name: str):
 	doc = frappe.get_doc("Timesheet", name)
@@ -368,6 +384,7 @@ def save_weekly_timesheet(payload):
 		doc.flags.ignore_mandatory = True
 
 	if doc.is_new():
+		_release_cancelled_week_key(week_key)
 		doc.insert()
 	else:
 		doc.save()
@@ -671,9 +688,7 @@ def _validate_time_rows(doc):
 
 	for previous, current in zip(sorted(intervals), sorted(intervals)[1:]):
 		if current[0] < previous[1]:
-			frappe.throw(
-				_("Time entries cannot overlap: rows {0} and {1}.").format(previous[2], current[2])
-			)
+			frappe.throw(_("Time entries cannot overlap: rows {0} and {1}.").format(previous[2], current[2]))
 
 
 def prepare_weekly_document(doc):
@@ -761,17 +776,12 @@ def save_weekly_timer_log(
 		segment_end = min(end_time, boundary)
 		week_key = f"{employee}|{week_start}"
 		duplicate = frappe.db.sql(
-			"""
-			SELECT ts.name
-			FROM `tabTimesheet` ts
+			"""SELECT ts.name FROM `tabTimesheet` ts
 			INNER JOIN `tabTimesheet Detail` detail ON detail.parent = ts.name
 			WHERE ts.employee = %s AND ts.custom_week_key = %s
-				AND detail.project = %s AND detail.from_time = %s AND detail.to_time = %s
-				AND ts.docstatus < 2
-			LIMIT 1
-			""",
-			(employee, week_key, project, cursor, segment_end),
-			as_dict=False,
+			AND detail.project = %s AND detail.from_time = %s AND detail.to_time = %s
+			AND ts.docstatus < 2 LIMIT 1""",
+			(employee, week_key, project, cursor, segment_end), as_dict=False,
 		)
 		if duplicate:
 			last_name = duplicate[0][0]
@@ -816,6 +826,7 @@ def save_weekly_timer_log(
 		)
 		doc.flags.weekly_action = "employee_save"
 		if doc.is_new():
+			_release_cancelled_week_key(week_key)
 			doc.insert()
 		else:
 			doc.save()
