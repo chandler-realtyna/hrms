@@ -209,6 +209,22 @@ def _blank_weekly(employee, week_start, week_end):
 	}
 
 
+def _release_cancelled_week_key(week_key: str):
+	cancelled = frappe.get_all(
+		"Timesheet",
+		filters={"custom_week_key": week_key, "docstatus": 2},
+		pluck="name",
+	)
+	for name in cancelled:
+		frappe.db.set_value(
+			"Timesheet",
+			name,
+			"custom_week_key",
+			f"{week_key}|cancelled|{name}",
+			update_modified=False,
+		)
+
+
 @frappe.whitelist()
 def get_timesheet_mode(name: str):
 	doc = frappe.get_doc("Timesheet", name)
@@ -368,6 +384,7 @@ def save_weekly_timesheet(payload):
 		doc.flags.ignore_mandatory = True
 
 	if doc.is_new():
+		_release_cancelled_week_key(week_key)
 		doc.insert()
 	else:
 		doc.save()
@@ -799,6 +816,7 @@ def save_weekly_timer_log(
 		)
 		doc.flags.weekly_action = "employee_save"
 		if doc.is_new():
+			_release_cancelled_week_key(week_key)
 			doc.insert()
 		else:
 			doc.save()
