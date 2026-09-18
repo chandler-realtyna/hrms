@@ -35,6 +35,21 @@
 					</div>
 				</div>
 
+				<div v-if="favoriteProjects.length" class="mx-4 mt-3">
+					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Favorite projects") }}</div>
+					<div class="flex flex-col gap-2">
+						<div v-for="project in favoriteProjects" :key="project.name" class="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
+								<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
+								<span class="truncate text-sm font-medium text-gray-800">{{ project.label || project.name }}</span>
+							</button>
+							<button class="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-semibold text-white" @click="startProject(project.name)">
+								{{ __("Start") }}
+							</button>
+						</div>
+					</div>
+				</div>
+
 				<!-- Form fields -->
 				<div class="flex flex-col gap-4 p-4 bg-white mx-4 mt-3 rounded-xl shadow-sm border">
 					<FormField
@@ -47,6 +62,18 @@
 						:reqd="true"
 						@change="persistState"
 					/>
+					<div v-if="availableProjects.length" class="max-h-40 overflow-y-auto rounded-lg border bg-gray-50 p-1">
+						<div v-for="project in availableProjects" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm">
+							<button class="min-w-0 flex-1 truncate text-left text-gray-700" @click="selectProject(project.name)">{{ project.label || project.name }}</button>
+							<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')">
+								<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
+							</button>
+						</div>
+					</div>
+					<button v-if="form.project" type="button" class="-mt-2 self-start text-xs text-gray-500" @click="toggleFavorite(form.project)">
+						<FeatherIcon name="heart" class="mr-1 inline h-3.5 w-3.5" :class="isFavorite(form.project) ? 'fill-amber-400 text-amber-500' : ''" />
+						{{ isFavorite(form.project) ? __("Remove favorite") : __("Add to favorites") }}
+					</button>
 					<FormField
 						fieldtype="Link"
 						fieldname="activity_type"
@@ -71,17 +98,20 @@
 				<div class="px-4 mt-4 pb-10 flex flex-col gap-3">
 					<!-- Start button (idle state) -->
 					<button
-						v-if="!isRunning"
+						v-if="!isRunning && !isPaused"
 						@click="start"
 						class="w-full py-5 rounded-xl bg-green-500 active:bg-green-600 text-white font-semibold text-lg flex items-center justify-center gap-2 shadow-sm transition-colors"
 					>
 						<FeatherIcon name="play" class="h-5 w-5" />
 						{{ __("Start Timer") }}
 					</button>
+					<button v-if="isRunning" @click="pause" class="w-full rounded-xl bg-amber-500 py-4 text-white font-semibold">
+						{{ __("Pause") }}
+					</button>
 
 					<!-- Stop & Save button (running state) -->
 					<button
-						v-else
+						v-if="isRunning || isPaused"
 						@click="stop"
 						:disabled="isSaving"
 						class="w-full py-5 rounded-xl bg-red-500 active:bg-red-600 text-white font-semibold text-lg flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-60"
@@ -89,10 +119,13 @@
 						<FeatherIcon name="square" class="h-5 w-5" />
 						{{ isSaving ? __("Saving…") : __("Stop & Save") }}
 					</button>
+					<button v-if="isPaused" @click="resume" class="w-full rounded-xl bg-green-500 py-4 text-white font-semibold">
+						{{ __("Resume") }}
+					</button>
 
 					<!-- Discard (running state) -->
 					<button
-						v-if="isRunning"
+						v-if="isRunning || isPaused"
 						@click="discard"
 						class="w-full py-3 text-sm text-red-400 font-medium"
 					>
@@ -117,14 +150,21 @@ const employee = inject("$employee")
 const dayjs = inject("$dayjs")
 
 const STORAGE_KEY = "hrms_active_timer"
+const FAVORITES_KEY = "hrms_favorite_projects"
 
 const isRunning = ref(false)
+const isPaused = ref(false)
+const pausedSince = ref(null)
 const startTime = ref(null) // dayjs-compatible string
-const elapsed = ref(0) // seconds since start
+const elapsed = ref(0) // seconds in the current session
+const segments = ref([])
 const isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
+const favoriteProjects = ref([])
+const availableProjects = ref([])
 
 let ticker = null
+let pauseTimeout = null
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 
@@ -142,10 +182,9 @@ const formattedTime = computed(() => {
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 function persistState() {
-	if (!isRunning.value) return
 	localStorage.setItem(
 		STORAGE_KEY,
-		JSON.stringify({ startTime: startTime.value, form: form.value })
+		JSON.stringify({ startTime: startTime.value, form: form.value, segments: segments.value, isPaused: isPaused.value, pausedSince: pausedSince.value })
 	)
 }
 
@@ -158,13 +197,16 @@ function loadPersistedState() {
 		const raw = localStorage.getItem(STORAGE_KEY)
 		if (!raw) return
 		const state = JSON.parse(raw)
-		if (!state.startTime) return
-
-		startTime.value = state.startTime
+		segments.value = state.segments || []
+		if (!state.startTime && !segments.value.length) return
+		startTime.value = state.startTime || null
 		form.value = state.form || { project: "", activity_type: "", description: "" }
-		elapsed.value = Math.floor((Date.now() - new Date(state.startTime).getTime()) / 1000)
-		isRunning.value = true
-		startTick()
+		isPaused.value = Boolean(state.isPaused)
+		pausedSince.value = state.pausedSince || null
+		isRunning.value = Boolean(state.startTime) && !isPaused.value
+		updateElapsed()
+		if (isRunning.value) startTick()
+		else if (isPaused.value) schedulePausedSave()
 	} catch {
 		clearPersistedState()
 	}
@@ -173,9 +215,51 @@ function loadPersistedState() {
 // ─── Timer control ───────────────────────────────────────────────────────────
 
 function startTick() {
+	clearInterval(ticker)
 	ticker = setInterval(() => {
-		elapsed.value = Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000)
+		updateElapsed()
 	}, 1000)
+}
+
+function updateElapsed() {
+	const saved = segments.value.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
+	const current = startTime.value ? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000)) : 0
+	elapsed.value = saved + current
+}
+
+function loadFavorites() {
+	try { favoriteProjects.value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]") } catch { favoriteProjects.value = [] }
+}
+
+async function loadProjects() {
+	try {
+		const rows = await call("hrms.api.search_employee_projects", {
+			doctype: "Project", txt: "", searchfield: "name", start: 0, page_len: 500, filters: {},
+		})
+		availableProjects.value = (rows || []).map((row) => ({ name: row[0] || row.name, label: row[1] || row[0] || row.name }))
+		favoriteProjects.value = favoriteProjects.value.map((item) => availableProjects.value.find((project) => project.name === item.name) || item)
+	} catch { availableProjects.value = [] }
+}
+
+function isFavorite(project) { return favoriteProjects.value.some((item) => item.name === project) }
+function toggleFavorite(project) {
+	if (!project) return
+	if (isFavorite(project)) favoriteProjects.value = favoriteProjects.value.filter((item) => item.name !== project)
+	else favoriteProjects.value = [{ name: project, label: project }, ...favoriteProjects.value]
+	localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteProjects.value))
+}
+function selectProject(project) { form.value.project = project; persistState() }
+function startProject(project) {
+	if (isRunning.value && form.value.project !== project) pause()
+	form.value.project = project
+	if (!isRunning.value) resume()
+}
+
+function pushCurrentSegment() {
+	if (!startTime.value) return
+	const seconds = Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+	if (seconds) segments.value.push({ from: startTime.value, to: new Date().toISOString(), seconds, ...form.value })
+	startTime.value = null
 }
 
 function start() {
@@ -187,36 +271,74 @@ function start() {
 		})
 		return
 	}
-	startTime.value = new Date().toISOString()
+	segments.value = []
 	elapsed.value = 0
+	isPaused.value = false
+	startTime.value = new Date().toISOString()
 	isRunning.value = true
 	startTick()
 	persistState()
 }
 
+function pause() {
+	if (!isRunning.value) return
+	pushCurrentSegment()
+	clearInterval(ticker)
+	ticker = null
+	isRunning.value = false
+	isPaused.value = true
+	pausedSince.value = new Date().toISOString()
+	updateElapsed()
+	persistState()
+	schedulePausedSave()
+}
+
+function schedulePausedSave() {
+	clearTimeout(pauseTimeout)
+	if (!isPaused.value || !pausedSince.value) return
+	const remaining = Math.max(0, 2 * 60 * 60 * 1000 - (Date.now() - new Date(pausedSince.value).getTime()))
+	pauseTimeout = setTimeout(() => {
+		if (isPaused.value) stop()
+	}, remaining)
+}
+
+function resume() {
+	if (!form.value.project) return start()
+	startTime.value = new Date().toISOString()
+	isRunning.value = true
+	isPaused.value = false
+	pausedSince.value = null
+	clearTimeout(pauseTimeout)
+	startTick()
+	persistState()
+}
+
 async function stop() {
-	if (!startTime.value || isSaving.value) return
+	if ((!startTime.value && !segments.value.length) || isSaving.value) return
+	if (startTime.value) pushCurrentSegment()
 	clearInterval(ticker)
 	ticker = null
 	isSaving.value = true
 
-	const fromTime = dayjs(startTime.value).format("YYYY-MM-DD HH:mm:ss")
-	const toTime = dayjs().format("YYYY-MM-DD HH:mm:ss")
-	const hours = parseFloat((elapsed.value / 3600).toFixed(4))
-
 	try {
-		const name = await call("hrms.api.save_timer_log", {
-			employee: employee.data.name,
-			from_time: fromTime,
-			to_time: toTime,
-			hours,
-			activity_type: form.value.activity_type || null,
-			project: form.value.project || null,
-			description: form.value.description || null,
-		})
+		let name = null
+		for (const segment of segments.value) {
+			name = await call("hrms.api.save_timer_log", {
+				employee: employee.data.name,
+				from_time: dayjs(segment.from).format("YYYY-MM-DD HH:mm:ss"),
+				to_time: dayjs(segment.to).format("YYYY-MM-DD HH:mm:ss"),
+				hours: parseFloat((segment.seconds / 3600).toFixed(4)),
+				activity_type: segment.activity_type || null,
+				project: segment.project || null,
+				description: segment.description || null,
+			})
+		}
 
 		clearPersistedState()
 		isRunning.value = false
+		isPaused.value = false
+		pausedSince.value = null
+		segments.value = []
 		startTime.value = null
 		elapsed.value = 0
 		form.value = { project: "", activity_type: "", description: "" }
@@ -247,12 +369,15 @@ function discard() {
 	ticker = null
 	clearPersistedState()
 	isRunning.value = false
+	isPaused.value = false
+	pausedSince.value = null
+	segments.value = []
 	startTime.value = null
 	elapsed.value = 0
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
-onMounted(() => loadPersistedState())
-onUnmounted(() => clearInterval(ticker))
+onMounted(() => { loadFavorites(); loadProjects(); loadPersistedState() })
+onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout) })
 </script>
