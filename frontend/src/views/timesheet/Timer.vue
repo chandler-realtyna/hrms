@@ -162,9 +162,11 @@ const isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([])
 const availableProjects = ref([])
+const longRunningNotified = ref(false)
 
 let ticker = null
 let pauseTimeout = null
+let longRunningTimeout = null
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 
@@ -207,6 +209,7 @@ function loadPersistedState() {
 		updateElapsed()
 		if (isRunning.value) startTick()
 		else if (isPaused.value) schedulePausedSave()
+		if (isRunning.value) scheduleLongRunningHint()
 	} catch {
 		clearPersistedState()
 	}
@@ -275,8 +278,10 @@ function start() {
 	elapsed.value = 0
 	isPaused.value = false
 	startTime.value = new Date().toISOString()
+	longRunningNotified.value = false
 	isRunning.value = true
 	startTick()
+	scheduleLongRunningHint()
 	persistState()
 }
 
@@ -285,6 +290,7 @@ function pause() {
 	pushCurrentSegment()
 	clearInterval(ticker)
 	ticker = null
+	clearTimeout(longRunningTimeout)
 	isRunning.value = false
 	isPaused.value = true
 	pausedSince.value = new Date().toISOString()
@@ -302,6 +308,20 @@ function schedulePausedSave() {
 	}, remaining)
 }
 
+function scheduleLongRunningHint() {
+	clearTimeout(longRunningTimeout)
+	if (!isRunning.value || !startTime.value || longRunningNotified.value) return
+	const remaining = Math.max(0, 2 * 60 * 60 * 1000 - (Date.now() - new Date(startTime.value).getTime()))
+	longRunningTimeout = setTimeout(async () => {
+		if (!isRunning.value || longRunningNotified.value) return
+		try {
+			await call("hrms.api.notify_long_running_timer", { employee: employee.data.name, project: form.value.project, started_at: startTime.value })
+			longRunningNotified.value = true
+			toast({ title: __("This timer has been running for over two hours. You may have forgotten to save it."), icon: "alert-circle", iconClasses: "text-amber-500" })
+		} catch { /* keep timer usable if mail is unavailable */ }
+	}, remaining)
+}
+
 function resume() {
 	if (!form.value.project) return start()
 	startTime.value = new Date().toISOString()
@@ -309,7 +329,9 @@ function resume() {
 	isPaused.value = false
 	pausedSince.value = null
 	clearTimeout(pauseTimeout)
+	clearTimeout(longRunningTimeout)
 	startTick()
+	scheduleLongRunningHint()
 	persistState()
 }
 
@@ -342,6 +364,7 @@ async function stop() {
 		startTime.value = null
 		elapsed.value = 0
 		form.value = { project: "", activity_type: "", description: "" }
+		clearTimeout(longRunningTimeout)
 
 		toast({
 			title: __("Time log saved!"),
@@ -379,5 +402,5 @@ function discard() {
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => { loadFavorites(); loadProjects(); loadPersistedState() })
-onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout) })
+onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout); clearTimeout(longRunningTimeout) })
 </script>
