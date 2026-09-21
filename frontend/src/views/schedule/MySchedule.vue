@@ -205,9 +205,14 @@ const TIMEZONES = computed(() => {
 })
 
 const timezonesResource = createResource({
-	url: "frappe.core.doctype.user.user.get_timezones",
+	url: "hrms.api.get_schedule_timezones",
 	onSuccess(data) {
 		_rawTimezones.value = data.timezones || []
+		if (!_rawTimezones.value.includes(selectedTimezone.value)) {
+			selectedTimezone.value = _rawTimezones.value.includes("America/New_York")
+				? "America/New_York"
+				: (_rawTimezones.value[0] || "America/New_York")
+		}
 	},
 })
 

@@ -31,6 +31,19 @@ SUPPORTED_FIELD_TYPES = [
 SPECIAL_TASKS_PROJECT_PREFIX = "Special Tasks for "
 
 
+def _get_employee_schedule_timezones() -> list[str]:
+	options = frappe.get_meta("Employee Schedule").get_field("timezone").options or ""
+	return [tz.strip() for tz in options.splitlines() if tz.strip()]
+
+
+def _normalize_employee_schedule_timezone(timezone: str | None) -> str:
+	timezone = (timezone or "").strip()
+	allowed_timezones = _get_employee_schedule_timezones()
+	if timezone in allowed_timezones:
+		return timezone
+	return "America/New_York"
+
+
 @frappe.whitelist()
 def get_current_user_info() -> dict:
 	from hrms.api.weekly_timesheet import is_project_manager
@@ -1444,6 +1457,11 @@ def get_my_schedule(year: str = None) -> dict:
 
 
 @frappe.whitelist()
+def get_schedule_timezones() -> dict:
+	return {"timezones": _get_employee_schedule_timezones()}
+
+
+@frappe.whitelist()
 def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 	"""
 	Upsert a Draft Employee Schedule for the current employee.
@@ -1487,7 +1505,7 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 		doc.year = year
 		doc.status = "Draft"
 
-	doc.timezone = timezone or "America/New_York"
+	doc.timezone = _normalize_employee_schedule_timezone(timezone)
 	doc.set("schedule_days", [])
 	for d in days_list:
 		doc.append(
