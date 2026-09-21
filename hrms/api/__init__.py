@@ -1629,8 +1629,10 @@ def get_team_availability(
 	schedule_map = {}
 	for row in schedule_rows:
 		doc = frappe.get_doc("Employee Schedule", row["name"], ignore_permissions=True)
+		employee_image = frappe.db.get_value("Employee", row["employee"], "image") or ""
 		schedule_map[row["employee"]] = {
 			"employee_name": row["employee_name"],
+			"image": employee_image,
 			"timezone": row["timezone"] or "America/New_York",
 			"days": {},
 		}
@@ -1744,6 +1746,7 @@ def get_team_availability(
 			{
 				"employee": emp_id,
 				"employee_name": sdata["employee_name"],
+				"image": sdata.get("image") or "",
 				"user_id": user_id,
 				"timezone": sdata["timezone"],
 				"days": emp_days,

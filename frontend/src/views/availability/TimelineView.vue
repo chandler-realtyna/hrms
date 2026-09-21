@@ -1,13 +1,13 @@
 <template>
 	<div>
 		<!-- Hour axis labels -->
-		<div class="flex mb-1 pl-28">
+		<div class="flex mb-1 pl-40">
 			<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
 				{{ formatHour(h) }}
 			</div>
 		</div>
 		<!-- Timezone label row -->
-		<div class="relative pl-28 mb-2">
+		<div class="relative pl-40 mb-2">
 			<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
 			<div
 				v-if="showNowMarker"
@@ -24,7 +24,7 @@
 		</div>
 
 		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-50' : ''">
-			<div v-if="group.label && group.employees.length" class="mb-3 pl-28 text-xs font-semibold text-gray-400">
+			<div v-if="group.label && group.employees.length" class="mb-3 pl-40 text-xs font-semibold text-gray-400">
 				{{ group.label }}
 			</div>
 
@@ -37,11 +37,17 @@
 
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
 					<!-- Name label -->
-					<div class="w-28 shrink-0 flex items-center gap-1.5 pr-2 pt-1">
-						<div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+					<div class="w-40 shrink-0 flex items-center gap-2 pr-3 pt-0.5">
+						<img
+							v-if="emp.image"
+							:src="emp.image"
+							:alt="emp.employee_name"
+							class="h-7 w-7 flex-shrink-0 rounded-full object-cover"
+						/>
+						<div v-else class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
 							{{ initials(emp.employee_name) }}
 						</div>
-						<span class="text-xs text-gray-700 font-medium truncate">{{ firstName(emp.employee_name) }}</span>
+						<span class="text-xs text-gray-700 font-medium truncate">{{ emp.employee_name }}</span>
 					</div>
 
 					<!-- Timeline bar area -->
@@ -104,7 +110,7 @@ const props = defineProps({
 const START_HOUR = 7
 const END_HOUR = 22
 const TOTAL_HOURS = END_HOUR - START_HOUR
-const LABEL_WIDTH_REM = 7
+const LABEL_WIDTH_REM = 10
 
 const visibleHours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => START_HOUR + i)
 const now = ref(new Date())
@@ -220,10 +226,6 @@ function initials(name) {
 	if (!name) return "?"
 	return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase()
 }
-function firstName(name) {
-	return name?.split(" ")[0] || ""
-}
-
 const legend = [
 	{ type: "working", color: "bg-blue-500",   label: "Working" },
 	{ type: "on_call", color: "bg-orange-400",  label: "On-Call" },
