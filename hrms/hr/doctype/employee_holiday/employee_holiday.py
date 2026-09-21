@@ -41,10 +41,10 @@ class EmployeeHoliday(Document):
 			if getdate(h.date).weekday() in (5, 6):
 				frappe.throw(_("Weekends are already holidays and cannot be selected as personal holidays."))
 
-		# When submitting enforce exactly 15
-		if self.status == "Submitted" and len(self.holidays) != 15:
+		# Employees can use the yearly allowance gradually, up to 15 days.
+		if self.status in ("Submitted", "Approved") and not (1 <= len(self.holidays) <= 15):
 			frappe.throw(
-				_("You must select exactly 15 holiday dates before submitting. Currently selected: {0}").format(
+				_("Select between 1 and 15 holiday dates. Currently selected: {0}").format(
 					len(self.holidays)
 				)
 			)
@@ -72,15 +72,23 @@ class EmployeeHoliday(Document):
 		if self.is_new():
 			return
 
-		if self.status in ("Approved", "Rejected") and not _is_hr_or_admin():
+		old_status = frappe.db.get_value("Employee Holiday", self.name, "status")
+
+		if (
+			self.status in ("Approved", "Rejected")
+			and self.status != old_status
+			and not _is_hr_or_admin()
+		):
 			frappe.throw(_("Only HR can approve or reject holiday requests."))
 
-		# Employees cannot edit a Submitted or Approved record
-		old_status = frappe.db.get_value("Employee Holiday", self.name, "status")
-		if old_status in ("Submitted", "Approved") and not _is_hr_or_admin():
+		# Employees cannot edit records while HR review is pending.
+		if old_status == "Submitted" and not _is_hr_or_admin():
 			frappe.throw(
 				_("You cannot modify a {0} holiday request.").format(old_status)
 			)
+
+		if old_status == "Approved" and self.status != "Approved" and not _is_hr_or_admin():
+			frappe.throw(_("Only HR can change an approved holiday request status."))
 
 	# ── Hooks ───────────────────────────────────────────────────────────────
 
@@ -91,10 +99,10 @@ class EmployeeHoliday(Document):
 		if self.status == "Submitted" and prev != "Submitted":
 			_notify_hr_holiday_submission(self)
 
-		elif self.status == "Approved" and prev != "Approved":
-			if not self.holiday_list:
-				self._create_holiday_list()
-			_notify_employee_holiday_approved(self)
+		elif self.status == "Approved":
+			self._create_holiday_list()
+			if prev != "Approved":
+				_notify_employee_holiday_approved(self)
 
 		elif self.status == "Rejected" and prev != "Rejected":
 			_notify_employee_holiday_rejected(self)

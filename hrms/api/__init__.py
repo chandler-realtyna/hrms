@@ -1292,30 +1292,31 @@ def save_employee_holiday_draft(year: str, dates: str) -> dict:
 
 	year = int(year)
 	dates_list = json.loads(dates) if isinstance(dates, str) else list(dates)
+	if not (1 <= len(dates_list) <= 15):
+		frappe.throw(_("Select between 1 and 15 holiday dates."))
 
 	employee = _get_employee_for_user()
 	if not employee:
 		frappe.throw(_("No active employee record found for the current user."))
 
-	# Only allowed on Draft records
 	existing_name = frappe.db.get_value(
 		"Employee Holiday",
-		{"employee": employee, "year": year, "status": "Draft"},
+		{"employee": employee, "year": year, "status": ["in", ["Draft", "Approved"]]},
 		"name",
 	)
 
 	if existing_name:
 		doc = frappe.get_doc("Employee Holiday", existing_name)
 	else:
-		# Make sure there isn't a non-Draft record already
+		# Make sure there isn't a record currently awaiting HR review.
 		non_draft = frappe.db.get_value(
 			"Employee Holiday",
-			{"employee": employee, "year": year, "status": ["not in", ["Draft", "Rejected"]]},
+			{"employee": employee, "year": year, "status": "Submitted"},
 			"name",
 		)
 		if non_draft:
 			frappe.throw(
-				_("A holiday request for {0} already exists and cannot be modified.").format(year)
+				_("A holiday request for {0} is awaiting HR review and cannot be modified.").format(year)
 			)
 
 		doc = frappe.new_doc("Employee Holiday")
@@ -1328,6 +1329,8 @@ def save_employee_holiday_draft(year: str, dates: str) -> dict:
 		doc.append("holidays", {"date": date_str, "description": "Holiday"})
 
 	doc.save(ignore_permissions=True)
+	if doc.status == "Approved":
+		doc._create_holiday_list()
 	return doc.as_dict()
 
 
@@ -1344,12 +1347,8 @@ def submit_employee_holidays(name: str) -> dict:
 	if doc.status != "Draft":
 		frappe.throw(_("Only Draft holiday requests can be submitted."))
 
-	if len(doc.holidays) != 15:
-		frappe.throw(
-			_("You must select exactly 15 holiday dates. Currently selected: {0}").format(
-				len(doc.holidays)
-			)
-		)
+	if not (1 <= len(doc.holidays) <= 15):
+		frappe.throw(_("Select between 1 and 15 holiday dates before submitting."))
 
 	doc.status = "Submitted"
 	doc.save(ignore_permissions=True)

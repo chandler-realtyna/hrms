@@ -62,7 +62,7 @@
 					</div>
 				</div>
 
-				<!-- ── Calendar (editable when Draft or no submission) ── -->
+				<!-- ── Calendar (editable when Draft, Approved, or no submission) ── -->
 				<div v-if="isEditable" class="mx-4 mt-5">
 					<!-- Month Navigation -->
 					<div class="flex items-center justify-between mb-3">
@@ -150,7 +150,7 @@
 					</p>
 				</div>
 
-				<!-- ── Read-only Date List (Submitted / Approved / Rejected) ── -->
+				<!-- ── Read-only Date List (Submitted / Rejected) ── -->
 				<div v-else class="mx-4 mt-5">
 					<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
 						{{ __("Selected Holiday Dates") }}
@@ -207,20 +207,22 @@
 				<!-- ── Action Buttons ── -->
 				<div v-if="isEditable" class="mx-4 mt-6 flex flex-col gap-3">
 					<button
-						:disabled="selectedDates.length !== 15 || submitResource.loading"
+						:disabled="!canSave || saveResource.loading || submitResource.loading"
 						:class="[
 							'w-full py-3 rounded-xl font-medium text-sm transition-colors',
-							selectedDates.length === 15
+							canSave
 								? 'bg-blue-500 text-white hover:bg-blue-600'
 								: 'bg-gray-200 text-gray-400 cursor-not-allowed',
 						]"
-						@click="submitHolidays"
+						@click="primaryAction"
 					>
-						<span v-if="submitResource.loading">{{ __("Submitting…") }}</span>
-						<span v-else-if="selectedDates.length === 15">
+						<span v-if="saveResource.loading || submitResource.loading">{{ __("Saving…") }}</span>
+						<span v-else-if="submission?.status === 'Approved'">
+							{{ __("Save holiday changes") }}
+						</span>
+						<span v-else>
 							{{ __("Submit for Approval") }}
 						</span>
-						<span v-else> {{ 15 - selectedDates.length }} {{ __("more day(s) needed") }} </span>
 					</button>
 				</div>
 			</div>
@@ -256,12 +258,13 @@ const initialized = ref(false) // true once the first API load completes
 
 // ── Derived ──────────────────────────────────────────────────────────────────
 
-// Calendar is only shown after the first load AND when the record is Draft (or doesn't exist yet)
+// Calendar is shown for new, Draft, and Approved records. Submitted records wait for HR review.
 const isEditable = computed(
-	() => initialized.value && (!submission.value || submission.value.status === "Draft")
+	() => initialized.value && (!submission.value || ["Draft", "Approved"].includes(submission.value.status))
 )
 
 const sortedSelectedDates = computed(() => [...selectedDates.value].sort())
+const canSave = computed(() => selectedDates.value.length > 0 && selectedDates.value.length <= 15)
 
 const statusStyle = computed(() => {
 	const s = submission.value?.status
@@ -279,7 +282,7 @@ const statusStyle = computed(() => {
 			text: "text-green-700",
 			icon: "check-circle",
 			label: __("Approved"),
-			sub: __("Your holiday list has been approved and created."),
+			sub: __("Your holiday list is active. You can add more days later, up to 15 total."),
 		}
 	if (s === "Rejected")
 		return {
@@ -342,7 +345,7 @@ const calendarDays = computed(() => {
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 function toggleDate(dateStr) {
-	if (submission.value && submission.value.status !== "Draft") return
+	if (submission.value && !["Draft", "Approved"].includes(submission.value.status)) return
 
 	const idx = selectedDates.value.indexOf(dateStr)
 	if (idx !== -1) {
@@ -403,27 +406,50 @@ const submitResource = createResource({
 	},
 })
 
+const saveResource = createResource({
+	url: "hrms.api.save_employee_holiday_draft",
+	onSuccess(data) {
+		submission.value = data
+		showToast(
+			data.status === "Approved"
+				? __("Holiday list updated.")
+				: __("Holiday selection saved."),
+			"success"
+		)
+	},
+	onError(err) {
+		showToast(err.message || __("Failed to save"), "danger")
+	},
+})
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-function submitHolidays() {
-	if (!submission.value?.name) {
-		// Need to save first
-		createResource({
-			url: "hrms.api.save_employee_holiday_draft",
-			onSuccess(data) {
-				submission.value = data
-				submitResource.submit({ name: data.name })
-			},
-			onError(err) {
-				showToast(err.message || __("Failed to save"), "danger")
-			},
-		}).submit({
+function primaryAction() {
+	if (!canSave.value) return
+	if (submission.value?.status === "Approved") {
+		saveResource.submit({
 			year: String(currentYear),
 			dates: JSON.stringify(selectedDates.value),
 		})
-	} else {
-		submitResource.submit({ name: submission.value.name })
+		return
 	}
+	submitHolidays()
+}
+
+function submitHolidays() {
+	createResource({
+		url: "hrms.api.save_employee_holiday_draft",
+		onSuccess(data) {
+			submission.value = data
+			submitResource.submit({ name: data.name })
+		},
+		onError(err) {
+			showToast(err.message || __("Failed to save"), "danger")
+		},
+	}).submit({
+		year: String(currentYear),
+		dates: JSON.stringify(selectedDates.value),
+	})
 }
 
 async function showToast(message, color = "primary") {
