@@ -52,6 +52,13 @@ const isHR = computed(() => {
 
 const isProjectController = computed(() => Boolean(userInfo.data?.is_project_controller))
 
+const mySchedule = createResource({
+	url: "hrms.api.get_my_schedule",
+	params: { year: String(new Date().getFullYear()) },
+	auto: true,
+})
+const hideMainScheduleLink = computed(() => mySchedule.data?.status === "Approved")
+
 const quickLinks = computed(() => {
 	const links = [
 		{
@@ -83,11 +90,15 @@ const quickLinks = computed(() => {
 			title: __("My Holidays"),
 			route: "MyHolidays",
 		},
-		{
-			icon: markRaw(ScheduleIcon),
-			title: __("My Schedule"),
-			route: "MySchedule",
-		},
+		...(!hideMainScheduleLink.value
+			? [
+					{
+						icon: markRaw(ScheduleIcon),
+						title: __("My Schedule"),
+						route: "MySchedule",
+					},
+			  ]
+			: []),
 		{
 			icon: markRaw(AvailabilityIcon),
 			title: __("Team Availability"),

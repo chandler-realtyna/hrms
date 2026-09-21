@@ -85,6 +85,26 @@
 							/>
 						</div>
 
+						<div class="flex flex-col bg-white rounded">
+							<router-link
+								:to="{ name: 'MySchedule' }"
+								class="flex flex-row items-center justify-between w-full p-4"
+							>
+								<div class="flex flex-row items-center gap-3 grow">
+									<FeatherIcon name="calendar" class="h-5 w-5 text-gray-500" />
+									<div>
+										<div class="text-base font-normal text-gray-800">
+											{{ __("My Schedule") }}
+										</div>
+										<div class="text-xs text-gray-500">
+											{{ __("View or update your working schedule") }}
+										</div>
+									</div>
+								</div>
+								<FeatherIcon name="chevron-right" class="h-5 w-5 text-gray-500" />
+							</router-link>
+						</div>
+
 						<!-- Google Calendar -->
 						<div class="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
 							<div class="flex items-center justify-between">

@@ -79,7 +79,7 @@
 <script setup>
 import { inject, markRaw, computed, ref, toRaw, watch } from "vue"
 import { useRoute } from "vue-router"
-import { FeatherIcon, Avatar } from "frappe-ui"
+import { FeatherIcon, Avatar, createResource } from "frappe-ui"
 
 import FrappeHRLogo from "@/components/icons/FrappeHRLogo.vue"
 import HomeIcon from "@/components/icons/HomeIcon.vue"
@@ -135,6 +135,12 @@ const isHR = computed(() => {
 })
 
 const isProjectManager = computed(() => Boolean(user.data?.is_project_manager))
+const mySchedule = createResource({
+	url: "hrms.api.get_my_schedule",
+	params: { year: String(new Date().getFullYear()) },
+	auto: true,
+})
+const hideMainScheduleLink = computed(() => mySchedule.data?.status === "Approved")
 
 const navItems = computed(() => {
 	const raw = [
@@ -191,7 +197,9 @@ const navItems = computed(() => {
 			path: "/dashboard/invoices",
 		},
 		{ icon: markRaw(HolidayIcon), title: "My Holidays", route: "MyHolidays", path: "/holidays" },
-		{ icon: markRaw(ScheduleIcon), title: "My Schedule", route: "MySchedule", path: "/schedule" },
+		...(!hideMainScheduleLink.value
+			? [{ icon: markRaw(ScheduleIcon), title: "My Schedule", route: "MySchedule", path: "/schedule" }]
+			: []),
 		{
 			icon: markRaw(AvailabilityIcon),
 			title: "Team Availability",
