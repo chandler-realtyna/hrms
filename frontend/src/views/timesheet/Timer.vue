@@ -41,7 +41,7 @@
 						<div v-for="project in favoriteProjects" :key="project.name" class="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
 							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
 								<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
-								<span class="truncate text-sm font-medium text-gray-800">{{ project.label || project.name }}</span>
+								<span class="truncate text-sm font-medium text-gray-800">{{ projectDisplayLabel(project) }}</span>
 							</button>
 							<div class="shrink-0 text-right leading-tight">
 								<div class="font-mono text-xs font-semibold tabular-nums text-gray-700">
@@ -75,7 +75,7 @@
 					</button>
 					<div v-if="showProjectList && availableProjects.length" class="max-h-40 overflow-y-auto rounded-lg border bg-gray-50 p-1">
 						<div v-for="project in availableProjects" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm">
-							<button class="min-w-0 flex-1 truncate text-left text-gray-700" @click="selectProject(project.name)">{{ project.label || project.name }}</button>
+							<button class="min-w-0 flex-1 truncate text-left text-gray-700" @click="selectProject(project.name)">{{ projectDisplayLabel(project) }}</button>
 							<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')">
 								<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
 							</button>
@@ -254,10 +254,18 @@ function isFavorite(project) { return favoriteProjects.value.some((item) => item
 function toggleFavorite(project) {
 	if (!project) return
 	if (isFavorite(project)) favoriteProjects.value = favoriteProjects.value.filter((item) => item.name !== project)
-	else favoriteProjects.value = [{ name: project, label: project }, ...favoriteProjects.value]
+	else favoriteProjects.value = [availableProjects.value.find((item) => item.name === project) || { name: project, label: project }, ...favoriteProjects.value]
 	localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteProjects.value))
 }
 function selectProject(project) { form.value.project = project; persistState() }
+function projectDisplayLabel(project) {
+	if (!project) return ""
+	const label = project.label || ""
+	const name = project.name || ""
+	if (!label) return name
+	if (!name || label === name || label.includes(name)) return label
+	return `${label} : ${name}`
+}
 function startProject(project) {
 	if (isRunning.value && form.value.project !== project) pause()
 	form.value.project = project
