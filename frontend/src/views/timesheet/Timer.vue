@@ -43,6 +43,14 @@
 								<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
 								<span class="truncate text-sm font-medium text-gray-800">{{ project.label || project.name }}</span>
 							</button>
+							<div class="shrink-0 text-right leading-tight">
+								<div class="font-mono text-xs font-semibold tabular-nums text-gray-700">
+									{{ projectFormattedTime(project.name) }}
+								</div>
+								<div class="text-[10px] font-medium text-gray-400">
+									{{ projectStatusLabel(project.name) }}
+								</div>
+							</div>
 							<button class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
 								{{ projectButtonLabel(project.name) }}
 							</button>
@@ -176,21 +184,7 @@ let longRunningTimeout = null
 
 const formattedTime = computed(() => {
 	// Depend on the ticker so the active project's display updates every second.
-	void elapsed.value
-	const projectSeconds = segments.value
-		.filter((segment) => segment.project === form.value.project)
-		.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
-	const currentSeconds = projectSeconds + (startTime.value
-		? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
-		: 0)
-	const h = Math.floor(currentSeconds / 3600)
-		.toString()
-		.padStart(2, "0")
-	const m = Math.floor((currentSeconds % 3600) / 60)
-		.toString()
-		.padStart(2, "0")
-	const s = (currentSeconds % 60).toString().padStart(2, "0")
-	return `${h}:${m}:${s}`
+	return formatSeconds(projectSeconds(form.value.project))
 })
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
@@ -272,6 +266,34 @@ function startProject(project) {
 function projectStatus(project) {
 	if (form.value.project !== project || (!isRunning.value && !isPaused.value)) return "idle"
 	return isRunning.value ? "running" : "paused"
+}
+function projectSeconds(project) {
+	void elapsed.value
+	const saved = segments.value
+		.filter((segment) => segment.project === project)
+		.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
+	if (form.value.project !== project || !startTime.value) return saved
+	return saved + Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+}
+function formatSeconds(totalSeconds) {
+	const h = Math.floor(totalSeconds / 3600)
+		.toString()
+		.padStart(2, "0")
+	const m = Math.floor((totalSeconds % 3600) / 60)
+		.toString()
+		.padStart(2, "0")
+	const s = (totalSeconds % 60).toString().padStart(2, "0")
+	return `${h}:${m}:${s}`
+}
+function projectFormattedTime(project) {
+	return formatSeconds(projectSeconds(project))
+}
+function projectStatusLabel(project) {
+	const status = projectStatus(project)
+	if (status === "running") return __("Recording")
+	if (status === "paused") return __("Paused")
+	if (projectSeconds(project) > 0) return __("Ready to save")
+	return __("Ready")
 }
 function projectButtonLabel(project) {
 	const status = projectStatus(project)
