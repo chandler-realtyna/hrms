@@ -1453,6 +1453,15 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 
 	year = int(year)
 	days_list = json.loads(days) if isinstance(days, str) else list(days)
+	day_type_map = {
+		"Work": "Working",
+		"working": "Working",
+		"On Call": "On-Call",
+		"On-call": "On-Call",
+		"on_call": "On-Call",
+		"Off": "Off",
+		"off": "Off",
+	}
 	employee = _get_employee_for_user()
 	if not employee:
 		frappe.throw(_("No active employee record found for the current user."))
@@ -1486,7 +1495,7 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 			{
 				"day_of_week": int(d["day_of_week"]),
 				"day_name": _DAY_NAMES[int(d["day_of_week"])],
-				"day_type": d["day_type"],
+				"day_type": day_type_map.get(d.get("day_type"), d.get("day_type") or "Working"),
 				"start_time": d.get("start_time") or None,
 				"end_time": d.get("end_time") or None,
 			},

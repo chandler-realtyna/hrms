@@ -266,16 +266,24 @@ function buildDaysPayload() {
 	const rows = []
 	for (const day of scheduleDays.value) {
 		for (const slot of day.slots) {
+			const dayType = normalizeDayType(slot.day_type)
 			rows.push({
 				day_of_week: day.day_of_week,
 				day_name: day.day_name,
-				day_type: slot.day_type,
-				start_time: slot.day_type !== "Off" ? (slot.start_time + ":00").substring(0, 8) : null,
-				end_time:   slot.day_type !== "Off" ? (slot.end_time   + ":00").substring(0, 8) : null,
+				day_type: dayType,
+				start_time: dayType !== "Off" ? (slot.start_time + ":00").substring(0, 8) : null,
+				end_time:   dayType !== "Off" ? (slot.end_time   + ":00").substring(0, 8) : null,
 			})
 		}
 	}
 	return rows
+}
+
+function normalizeDayType(value) {
+	if (value === "Work" || value === "working") return "Working"
+	if (value === "On Call" || value === "On-call" || value === "on_call") return "On-Call"
+	if (value === "off") return "Off"
+	return value || "Working"
 }
 
 function loadFromDoc(doc) {
