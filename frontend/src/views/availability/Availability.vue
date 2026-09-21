@@ -111,7 +111,7 @@ const viewerTz      = getViewerTimezone()           // IANA name  e.g. "America/
 const viewerTzLabel = getTimezoneAbbr(viewerTz)     // Short abbr e.g. "EST", "CET", "GST"
 
 // ── State ──────────────────────────────────────────────────────────────────────
-const activeView = ref("grid")   // "grid" | "timeline" | "cards"
+const activeView = ref("timeline")   // "timeline" | "grid" | "cards"
 
 // Base anchor: start-of-week (Monday) for Grid view, or a single day for Timeline/Cards
 // Store as ISO string "YYYY-MM-DD"
@@ -135,8 +135,8 @@ const weekStart = ref(getMondayOf(todayStr)) // Monday of displayed week
 const selectedDay = ref(todayStr)
 
 const views = [
-	{ key: "grid",     icon: "grid",   label: __("Grid") },
 	{ key: "timeline", icon: "clock",  label: __("Timeline") },
+	{ key: "grid",     icon: "grid",   label: __("Grid") },
 	{ key: "cards",    icon: "layout", label: __("Cards") },
 ]
 

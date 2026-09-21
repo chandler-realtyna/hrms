@@ -7,53 +7,69 @@
 			</div>
 		</div>
 		<!-- Timezone label row -->
-		<div class="pl-28 mb-2">
+		<div class="relative pl-28 mb-2">
 			<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
+			<div
+				v-if="showNowMarker"
+				class="absolute top-0 flex -translate-x-1/2 items-center gap-1"
+				:style="nowMarkerStyle"
+			>
+				<span class="h-2 w-2 rounded-full bg-red-500 shadow-sm" />
+				<span class="text-[10px] font-semibold text-red-500">{{ __("Now") }}</span>
+			</div>
 		</div>
 
 		<div v-if="activeEmployees.length === 0" class="py-12 text-center text-gray-400 text-sm">
 			{{ __("No availability data for this day.") }}
 		</div>
 
-		<div v-for="emp in activeEmployees" :key="emp.employee" class="flex items-start mb-3">
-			<!-- Name label -->
-			<div class="w-28 shrink-0 flex items-center gap-1.5 pr-2 pt-1">
-				<div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-					{{ initials(emp.employee_name) }}
+		<div class="relative">
+			<div
+				v-if="showNowMarker"
+				class="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
+				:style="nowMarkerStyle"
+			/>
+
+			<div v-for="emp in activeEmployees" :key="emp.employee" class="flex items-start mb-3">
+				<!-- Name label -->
+				<div class="w-28 shrink-0 flex items-center gap-1.5 pr-2 pt-1">
+					<div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+						{{ initials(emp.employee_name) }}
+					</div>
+					<span class="text-xs text-gray-700 font-medium truncate">{{ firstName(emp.employee_name) }}</span>
 				</div>
-				<span class="text-xs text-gray-700 font-medium truncate">{{ firstName(emp.employee_name) }}</span>
-			</div>
 
-			<!-- Timeline bar area -->
-			<div class="flex-1 relative h-8 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-				<!-- Override: leave or holiday (full-width) -->
-				<template v-if="emp.dayData?.override">
-					<div :class="[
-						'absolute inset-0 flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg',
-						emp.dayData.override === 'leave' ? 'bg-purple-400' : 'bg-green-400'
-					]">
-						<FeatherIcon :name="emp.dayData.override === 'leave' ? 'umbrella' : 'sun'" class="w-3.5 h-3.5 shrink-0" />
-						{{ emp.dayData.override === 'leave' ? __('On Leave') : __('Holiday') }}
+				<!-- Timeline bar area -->
+				<div class="flex-1 relative h-8 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+					<!-- Override: leave or holiday (full-width) -->
+					<template v-if="emp.dayData?.override">
+						<div :class="[
+							'absolute inset-0 flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg',
+							emp.dayData.override === 'leave' ? 'bg-purple-400' : 'bg-green-400'
+						]">
+							<FeatherIcon :name="emp.dayData.override === 'leave' ? 'umbrella' : 'sun'" class="w-3.5 h-3.5 shrink-0" />
+							{{ emp.dayData.override === 'leave' ? __('On Leave') : __('Holiday') }}
+						</div>
+					</template>
+
+					<!-- Slots (zero = off) -->
+					<template v-else-if="emp.dayData?.slots?.length">
+						<div
+							v-for="(slot, si) in emp.dayData.slots"
+							:key="si"
+							:style="barStyle(slot)"
+							:class="['absolute top-0 h-full flex items-center justify-center overflow-hidden', barBg(slot.type)]"
+						>
+							<span class="text-xs font-semibold text-white px-1 truncate drop-shadow-sm select-none">
+								{{ barLabel(slot) }}
+							</span>
+						</div>
+					</template>
+
+					<!-- Off all day -->
+					<div v-else class="absolute inset-0 flex items-center justify-center">
+						<span class="text-xs text-gray-300 font-medium">{{ __("Off") }}</span>
 					</div>
-				</template>
-
-				<!-- Slots (zero = off) -->
-				<template v-else-if="emp.dayData?.slots?.length">
-					<div
-						v-for="(slot, si) in emp.dayData.slots"
-						:key="si"
-						:style="barStyle(slot)"
-						:class="['absolute top-0 h-full flex items-center justify-center overflow-hidden', barBg(slot.type)]"
-					>
-						<span class="text-xs font-semibold text-white px-1 truncate drop-shadow-sm select-none">
-							{{ barLabel(slot) }}
-						</span>
-					</div>
-				</template>
-
-				<!-- Off all day -->
-				<div v-else class="absolute inset-0 flex items-center justify-center">
-					<span class="text-xs text-gray-300 font-medium">{{ __("Off") }}</span>
 				</div>
 			</div>
 		</div>
@@ -69,7 +85,7 @@
 </template>
 
 <script setup>
-import { computed, inject } from "vue"
+import { computed, inject, onBeforeUnmount, ref } from "vue"
 import { FeatherIcon } from "frappe-ui"
 const __ = inject("$translate")
 
@@ -82,8 +98,17 @@ const props = defineProps({
 const START_HOUR = 7
 const END_HOUR = 22
 const TOTAL_HOURS = END_HOUR - START_HOUR
+const LABEL_WIDTH_REM = 7
 
 const visibleHours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => START_HOUR + i)
+const now = ref(new Date())
+const nowInterval = setInterval(() => {
+	now.value = new Date()
+}, 60 * 1000)
+
+onBeforeUnmount(() => {
+	clearInterval(nowInterval)
+})
 
 const activeEmployees = computed(() =>
 	props.employees.map((emp) => ({
@@ -91,6 +116,20 @@ const activeEmployees = computed(() =>
 		dayData: emp.days?.[props.date] || null,
 	}))
 )
+
+const showNowMarker = computed(() => {
+	if (props.date !== localDateStr(now.value)) return false
+	const hour = now.value.getHours() + now.value.getMinutes() / 60
+	return hour >= START_HOUR && hour <= END_HOUR
+})
+
+const nowMarkerStyle = computed(() => {
+	const hour = now.value.getHours() + now.value.getMinutes() / 60
+	const percent = ((hour - START_HOUR) / TOTAL_HOURS) * 100
+	return {
+		left: `calc(${LABEL_WIDTH_REM}rem + ((100% - ${LABEL_WIDTH_REM}rem) * ${percent / 100}))`,
+	}
+})
 
 function barStyle(slot) {
 	if (!slot.start || !slot.end) return { left: "0%", width: "0%" }
@@ -139,6 +178,11 @@ function formatHour(h) {
 	const ampm = h >= 12 ? "PM" : "AM"
 	const h12 = h % 12 || 12
 	return `${h12}${ampm}`
+}
+
+function localDateStr(d = new Date()) {
+	const pad = n => String(n).padStart(2, "0")
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 function initials(name) {
