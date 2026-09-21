@@ -23,52 +23,58 @@
 			{{ __("No availability data for this day.") }}
 		</div>
 
-		<div class="relative">
-			<div
-				v-if="showNowMarker"
-				class="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
-				:style="nowMarkerStyle"
-			/>
+		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-50' : ''">
+			<div v-if="group.label && group.employees.length" class="mb-3 pl-28 text-xs font-semibold text-gray-400">
+				{{ group.label }}
+			</div>
 
-			<div v-for="emp in activeEmployees" :key="emp.employee" class="flex items-start mb-3">
-				<!-- Name label -->
-				<div class="w-28 shrink-0 flex items-center gap-1.5 pr-2 pt-1">
-					<div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-						{{ initials(emp.employee_name) }}
+			<div v-if="group.employees.length" class="relative">
+				<div
+					v-if="showNowMarker && !group.muted"
+					class="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
+					:style="nowMarkerStyle"
+				/>
+
+				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
+					<!-- Name label -->
+					<div class="w-28 shrink-0 flex items-center gap-1.5 pr-2 pt-1">
+						<div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+							{{ initials(emp.employee_name) }}
+						</div>
+						<span class="text-xs text-gray-700 font-medium truncate">{{ firstName(emp.employee_name) }}</span>
 					</div>
-					<span class="text-xs text-gray-700 font-medium truncate">{{ firstName(emp.employee_name) }}</span>
-				</div>
 
-				<!-- Timeline bar area -->
-				<div class="flex-1 relative h-8 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-					<!-- Override: leave or holiday (full-width) -->
-					<template v-if="emp.dayData?.override">
-						<div :class="[
-							'absolute inset-0 flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg',
-							emp.dayData.override === 'leave' ? 'bg-purple-400' : 'bg-green-400'
-						]">
-							<FeatherIcon :name="emp.dayData.override === 'leave' ? 'umbrella' : 'sun'" class="w-3.5 h-3.5 shrink-0" />
-							{{ emp.dayData.override === 'leave' ? __('On Leave') : __('Holiday') }}
+					<!-- Timeline bar area -->
+					<div class="flex-1 relative h-8 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+						<!-- Override: leave or holiday (full-width) -->
+						<template v-if="emp.dayData?.override">
+							<div :class="[
+								'absolute inset-0 flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg',
+								emp.dayData.override === 'leave' ? 'bg-purple-400' : 'bg-green-400'
+							]">
+								<FeatherIcon :name="emp.dayData.override === 'leave' ? 'umbrella' : 'sun'" class="w-3.5 h-3.5 shrink-0" />
+								{{ emp.dayData.override === 'leave' ? __('On Leave') : __('Holiday') }}
+							</div>
+						</template>
+
+						<!-- Slots (zero = off) -->
+						<template v-else-if="emp.dayData?.slots?.length">
+							<div
+								v-for="(slot, si) in emp.dayData.slots"
+								:key="si"
+								:style="barStyle(slot)"
+								:class="['absolute top-0 h-full flex items-center justify-center overflow-hidden', barBg(slot.type)]"
+							>
+								<span class="text-xs font-semibold text-white px-1 truncate drop-shadow-sm select-none">
+									{{ barLabel(slot) }}
+								</span>
+							</div>
+						</template>
+
+						<!-- Off all day -->
+						<div v-else class="absolute inset-0 flex items-center justify-center">
+							<span class="text-xs text-gray-300 font-medium">{{ __("Off") }}</span>
 						</div>
-					</template>
-
-					<!-- Slots (zero = off) -->
-					<template v-else-if="emp.dayData?.slots?.length">
-						<div
-							v-for="(slot, si) in emp.dayData.slots"
-							:key="si"
-							:style="barStyle(slot)"
-							:class="['absolute top-0 h-full flex items-center justify-center overflow-hidden', barBg(slot.type)]"
-						>
-							<span class="text-xs font-semibold text-white px-1 truncate drop-shadow-sm select-none">
-								{{ barLabel(slot) }}
-							</span>
-						</div>
-					</template>
-
-					<!-- Off all day -->
-					<div v-else class="absolute inset-0 flex items-center justify-center">
-						<span class="text-xs text-gray-300 font-medium">{{ __("Off") }}</span>
 					</div>
 				</div>
 			</div>
@@ -117,19 +123,44 @@ const activeEmployees = computed(() =>
 	}))
 )
 
+const currentHour = computed(() => now.value.getHours() + now.value.getMinutes() / 60)
+
+const employeeGroups = computed(() => {
+	if (!showNowMarker.value) {
+		return [{ key: "all", label: "", muted: false, employees: activeEmployees.value }]
+	}
+	const activeNow = []
+	const inactiveNow = []
+	for (const emp of activeEmployees.value) {
+		if (isEmployeeActiveNow(emp)) activeNow.push(emp)
+		else inactiveNow.push(emp)
+	}
+	return [
+		{ key: "active-now", label: "", muted: false, employees: activeNow },
+		{ key: "inactive-now", label: __("Not active now"), muted: true, employees: inactiveNow },
+	]
+})
+
 const showNowMarker = computed(() => {
 	if (props.date !== localDateStr(now.value)) return false
-	const hour = now.value.getHours() + now.value.getMinutes() / 60
-	return hour >= START_HOUR && hour <= END_HOUR
+	return currentHour.value >= START_HOUR && currentHour.value <= END_HOUR
 })
 
 const nowMarkerStyle = computed(() => {
-	const hour = now.value.getHours() + now.value.getMinutes() / 60
-	const percent = ((hour - START_HOUR) / TOTAL_HOURS) * 100
+	const percent = ((currentHour.value - START_HOUR) / TOTAL_HOURS) * 100
 	return {
 		left: `calc(${LABEL_WIDTH_REM}rem + ((100% - ${LABEL_WIDTH_REM}rem) * ${percent / 100}))`,
 	}
 })
+
+function isEmployeeActiveNow(emp) {
+	if (emp.dayData?.override) return false
+	return (emp.dayData?.slots || []).some((slot) => {
+		if (!["working", "on_call"].includes(slot.type)) return false
+		if (!slot.start || !slot.end) return false
+		return timeToDecH(slot.start) <= currentHour.value && currentHour.value < timeToDecH(slot.end)
+	})
+}
 
 function barStyle(slot) {
 	if (!slot.start || !slot.end) return { left: "0%", width: "0%" }
