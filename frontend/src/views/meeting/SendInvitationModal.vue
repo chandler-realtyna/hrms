@@ -14,7 +14,7 @@
 
 			<!-- Slot summary -->
 			<div class="bg-blue-50 rounded-xl p-3 mb-5 text-sm">
-				<p class="font-medium text-blue-900">{{ slot?.date }} · {{ slot?.start }} – {{ slot?.end }} UTC</p>
+				<p class="font-medium text-blue-900">{{ localSlotLabel }}</p>
 				<p class="text-blue-600 mt-1">{{ participants.length }} {{ __("participants") }}</p>
 			</div>
 
@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from "vue"
+import { ref, watch, computed } from "vue"
 import { FeatherIcon, toast, call } from "frappe-ui"
 import { inject } from "vue"
 
@@ -90,6 +90,36 @@ const description = ref("")
 const sending = ref(false)
 const error = ref("")
 
+// Show the slot in the viewer's local timezone (backend sends UTC).
+const localSlotLabel = computed(() => {
+	try {
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+		const fmt = (iso) => new Date(iso).toLocaleString("en-US", {
+			timeZone: tz,
+			weekday: "short",
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: false,
+		})
+		if (props.slot?.start_utc && props.slot?.end_utc) {
+			return `${fmt(props.slot.start_utc)} – ${fmt(props.slot.end_utc)}`
+		}
+		return `${props.slot?.date || ""} · ${props.slot?.start || ""} – ${props.slot?.end || ""}`
+	} catch {
+		return `${props.slot?.date || ""} · ${props.slot?.start || ""} – ${props.slot?.end || ""}`
+	}
+})
+
+// Backend expects "YYYY-MM-DD HH:MM:SS" in UTC. Derive it from start_utc so
+// midnight-crossing timezones don't shift the meeting.
+function utcToNaive(iso) {
+	const d = new Date(iso)
+	const p = (n) => String(n).padStart(2, "0")
+	return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:00`
+}
+
 watch(() => props.modelValue, (v) => {
 	if (v) {
 		title.value = ""
@@ -103,10 +133,13 @@ async function send() {
 	sending.value = true
 	error.value = ""
 	try {
+		// Prefer absolute UTC times; fall back to legacy date+start for old results.
+		const start = props.slot?.start_utc ? utcToNaive(props.slot.start_utc) : `${props.slot.date} ${props.slot.start}:00`
+		const end = props.slot?.end_utc ? utcToNaive(props.slot.end_utc) : `${props.slot.date} ${props.slot.end}:00`
 		await call("hrms.api.calendar.send_meeting_invitation", {
 			employees: JSON.stringify(props.participants),
-			start: `${props.slot.date} ${props.slot.start}:00`,
-			end: `${props.slot.date} ${props.slot.end}:00`,
+			start,
+			end,
 			title: title.value.trim(),
 			description: description.value.trim(),
 		})

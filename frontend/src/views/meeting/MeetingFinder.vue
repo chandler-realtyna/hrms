@@ -107,6 +107,7 @@
 								v-model="fromDate"
 								type="date"
 								:min="today"
+								@change="validateRange"
 								class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
 							/>
 						</div>
@@ -116,10 +117,12 @@
 								v-model="toDate"
 								type="date"
 								:min="fromDate || today"
+								@change="validateRange"
 								class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
 							/>
 						</div>
 					</div>
+					<p v-if="rangeError" class="text-xs text-amber-600">{{ rangeError }}</p>
 				</div>
 
 				<div>
@@ -234,9 +237,25 @@ onMounted(() => {
 	}
 })
 const employeeSearch = ref("")
-const today = new Date().toISOString().split("T")[0]
+// Use local date (not UTC ISO) so the default range matches the user's day.
+function localISODate(d = new Date()) {
+	const y = d.getFullYear()
+	const m = String(d.getMonth() + 1).padStart(2, "0")
+	const day = String(d.getDate()).padStart(2, "0")
+	return `${y}-${m}-${day}`
+}
+function addDaysISO(iso, days) {
+	const d = new Date(iso + "T12:00:00")
+	d.setDate(d.getDate() + days)
+	return localISODate(d)
+}
+const today = localISODate()
 const fromDate = ref(today)
-const toDate = ref(today)
+// Default to a 7-day window: a single-day default (especially "today") hides
+// most valid times because past slots are filtered out.
+const toDate = ref(addDaysISO(today, 7))
+const MAX_RANGE_DAYS = 31
+const rangeError = ref("")
 const slots = ref([])
 const searching = ref(false)
 const searched = ref(false)
@@ -312,8 +331,24 @@ const canSearch = computed(() =>
 	selectedEmployees.value.length >= 2 &&
 	selectedDuration.value &&
 	fromDate.value &&
-	toDate.value
+	toDate.value &&
+	!rangeError.value
 )
+
+function validateRange() {
+	rangeError.value = ""
+	if (!fromDate.value || !toDate.value) return
+	if (toDate.value < fromDate.value) {
+		rangeError.value = __("End date must be on or after start date.")
+		return
+	}
+	const days = Math.round(
+		(new Date(toDate.value + "T12:00:00") - new Date(fromDate.value + "T12:00:00")) / 86400000
+	) + 1
+	if (days > MAX_RANGE_DAYS) {
+		rangeError.value = __("Date range is limited to 31 days for speed. Showing the first 31 days.")
+	}
+}
 
 function addEmployee(emp) {
 	selectedEmployees.value.push(emp)
@@ -325,6 +360,11 @@ function removeEmployee(id) {
 }
 
 async function findSlots() {
+	validateRange()
+	if (rangeError.value && toDate.value < fromDate.value) {
+		searched.value = true
+		return
+	}
 	searching.value = true
 	searched.value = false
 	slots.value = []

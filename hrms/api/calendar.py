@@ -65,10 +65,25 @@ def _parse_hhmm(time_str) -> _dt.time | None:
 	if not time_str:
 		return None
 	try:
+		# Frappe Time fields come back as timedelta ("9:00:00"), time, or string.
+		if isinstance(time_str, _dt.timedelta):
+			total_secs = int(time_str.total_seconds())
+			return _dt.time(total_secs // 3600, (total_secs % 3600) // 60)
+		if isinstance(time_str, _dt.time):
+			return _dt.time(time_str.hour, time_str.minute)
 		parts = str(time_str).split(":")
 		return _dt.time(int(parts[0]), int(parts[1]))
 	except Exception:
 		return None
+
+
+# Granularity for offered start times. Stepping by the meeting duration hides
+# valid starts (e.g. a 60-min meeting at 09:30 when free 09:00-11:00), so we
+# always offer quarter-hour starts and only require the duration to fit.
+SLOT_STEP_MINUTES = 15
+# Guardrails so a wide date range stays fast and smooth in the UI.
+MAX_FINDER_DAYS = 31
+MAX_FINDER_SLOTS = 200
 
 
 def _minutes(t: _dt.time) -> int:
@@ -129,18 +144,23 @@ def _is_on_leave(employee: str, date: _dt.date) -> bool:
 
 def _is_personal_holiday(employee: str, date: _dt.date) -> bool:
 	date_str = str(date)
-	holiday_records = frappe.db.get_all(
+	parents = frappe.db.get_all(
 		"Employee Holiday",
 		filters={"employee": employee, "status": "Approved"},
-		fields=["name"],
-		limit=50,
+		pluck="name",
 	)
-	for rec in holiday_records:
-		hol_doc = frappe.get_doc("Employee Holiday", rec["name"])
-		for h in hol_doc.holidays:
-			if str(h.date)[:10] == date_str:
-				return True
-	return False
+	if not parents:
+		return False
+	# Query the child table directly — loading every holiday doc with get_doc
+	# per employee per day is the main DB bottleneck in the finder.
+	return bool(
+		frappe.db.get_all(
+			"Employee Holiday Date",
+			filters={"parent": ["in", parents], "date": date_str},
+			fields=["name"],
+			limit=1,
+		)
+	)
 
 
 def _compute_free_slots(
@@ -148,30 +168,21 @@ def _compute_free_slots(
 	busy_intervals: list[tuple[int, int]],
 	duration_min: int,
 	slot_tz: str = "America/New_York",
+	step_min: int = SLOT_STEP_MINUTES,
 ) -> list[dict]:
 	"""
 	Given working slots (list of {start: time, end: time}) and busy_intervals
 	(list of (start_minutes, end_minutes)), return a list of free {start, end}
 	"HH:MM" dicts that fit duration_min minutes.
+
+	Free windows are computed continuously first, then sliced with a
+	quarter-hour step so every valid start time is offered (not just a
+	duration-aligned grid).
 	"""
-	free = []
-	for slot in working_slots:
-		cursor = _minutes(slot["start"])
-		end = _minutes(slot["end"])
-		# Sort busy intervals and walk through them
-		sorted_busy = sorted(busy_intervals)
-		for b_start, b_end in sorted_busy:
-			if b_end <= cursor or b_start >= end:
-				continue
-			# Free time before this busy block
-			if b_start > cursor and b_start - cursor >= duration_min:
-				free.append((cursor, b_start))
-			cursor = max(cursor, b_end)
-		# Remaining free time after all busy blocks
-		if end - cursor >= duration_min:
-			free.append((cursor, end))
+	free = _free_windows(working_slots, busy_intervals)
 
 	result = []
+	step = max(1, min(int(step_min or SLOT_STEP_MINUTES), int(duration_min)))
 	for free_start, free_end in free:
 		slot_cursor = free_start
 		while slot_cursor + duration_min <= free_end:
@@ -179,8 +190,55 @@ def _compute_free_slots(
 				"start": _time_from_minutes(slot_cursor).strftime("%H:%M"),
 				"end": _time_from_minutes(slot_cursor + duration_min).strftime("%H:%M"),
 			})
-			slot_cursor += duration_min
+			slot_cursor += step
 	return result
+
+
+def _free_windows(
+	working_slots: list[dict],
+	busy_intervals: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+	"""Continuous free (start_min, end_min) windows = working minus busy."""
+	free: list[tuple[int, int]] = []
+	for slot in working_slots:
+		cursor = _minutes(slot["start"])
+		end = _minutes(slot["end"])
+		if end <= cursor:
+			continue
+		for b_start, b_end in sorted(busy_intervals):
+			if b_end <= cursor or b_start >= end:
+				continue
+			if b_start > cursor:
+				free.append((cursor, min(b_start, end)))
+			cursor = max(cursor, b_end)
+			if cursor >= end:
+				break
+		if cursor < end:
+			free.append((cursor, end))
+	return free
+
+
+def _get_busy_times_range(
+	google_calendar_name: str,
+	start_utc: _dt.datetime,
+	end_utc: _dt.datetime,
+) -> list[dict]:
+	"""Single freebusy query for a whole range (one Google call per employee)."""
+	try:
+		from frappe.integrations.doctype.google_calendar.google_calendar import (
+			get_google_calendar_object,
+		)
+
+		google_service, account = get_google_calendar_object(google_calendar_name)
+		body = {
+			"timeMin": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+			"timeMax": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+			"items": [{"id": "primary"}],
+		}
+		result = google_service.freebusy().query(body=body).execute()
+		return result.get("calendars", {}).get("primary", {}).get("busy", [])
+	except Exception:
+		return []
 
 
 def _get_existing_bookings_for_date(employee: str, date: _dt.date) -> list[tuple[int, int]]:
@@ -534,108 +592,336 @@ def find_meeting_slots(
 ) -> list[dict]:
 	"""
 	Find overlapping free windows across all specified employees.
-	Returns list of {date, start, end} dicts (times in each employee's local timezone
-	converted to a common UTC reference for comparison).
+	Returns list of {date, start, end, start_utc, end_utc} dicts with UTC times.
+
+	Fast path: one batched DB fetch per data type + one Google freebusy call
+	per employee for the whole range (old code did per-employee-per-day
+	Google calls + per-day get_doc loads). Correct path: intersect continuous
+	UTC free windows first, then slice with a 15-min step (old code sliced
+	per-employee on duration grids then intersected, which hid valid times).
 	"""
 	if isinstance(employees, str):
 		import json
 		employees = json.loads(employees)
 
-	duration_minutes = int(duration_minutes)
+	employees = [e for e in (employees or []) if e]
+	if not employees:
+		return []
+	# De-dupe while keeping order
+	employees = list(dict.fromkeys(employees))
+
+	try:
+		duration_minutes = int(duration_minutes)
+	except Exception:
+		frappe.throw(_("Invalid duration"))
+	if duration_minutes < 5 or duration_minutes > 480:
+		frappe.throw(_("Duration must be between 5 and 480 minutes"))
+
 	start_date = frappe.utils.getdate(from_date)
 	end_date = frappe.utils.getdate(to_date)
+	if not start_date or not end_date:
+		return []
+	if end_date < start_date:
+		start_date, end_date = end_date, start_date
+	# Cap range so the UI stays fast and smooth
+	total_days = (end_date - start_date).days + 1
+	if total_days > MAX_FINDER_DAYS:
+		end_date = start_date + _dt.timedelta(days=MAX_FINDER_DAYS - 1)
 
-	# Pre-fetch Google Calendar names for each employee
-	gcal_map: dict[str, str | None] = {}
+	site_tz_str = frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+
+	# ── Batched pre-fetch (one query per data type, not per day) ──
+	emp_rows = frappe.db.get_all(
+		"Employee", filters={"name": ["in", employees]}, fields=["name", "user_id"]
+	)
+	emp_user = {r["name"]: r.get("user_id") for r in emp_rows}
+	user_ids = [u for u in emp_user.values() if u]
+
+	gcal_map: dict[str, str | None] = {emp: None for emp in employees}
+	if user_ids:
+		gcal_rows = frappe.db.get_all(
+			"Google Calendar",
+			filters={"user": ["in", user_ids]},
+			fields=["name", "user", "refresh_token"],
+		)
+		user_gcal = {r["user"]: r["name"] for r in gcal_rows if r.get("refresh_token")}
+		for emp in employees:
+			uid = emp_user.get(emp)
+			gcal_map[emp] = user_gcal.get(uid) if uid else None
+
+	sched_rows = frappe.db.get_all(
+		"Employee Schedule",
+		filters={"employee": ["in", employees], "status": "Approved"},
+		fields=["name", "employee", "timezone"],
+	)
+	sched_name_by_emp = {r["employee"]: r["name"] for r in sched_rows}
+	sched_tz_by_emp = {r["employee"]: r.get("timezone") or site_tz_str for r in sched_rows}
+	days_by_emp: dict[str, dict[int, list]] = {emp: {} for emp in employees}
+	if sched_name_by_emp:
+		day_rows = frappe.db.get_all(
+			"Employee Schedule Day",
+			filters={"parent": ["in", list(sched_name_by_emp.values())]},
+			fields=["parent", "day_of_week", "day_type", "start_time", "end_time"],
+		)
+		parent_to_emp = {v: k for k, v in sched_name_by_emp.items()}
+		for dr in day_rows:
+			emp = parent_to_emp.get(dr["parent"])
+			if not emp:
+				continue
+			try:
+				dow = int(dr["day_of_week"])
+			except Exception:
+				continue
+			if (dr.get("day_type") or "").lower() != "working":
+				continue
+			s_t = _parse_hhmm(dr.get("start_time"))
+			e_t = _parse_hhmm(dr.get("end_time"))
+			if not s_t or not e_t:
+				continue
+			days_by_emp[emp].setdefault(dow, []).append((s_t, e_t))
+
+	# Leaves in range → set of date-str per employee
+	leave_set: dict[str, set[str]] = {emp: set() for emp in employees}
+	leave_rows = frappe.db.get_all(
+		"Leave Application",
+		filters={
+			"employee": ["in", employees],
+			"status": "Approved",
+			"from_date": ["<=", str(end_date)],
+			"to_date": [">=", str(start_date)],
+		},
+		fields=["employee", "from_date", "to_date"],
+	)
+	for lv in leave_rows:
+		try:
+			cur = frappe.utils.getdate(lv["from_date"])
+			lv_end = frappe.utils.getdate(lv["to_date"])
+		except Exception:
+			continue
+		while cur <= lv_end:
+			if start_date <= cur <= end_date:
+				leave_set.get(lv["employee"], set()).add(str(cur))
+			cur += _dt.timedelta(days=1)
+
+	# Personal holidays in range → set of date-str per employee
+	holiday_set: dict[str, set[str]] = {emp: set() for emp in employees}
+	hol_parents = frappe.db.get_all(
+		"Employee Holiday",
+		filters={"employee": ["in", employees], "status": "Approved"},
+		fields=["name", "employee"],
+	)
+	if hol_parents:
+		parent_to_emp_h = {r["name"]: r["employee"] for r in hol_parents}
+		date_rows = frappe.db.get_all(
+			"Employee Holiday Date",
+			filters={
+				"parent": ["in", list(parent_to_emp_h.keys())],
+				"date": ["between", [str(start_date), str(end_date)]],
+			},
+			fields=["parent", "date"],
+		)
+		for dr in date_rows:
+			emp = parent_to_emp_h.get(dr["parent"])
+			if emp:
+				try:
+					holiday_set[emp].add(str(frappe.utils.getdate(dr["date"])))
+				except Exception:
+					holiday_set[emp].add(str(dr["date"])[:10])
+
+	# Existing bookings for the whole range (fallback when no Google Calendar)
+	bookings_by_emp: dict[str, list[tuple]] = {emp: [] for emp in employees}
+	booking_rows = frappe.db.get_all(
+		"Meeting Booking",
+		filters=[
+			["host_employee", "in", employees],
+			["status", "=", "Confirmed"],
+			["start_datetime", ">=", f"{start_date} 00:00:00"],
+			["start_datetime", "<=", f"{end_date} 23:59:59"],
+		],
+		fields=["host_employee", "start_datetime", "end_datetime"],
+	)
+	for b in booking_rows:
+		try:
+			st = get_datetime(b["start_datetime"])
+			en = get_datetime(b["end_datetime"])
+			if st.tzinfo is None:
+				st = pytz.utc.localize(st)
+			if en.tzinfo is None:
+				en = pytz.utc.localize(en)
+			bookings_by_emp.setdefault(b["host_employee"], []).append((st, en))
+		except Exception:
+			continue
+
+	# Google busy for the whole range: ONE call per employee (not per day)
+	google_busy_by_emp: dict[str, list[tuple]] = {emp: [] for emp in employees}
 	for emp in employees:
-		user_id = frappe.db.get_value("Employee", emp, "user_id")
-		gcal_map[emp] = _get_google_calendar_for_user(user_id) if user_id else None
+		gcal_name = gcal_map.get(emp)
+		if not gcal_name:
+			continue
+		tz_str = sched_tz_by_emp.get(emp, site_tz_str)
+		try:
+			emp_tz = pytz.timezone(tz_str)
+		except Exception:
+			emp_tz = pytz.utc
+		range_start_utc = emp_tz.localize(
+			_dt.datetime(start_date.year, start_date.month, start_date.day, 0, 0)
+		).astimezone(pytz.utc)
+		range_end_utc = emp_tz.localize(
+			_dt.datetime(end_date.year, end_date.month, end_date.day, 0, 0)
+		).astimezone(pytz.utc) + _dt.timedelta(days=1)
+		raw = _get_busy_times_range(gcal_name, range_start_utc, range_end_utc)
+		intervals = []
+		for b in raw:
+			try:
+				bs = _dt.datetime.fromisoformat(b["start"].replace("Z", "+00:00"))
+				be = _dt.datetime.fromisoformat(b["end"].replace("Z", "+00:00"))
+				intervals.append((bs, be))
+			except Exception:
+				continue
+		google_busy_by_emp[emp] = sorted(intervals)
 
 	now_utc = _dt.datetime.now(pytz.utc)
-	results = []
+	step = max(1, min(SLOT_STEP_MINUTES, duration_minutes))
+	results: list[dict] = []
+
 	d = start_date
-	while d <= end_date:
-		# Build free-window list per employee (in minutes-of-day, UTC-normalized)
-		per_employee_free: list[list[tuple[int, int]]] = []
+	while d <= end_date and len(results) < MAX_FINDER_SLOTS:
+		per_employee_free: list[list[tuple]] = []
 		valid = True
-
 		for emp in employees:
-			if _is_on_leave(emp, d) or _is_personal_holiday(emp, d):
+			d_str = str(d)
+			if d_str in leave_set.get(emp, set()) or d_str in holiday_set.get(emp, set()):
 				valid = False
 				break
-
-			working_slots = _get_employee_schedule_for_date(emp, d)
-			if not working_slots:
-				valid = False
-				break
-
-			emp_tz_str = working_slots[0].get("timezone", "America/New_York")
+			dow = d.weekday()
+			tz_str = sched_tz_by_emp.get(emp, site_tz_str)
 			try:
-				emp_tz = pytz.timezone(emp_tz_str)
+				emp_tz = pytz.timezone(tz_str)
 			except Exception:
 				emp_tz = pytz.utc
+				tz_str = "UTC"
 
-			# Convert working slots to UTC minutes for intersection
-			busy: list[tuple[int, int]] = []
-			if gcal_map[emp]:
-				# Google Calendar freebusy is real-time — cancelled events are freed
-				# automatically, so it's the authoritative source when connected.
-				busy.extend(_google_busy_as_intervals(gcal_map[emp], d, emp_tz_str))
-			else:
-				busy.extend(_get_existing_bookings_for_date(emp, d))
+			day_slots = days_by_emp.get(emp, {}).get(dow)
+			if day_slots is None:
+				# No approved schedule → default Mon–Fri 9–17 in site tz
+				if not sched_name_by_emp.get(emp):
+					if dow >= 5:
+						valid = False
+						break
+					try:
+						site_tz = pytz.timezone(site_tz_str)
+					except Exception:
+						site_tz = pytz.utc
+					emp_tz = site_tz
+					day_slots = [(_dt.time(9, 0), _dt.time(17, 0))]
+				else:
+					valid = False
+					break
+			if not day_slots:
+				valid = False
+				break
 
-			free_slots = _compute_free_slots(working_slots, busy, duration_minutes)
-
-			# Convert HH:MM strings to UTC minute-of-day for intersection
-			utc_free: list[tuple[int, int]] = []
-			for fs in free_slots:
+			# Working windows as absolute UTC intervals
+			working_utc: list[tuple] = []
+			for s_t, e_t in day_slots:
 				try:
-					start_local = emp_tz.localize(
-						_dt.datetime(d.year, d.month, d.day,
-						*[int(x) for x in fs["start"].split(":")])
-					)
-					end_local = emp_tz.localize(
-						_dt.datetime(d.year, d.month, d.day,
-						*[int(x) for x in fs["end"].split(":")])
-					)
-					s_utc = start_local.astimezone(pytz.utc)
-					e_utc = end_local.astimezone(pytz.utc)
-					utc_free.append((_dt_to_minutes(s_utc), _dt_to_minutes(e_utc)))
+					s_local = emp_tz.localize(_dt.datetime(d.year, d.month, d.day, s_t.hour, s_t.minute))
+					e_local = emp_tz.localize(_dt.datetime(d.year, d.month, d.day, e_t.hour, e_t.minute))
+					if e_local <= s_local:
+						e_local += _dt.timedelta(days=1)
+					working_utc.append((s_local.astimezone(pytz.utc), e_local.astimezone(pytz.utc)))
 				except Exception:
-					pass
+					continue
+			if not working_utc:
+				valid = False
+				break
 
-			per_employee_free.append(utc_free)
+			busy_utc = list(google_busy_by_emp.get(emp) or [])
+			if not gcal_map.get(emp):
+				busy_utc = list(bookings_by_emp.get(emp) or [])
+
+			free_utc = _subtract_utc_windows(working_utc, busy_utc)
+			if not free_utc:
+				valid = False
+				break
+			per_employee_free.append(sorted(free_utc))
 
 		if not valid or not per_employee_free:
 			d += _dt.timedelta(days=1)
 			continue
 
-		# Intersect all employees' free windows
-		intersection = per_employee_free[0]
+		# Intersect continuous free windows across everyone, then slice.
+		common = per_employee_free[0]
 		for other in per_employee_free[1:]:
-			intersection = _intersect_intervals(intersection, other)
-
-		# Build slots from intersected windows, skipping ones already past
-		for (win_start, win_end) in intersection:
-			cursor = win_start
-			while cursor + duration_minutes <= win_end:
-				slot_start_utc = _dt.datetime(d.year, d.month, d.day, tzinfo=pytz.utc) + _dt.timedelta(minutes=cursor)
-				if slot_start_utc < now_utc:
-					cursor += duration_minutes
-					continue
-				slot_end_utc = slot_start_utc + _dt.timedelta(minutes=duration_minutes)
-				results.append({
-					"date": str(d),
-					"start_utc": slot_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-					"end_utc": slot_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-					"start": slot_start_utc.strftime("%H:%M"),
-					"end": slot_end_utc.strftime("%H:%M"),
-				})
-				cursor += duration_minutes
+			common = _intersect_utc_windows(common, other)
+			if not common:
+				break
+		if common:
+			for win_start, win_end in sorted(common):
+				cursor = win_start
+				while cursor + _dt.timedelta(minutes=duration_minutes) <= win_end:
+					slot_end = cursor + _dt.timedelta(minutes=duration_minutes)
+					if cursor < now_utc:
+						cursor += _dt.timedelta(minutes=step)
+						continue
+					results.append({
+						"date": str(d),
+						"start_utc": cursor.strftime("%Y-%m-%dT%H:%M:%SZ"),
+						"end_utc": slot_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+						"start": cursor.strftime("%H:%M"),
+						"end": slot_end.strftime("%H:%M"),
+					})
+					if len(results) >= MAX_FINDER_SLOTS:
+						break
+					cursor += _dt.timedelta(minutes=step)
+				if len(results) >= MAX_FINDER_SLOTS:
+					break
 
 		d += _dt.timedelta(days=1)
 
 	return results
+
+
+def _subtract_utc_windows(
+	working: list[tuple[_dt.datetime, _dt.datetime]],
+	busy: list[tuple[_dt.datetime, _dt.datetime]],
+) -> list[tuple[_dt.datetime, _dt.datetime]]:
+	"""Working minus busy, all as aware UTC datetimes."""
+	free: list[tuple[_dt.datetime, _dt.datetime]] = []
+	for w_start, w_end in sorted(working):
+		cursor = w_start
+		for b_start, b_end in sorted(busy):
+			if b_end <= cursor or b_start >= w_end:
+				continue
+			if b_start > cursor:
+				free.append((cursor, min(b_start, w_end)))
+			cursor = max(cursor, b_end)
+			if cursor >= w_end:
+				break
+		if cursor < w_end:
+			free.append((cursor, w_end))
+	return free
+
+
+def _intersect_utc_windows(
+	a: list[tuple[_dt.datetime, _dt.datetime]],
+	b: list[tuple[_dt.datetime, _dt.datetime]],
+) -> list[tuple[_dt.datetime, _dt.datetime]]:
+	"""Intersection of two sorted lists of UTC (start, end) windows."""
+	out: list[tuple[_dt.datetime, _dt.datetime]] = []
+	i = j = 0
+	a = sorted(a)
+	b = sorted(b)
+	while i < len(a) and j < len(b):
+		lo = max(a[i][0], b[j][0])
+		hi = min(a[i][1], b[j][1])
+		if lo < hi:
+			out.append((lo, hi))
+		if a[i][1] < b[j][1]:
+			i += 1
+		else:
+			j += 1
+	return out
 
 
 def _dt_to_minutes(dt: _dt.datetime) -> int:
