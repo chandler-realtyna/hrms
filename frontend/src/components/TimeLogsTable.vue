@@ -13,7 +13,7 @@
 				<div class="flex flex-col gap-1 grow min-w-0">
 					<div class="flex items-center justify-between gap-3">
 						<span class="text-sm font-semibold text-gray-800 truncate">
-							{{ log.project }}
+							{{ projectDisplayName(log.project) }}
 						</span>
 						<span class="text-sm font-semibold text-blue-600 whitespace-nowrap">
 							{{ formatDuration(log.hours) }}
@@ -145,9 +145,9 @@
 </template>
 
 <script setup>
-import { computed, inject, ref } from "vue"
+import { computed, inject, onMounted, ref } from "vue"
 import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton } from "@ionic/vue"
-import { FeatherIcon, Button } from "frappe-ui"
+import { FeatherIcon, Button, call } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 
 const __ = inject("$translate")
@@ -165,6 +165,35 @@ const showModal = ref(false)
 const currentLog = ref({})
 const editIndex = ref(null)
 const formError = ref("")
+const projectLabels = ref({})
+
+async function loadProjectLabels() {
+	try {
+		const rows = await call("hrms.api.search_employee_projects", {
+			doctype: "Project",
+			txt: "",
+			searchfield: "name",
+			start: 0,
+			page_len: 500,
+			filters: {},
+		})
+		const map = {}
+		for (const row of rows || []) {
+			const name = row[0] || row.name
+			const label = row[1] || row[0] || row.name
+			if (!name) continue
+			map[name] =
+				!label || label === name || label.includes(name) ? label || name : `${label} : ${name}`
+		}
+		projectLabels.value = map
+	} catch {
+		// fall back to project codes
+	}
+}
+
+function projectDisplayName(code) {
+	return projectLabels.value[code] || code || ""
+}
 const isWeekly = computed(() => Boolean(props.weekStart))
 const sortedLogs = computed(() =>
 	[...(props.timesheet.time_logs || [])].sort((a, b) =>
@@ -173,6 +202,8 @@ const sortedLogs = computed(() =>
 )
 
 const pad = (value) => String(value).padStart(2, "0")
+
+onMounted(loadProjectLabels)
 function localDateStr(date) {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
