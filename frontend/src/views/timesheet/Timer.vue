@@ -26,9 +26,20 @@
 					>
 						<span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
 						{{ __("Recording…") }}
+						<span v-if="activeProjectLabel" class="text-gray-300">·</span>
+						<span
+							v-if="activeProjectLabel"
+							class="max-w-[240px] truncate font-semibold text-gray-800"
+						>
+							{{ activeProjectLabel }}
+						</span>
 					</div>
-					<div v-else-if="elapsed > 0" class="mt-3 text-sm text-gray-400">
-						{{ __("Stopped") }}
+					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
+						<span>{{ __("Stopped") }}</span>
+						<span v-if="activeProjectLabel" class="text-gray-300">·</span>
+						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600">
+							{{ activeProjectLabel }}
+						</span>
 					</div>
 					<div v-else class="mt-3 text-sm text-gray-400">
 						{{ __("Press Start to begin tracking") }}
@@ -185,6 +196,16 @@ let longRunningTimeout = null
 const formattedTime = computed(() => {
 	// Depend on the ticker so the active project's display updates every second.
 	return formatSeconds(projectSeconds(form.value.project))
+})
+
+const activeProjectLabel = computed(() => {
+	const name = form.value.project
+	if (!name) return ""
+	const found =
+		availableProjects.value.find((item) => item.name === name) ||
+		favoriteProjects.value.find((item) => item.name === name)
+	if (found) return projectDisplayLabel(found)
+	return name
 })
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
