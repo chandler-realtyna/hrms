@@ -1650,6 +1650,16 @@ def get_team_availability(
 
 	employee_ids = [r["employee"] for r in schedule_rows]
 
+	# Company per employee (one batched query) so clients can filter by company
+	emp_company = {}
+	for er in frappe.db.get_all(
+		"Employee",
+		filters={"name": ["in", employee_ids]},
+		fields=["name", "company"],
+		ignore_permissions=True,
+	):
+		emp_company[er["name"]] = er.get("company") or ""
+
 	# Build schedule map: employee_id → {tz, name, days: {0..6 → [{type, start, end}]}}
 	# Multiple slots per day_of_week are supported.
 	schedule_map = {}
@@ -1774,6 +1784,7 @@ def get_team_availability(
 				"employee_name": sdata["employee_name"],
 				"image": sdata.get("image") or "",
 				"user_id": user_id,
+				"company": emp_company.get(emp_id, ""),
 				"timezone": sdata["timezone"],
 				"days": emp_days,
 			}
