@@ -283,15 +283,6 @@ const filteredEmployees = computed(() => {
 	return rows.filter((r) => (r.company || "") === effectiveCompany.value)
 })
 
-// Keep selection to people present in the loaded data
-watch(
-	() => availResource.data,
-	(rows) => {
-		const ids = new Set((rows || []).map((r) => r.employee))
-		selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
-	}
-)
-
 const finderEmployees = computed(() => {
 	const byId = new Map((availResource.data || []).map((r) => [r.employee, r]))
 	return selectedIds.value
@@ -382,6 +373,16 @@ function loadData() {
 }
 
 watch([activeView, weekStart, selectedDay, viewerTz], loadData)
+
+// Keep selection to people present in the loaded data.
+// NOTE: this must stay after availResource is defined — the watcher reads it.
+watch(
+	() => availResource.data,
+	(rows) => {
+		const ids = new Set((rows || []).map((r) => r.employee))
+		selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
+	}
+)
 
 async function refresh(event) {
 	loadData()
