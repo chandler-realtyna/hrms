@@ -69,20 +69,69 @@
 					v-if="activeView === 'grid'"
 					:dates="gridDates"
 					:employees="availResource.data || []"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
 				<TimelineView
 					v-else-if="activeView === 'timeline'"
 					:date="selectedDay"
 					:employees="availResource.data || []"
 					:viewerTzLabel="viewerTzLabel"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
 				<StatusCards
 					v-else
 					:date="selectedDay"
 					:employees="availResource.data || []"
 					:viewerTzLabel="viewerTzLabel"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
 			</div>
+
+			<!-- Selection action bar -->
+			<div
+				v-if="selectedIds.length"
+				class="mx-4 mb-4 p-3 bg-white border rounded-2xl shadow-sm flex items-center gap-3"
+			>
+				<span class="text-xs font-semibold text-gray-700 whitespace-nowrap">
+					{{ selectedIds.length }} {{ __("selected") }}
+				</span>
+				<button
+					class="grow bg-blue-600 active:bg-blue-700 text-white text-sm font-semibold rounded-xl py-2.5 px-3 flex items-center justify-center gap-2"
+					@click="showFinder = true"
+				>
+					<FeatherIcon name="calendar" class="w-4 h-4" />
+					{{ __("Find meeting time") }}
+				</button>
+				<button
+					class="text-xs font-medium text-gray-400 px-1"
+					@click="selectedIds = []"
+				>
+					{{ __("Clear") }}
+				</button>
+			</div>
+
+			<!-- Meeting finder popup -->
+			<ion-modal :is-open="showFinder" @did-dismiss="showFinder = false">
+				<ion-header>
+					<ion-toolbar>
+						<ion-title>{{ __("Meeting Finder") }}</ion-title>
+						<ion-buttons slot="end">
+							<ion-button @click="showFinder = false">{{ __("Done") }}</ion-button>
+						</ion-buttons>
+					</ion-toolbar>
+				</ion-header>
+				<ion-content>
+					<MeetingFinderPanel
+						v-if="showFinder"
+						:initialEmployees="finderEmployees"
+						:initialFromDate="selectedDay"
+						:initialToDate="finderEndDate"
+					/>
+				</ion-content>
+			</ion-modal>
 
 			<ion-refresher slot="fixed" @ionRefresh="refresh($event)">
 				<ion-refresher-content />
@@ -97,11 +146,13 @@ import { FeatherIcon } from "frappe-ui"
 import {
 	IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton,
 	IonContent, IonSpinner, IonRefresher, IonRefresherContent,
+	IonModal, IonButton,
 } from "@ionic/vue"
 import { createResource } from "frappe-ui"
 import GridView     from "./GridView.vue"
 import TimelineView from "./TimelineView.vue"
 import StatusCards  from "./StatusCards.vue"
+import MeetingFinderPanel from "@/views/meeting/MeetingFinderPanel.vue"
 import { getViewerTimezone, getTimezoneAbbr } from "@/utils/timezone.js"
 
 const __ = inject("$translate")
@@ -133,6 +184,38 @@ function getMondayOf(dateStr) {
 
 const weekStart = ref(getMondayOf(todayStr)) // Monday of displayed week
 const selectedDay = ref(todayStr)
+
+// ── People selection for the meeting finder ────────────────────────────────
+const selectedIds = ref([]) // employee names
+const showFinder = ref(false)
+
+function toggleSelect(employeeId) {
+	if (!employeeId) return
+	const idx = selectedIds.value.indexOf(employeeId)
+	if (idx === -1) selectedIds.value.push(employeeId)
+	else selectedIds.value.splice(idx, 1)
+}
+
+// Keep selection to people present in the loaded data
+watch(
+	() => availResource.data,
+	(rows) => {
+		const ids = new Set((rows || []).map((r) => r.employee))
+		selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
+	}
+)
+
+const finderEmployees = computed(() => {
+	const byId = new Map((availResource.data || []).map((r) => [r.employee, r]))
+	return selectedIds.value
+		.filter((id) => byId.has(id))
+		.map((id) => {
+			const r = byId.get(id)
+			return { name: id, employee_name: r.employee_name || id, designation: r.designation || "" }
+		})
+})
+
+const finderEndDate = computed(() => addDays(selectedDay.value, 7))
 
 const views = [
 	{ key: "timeline", icon: "clock",  label: __("Timeline") },

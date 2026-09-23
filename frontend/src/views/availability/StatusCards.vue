@@ -29,9 +29,23 @@
 					:key="entry.employee + '-' + entry.slot?.type"
 					class="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5"
 				>
-					<div :class="['w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0', group.avatarBg]">
-						{{ initials(entry.employee_name) }}
-					</div>
+					<button
+						type="button"
+						class="relative flex-shrink-0 rounded-full focus:outline-none"
+						:class="isSelected(entry.employee) ? 'ring-2 ring-blue-500 ring-offset-1' : ''"
+						@click="$emit('toggleSelect', entry.employee)"
+						:aria-label="__('Select person')"
+					>
+						<div :class="['w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center', group.avatarBg]">
+							{{ initials(entry.employee_name) }}
+						</div>
+						<span
+							v-if="isSelected(entry.employee)"
+							class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 ring-2 ring-white"
+						>
+							<FeatherIcon name="check" class="h-2.5 w-2.5 text-white" />
+						</span>
+					</button>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-semibold text-gray-800 truncate">{{ entry.employee_name }}</p>
 						<!-- Slot hours -->
@@ -58,7 +72,14 @@ const props = defineProps({
 	date:          { type: String, required: true },
 	employees:     { type: Array,  required: true },
 	viewerTzLabel: { type: String, default: "your timezone" },
+	selectedIds:   { type: Array,  default: () => [] },
 })
+
+const emit = defineEmits(["toggleSelect"])
+
+function isSelected(employeeId) {
+	return (props.selectedIds || []).includes(employeeId)
+}
 
 // Enrich each employee with their day data
 const enriched = computed(() =>

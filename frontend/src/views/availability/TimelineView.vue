@@ -38,15 +38,29 @@
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
 					<!-- Name label -->
 					<div class="w-40 shrink-0 flex items-center gap-2 pr-3 pt-0.5">
-						<img
-							v-if="emp.image"
-							:src="emp.image"
-							:alt="emp.employee_name"
-							class="h-7 w-7 flex-shrink-0 rounded-full object-cover"
-						/>
-						<div v-else class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-							{{ initials(emp.employee_name) }}
-						</div>
+						<button
+							type="button"
+							class="relative flex-shrink-0 rounded-full focus:outline-none"
+							:class="isSelected(emp.employee) ? 'ring-2 ring-blue-500 ring-offset-1' : ''"
+							@click="$emit('toggleSelect', emp.employee)"
+							:aria-label="__('Select person')"
+						>
+							<img
+								v-if="emp.image"
+								:src="emp.image"
+								:alt="emp.employee_name"
+								class="h-7 w-7 rounded-full object-cover"
+							/>
+							<div v-else class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">
+								{{ initials(emp.employee_name) }}
+							</div>
+							<span
+								v-if="isSelected(emp.employee)"
+								class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 ring-2 ring-white"
+							>
+								<FeatherIcon name="check" class="h-2.5 w-2.5 text-white" />
+							</span>
+						</button>
 						<span class="text-xs text-gray-700 font-medium truncate">{{ emp.employee_name }}</span>
 					</div>
 
@@ -105,7 +119,14 @@ const props = defineProps({
 	date:          { type: String, required: true },
 	employees:     { type: Array,  required: true },
 	viewerTzLabel: { type: String, default: "your timezone" },
+	selectedIds:   { type: Array,  default: () => [] },
 })
+
+const emit = defineEmits(["toggleSelect"])
+
+function isSelected(employeeId) {
+	return (props.selectedIds || []).includes(employeeId)
+}
 
 const START_HOUR = 7
 const END_HOUR = 22
