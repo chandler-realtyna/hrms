@@ -26,18 +26,18 @@
 					>
 						<span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
 						{{ __("Recording…") }}
-						<span v-if="activeProjectLabel" class="text-gray-300">·</span>
+						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
 						<span
 							v-if="activeProjectLabel"
-							class="max-w-[240px] truncate font-semibold text-gray-800"
+							class="max-w-[240px] truncate font-semibold text-gray-800 dark:text-gray-100"
 						>
 							{{ activeProjectLabel }}
 						</span>
 					</div>
 					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
 						<span>{{ __("Stopped") }}</span>
-						<span v-if="activeProjectLabel" class="text-gray-300">·</span>
-						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600">
+						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
+						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600 dark:text-gray-300">
 							{{ activeProjectLabel }}
 						</span>
 					</div>
