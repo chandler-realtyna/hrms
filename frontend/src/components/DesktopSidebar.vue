@@ -177,6 +177,12 @@ const navItems = computed(() => {
 			route: "MeetingFinder",
 			path: "/meeting",
 		},
+		{
+			icon: markRaw(AvailabilityIcon),
+			title: "Team Availability",
+			route: "Availability",
+			path: "/availability",
+		},
 		{ type: "section", label: "HR" },
 		{
 			icon: markRaw(LeaveIcon),
@@ -200,12 +206,6 @@ const navItems = computed(() => {
 		...(!hideMainScheduleLink.value
 			? [{ icon: markRaw(ScheduleIcon), title: "My Schedule", route: "MySchedule", path: "/schedule" }]
 			: []),
-		{
-			icon: markRaw(AvailabilityIcon),
-			title: "Team Availability",
-			route: "Availability",
-			path: "/availability",
-		},
 		{ icon: markRaw(DocsIcon), title: "Documents", route: "Docs", path: "/docs" },
 		...(isHR.value
 			? [
