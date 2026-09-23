@@ -28,20 +28,9 @@
 					>
 						<span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
 						{{ __("Recording…") }}
-						<span v-if="form.project" class="text-gray-300">·</span>
-						<span
-							v-if="form.project"
-							class="max-w-[240px] truncate font-semibold text-gray-800"
-						>
-							{{ form.project }}
-						</span>
 					</div>
-					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
-						<span>{{ __("Stopped") }}</span>
-						<span v-if="form.project" class="text-gray-300">·</span>
-						<span v-if="form.project" class="max-w-[240px] truncate font-medium text-gray-600">
-							{{ form.project }}
-						</span>
+					<div v-else-if="elapsed > 0" class="mt-3 text-sm text-gray-400">
+						{{ __("Stopped") }}
 					</div>
 					<div v-else class="mt-3 text-sm text-gray-400">
 						{{ __("Press Start to begin tracking") }}
