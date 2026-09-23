@@ -139,29 +139,32 @@
 			</ion-refresher>
 		</ion-content>
 
-		<!-- Meeting finder popup -->
-		<ion-modal
-			:is-open="showFinder"
-			class="ion-disable-focus-trap"
-			@did-dismiss="showFinder = false"
+		<!-- Meeting finder popup (plain overlay: bulletproof, no modal machinery) -->
+		<div
+			v-if="showFinder"
+			class="fixed inset-0 z-50 flex flex-col bg-gray-50"
 		>
-			<ion-header>
-				<ion-toolbar>
-					<ion-title>{{ __("Meeting Finder") }}</ion-title>
-					<ion-buttons slot="end">
-						<ion-button @click="showFinder = false">{{ __("Done") }}</ion-button>
-					</ion-buttons>
-				</ion-toolbar>
-			</ion-header>
-			<ion-content>
+			<div class="flex items-center gap-2 bg-white border-b px-3 py-4 shrink-0">
+				<div class="min-w-0 grow text-center">
+					<h1 class="text-lg font-semibold text-gray-900">{{ __("Meeting Finder") }}</h1>
+				</div>
+				<button
+					type="button"
+					class="text-sm font-semibold text-blue-600 px-2 py-1 shrink-0"
+					@click="showFinder = false"
+				>
+					{{ __("Done") }}
+				</button>
+			</div>
+			<div class="grow overflow-y-auto">
 				<MeetingFinderPanel
 					:key="finderKey"
 					:initialEmployees="finderEmployees"
 					:initialFromDate="selectedDay"
 					:initialToDate="finderEndDate"
 				/>
-			</ion-content>
-		</ion-modal>
+			</div>
+		</div>
 	</ion-page>
 </template>
 
@@ -171,7 +174,6 @@ import { FeatherIcon } from "frappe-ui"
 import {
 	IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonButton,
 	IonContent, IonSpinner, IonRefresher, IonRefresherContent,
-	IonModal,
 } from "@ionic/vue"
 import { createResource } from "frappe-ui"
 import GridView     from "./GridView.vue"
