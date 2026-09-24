@@ -423,6 +423,10 @@ function resume() {
 async function stop() {
 	if ((!startTime.value && !segments.value.length) || isSaving.value) return
 	if (startTime.value) pushCurrentSegment()
+	// Persist the pushed state BEFORE saving: if the save fails and the page
+	// is refreshed, the timer must resume exactly here (retryable), not revert
+	// to the pre-stop state (which would double-count on the next stop).
+	persistState()
 	clearInterval(ticker)
 	ticker = null
 	isSaving.value = true

@@ -684,11 +684,30 @@ def _validate_time_rows(doc):
 			frappe.throw(_("Row {0}: End time must be after start time.").format(row.idx))
 		if to_time > week_end_exclusive:
 			frappe.throw(_("Row {0}: End time must be inside the selected week.").format(row.idx))
-		intervals.append((from_time, to_time, row.idx))
+		intervals.append((from_time, to_time, row.idx, row.project or ""))
 
-	for previous, current in zip(sorted(intervals), sorted(intervals)[1:]):
+	conflicts = []
+	ordered = sorted(intervals)
+	for previous, current in zip(ordered, ordered[1:]):
 		if current[0] < previous[1]:
-			frappe.throw(_("Time entries cannot overlap: rows {0} and {1}.").format(previous[2], current[2]))
+			conflicts.append((previous, current))
+	if conflicts:
+		parts = []
+		for (from_1, to_1, idx_1, proj_1), (from_2, to_2, idx_2, proj_2) in conflicts[:3]:
+			parts.append(
+				_("{0} {1}–{2} with {3} {4}–{5} (rows {6} and {7})").format(
+					proj_1 or _("entry"),
+					from_1.strftime("%H:%M"),
+					to_1.strftime("%H:%M"),
+					proj_2 or _("entry"),
+					from_2.strftime("%H:%M"),
+					to_2.strftime("%H:%M"),
+					idx_1,
+					idx_2,
+				)
+			)
+		extra = "" if len(conflicts) <= 3 else _(" (and {0} more)").format(len(conflicts) - 3)
+		frappe.throw(_("Time entries cannot overlap: {0}.{1}").format("; ".join(parts), extra))
 
 
 def prepare_weekly_document(doc):

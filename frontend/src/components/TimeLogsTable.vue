@@ -1,14 +1,36 @@
 <template>
 	<div class="flex flex-col gap-3 mt-2">
 		<div
-			v-if="timesheet.time_logs?.length"
-			class="flex flex-col bg-white rounded-xl border overflow-hidden"
+			v-if="overlapPairs.length"
+			class="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
 		>
+			<p class="font-semibold mb-1">{{ __("Overlapping entries — saving is blocked until fixed:") }}</p>
+			<p v-for="(pair, i) in overlapPairs.slice(0, 3)" :key="i" class="truncate">
+				{{ describeLog(pair[0]) }} {{ __("overlaps") }} {{ describeLog(pair[1]) }}
+			</p>
+			<p v-if="overlapPairs.length > 3" class="text-red-500">
+				{{ __("+ {0} more", [overlapPairs.length - 3]) }}
+			</p>
+		</div>
+		<template v-for="group in logsByDate" :key="group.date">
+			<div class="flex items-baseline justify-between px-1 pt-1">
+				<span class="text-xs font-semibold text-gray-500">{{ group.date || __("Undated") }}</span>
+				<span class="text-xs font-semibold text-gray-700 tabular-nums">
+					{{ __("Total : {0}", [formatDuration(group.totalMinutes / 60)]) }}
+				</span>
+			</div>
 			<div
-				v-for="(log, idx) in sortedLogs"
+				v-if="group.logs.length"
+				class="flex flex-col bg-white rounded-xl border overflow-hidden"
+			>
+			<div
+				v-for="(log, idx) in group.logs"
 				:key="log.name || `${log.from_time}-${idx}`"
 				class="flex items-start justify-between p-3.5"
-				:class="idx !== sortedLogs.length - 1 && 'border-b'"
+				:class="[
+					idx !== group.logs.length - 1 && 'border-b',
+					conflictKeys.has(logKey(log)) && 'bg-red-50/60 ring-1 ring-inset ring-red-300',
+				]"
 			>
 				<div class="flex flex-col gap-1 grow min-w-0">
 					<div class="flex items-center justify-between gap-3">
@@ -45,6 +67,7 @@
 				</div>
 			</div>
 		</div>
+		</template>
 
 		<button
 			v-if="!isReadOnly"
@@ -201,6 +224,61 @@ const sortedLogs = computed(() =>
 	)
 )
 
+// ── Overlap detection (same strict rule as the server: touching endpoints OK)
+function logKey(log) {
+	return `${log.from_time || ""}|${log.to_time || ""}|${log.project || ""}`
+}
+
+function intervalsOverlap(aFrom, aTo, bFrom, bTo) {
+	if (!aFrom || !aTo || !bFrom || !bTo) return false
+	return aFrom < bTo && bFrom < aTo
+}
+
+const overlapPairs = computed(() => {
+	const pairs = []
+	const logs = sortedLogs.value
+	for (let i = 0; i + 1 < logs.length; i++) {
+		const a = logs[i]
+		const b = logs[i + 1]
+		if (intervalsOverlap(a.from_time, a.to_time, b.from_time, b.to_time)) {
+			pairs.push([a, b])
+		}
+	}
+	return pairs
+})
+
+const conflictKeys = computed(() => {
+	const set = new Set()
+	for (const [a, b] of overlapPairs.value) {
+		set.add(logKey(a))
+		set.add(logKey(b))
+	}
+	return set
+})
+
+function describeLog(log) {
+	const t = `${String(log.from_time || "").substring(11, 16)}–${String(log.to_time || "").substring(11, 16)}`
+	return `${projectDisplayName(log.project)} ${t}`
+}
+
+// ── Grouping by day with per-day totals ─────────────────────────────────────
+const logsByDate = computed(() => {
+	const groups = []
+	const byDate = new Map()
+	for (const log of sortedLogs.value) {
+		const date = String(log.from_time || "").substring(0, 10)
+		if (!byDate.has(date)) {
+			const group = { date, logs: [], totalMinutes: 0 }
+			byDate.set(date, group)
+			groups.push(group)
+		}
+		const group = byDate.get(date)
+		group.logs.push(log)
+		group.totalMinutes += Math.round(Number(log.hours || 0) * 60)
+	}
+	return groups
+})
+
 const pad = (value) => String(value).padStart(2, "0")
 
 onMounted(loadProjectLabels)
@@ -289,6 +367,18 @@ function saveLog() {
 		from_time: `${date} ${startTime}:00`,
 		to_time: addMinutes(date, startTime, minutes),
 		is_billable: currentLog.value.is_billable || 0,
+	}
+
+	// Block overlaps at creation time (same rule as the server) and name the
+	// conflicting entry so the user can fix it instead of failing the save.
+	const clash = (props.timesheet.time_logs || []).find(
+		(other) =>
+			(!currentLog.value.name || other.name !== currentLog.value.name) &&
+			intervalsOverlap(log.from_time, log.to_time, other.from_time, other.to_time)
+	)
+	if (clash) {
+		formError.value = __("This entry overlaps {0}.", [describeLog(clash)])
+		return
 	}
 
 	if (editIndex.value !== null) emit("updateLog", log, editIndex.value)

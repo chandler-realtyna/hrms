@@ -64,7 +64,7 @@
 			</div>
 
 			<!-- Filters: company + timezone -->
-			<div v-if="!availResource.loading" class="mx-4 mt-3 flex gap-2">
+			<div v-if="!availResource.loading" class="mx-4 mt-3 flex gap-2 flex-wrap">
 				<select
 					v-model="companyFilter"
 					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -78,6 +78,17 @@
 					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
 					:aria-label="__('Timezone')"
 				>
+					<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+						{{ tz.label }}
+					</option>
+				</select>
+				<select
+					v-model="compareTz"
+					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+					:aria-label="__('Compare timezone')"
+					:title="__('Second timeline axis')"
+				>
+					<option value="">{{ __("No second axis") }}</option>
 					<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
 						{{ tz.label }}
 					</option>
@@ -97,7 +108,10 @@
 					v-else-if="activeView === 'timeline'"
 					:date="selectedDay"
 					:employees="filteredEmployees"
+					:viewerTz="viewerTz"
 					:viewerTzLabel="viewerTzLabel"
+					:compareTz="compareTz"
+					:compareTzLabel="compareTzLabel"
 					:selectedIds="selectedIds"
 					@toggleSelect="toggleSelect"
 				/>
@@ -222,6 +236,13 @@ const timezoneOptions = computed(() => {
 		: [viewerTz.value, ...BASE_TIMEZONES]
 	return zones.map((zone) => ({ value: zone, label: `${getTimezoneAbbr(zone)} · ${zone}` }))
 })
+
+// Second timeline axis (compare zone). Defaults to US Eastern unless the
+// viewer is already there (then UTC). Never persisted: refresh resets it.
+const compareTz = ref(
+	defaultViewerTz === "America/New_York" ? "UTC" : "America/New_York"
+)
+const compareTzLabel = computed(() => getTimezoneAbbr(compareTz.value))
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const activeView = ref("timeline")   // "timeline" | "grid" | "cards"
