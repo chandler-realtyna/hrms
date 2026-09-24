@@ -175,13 +175,13 @@ log "lock acquired"
 # ------------------------------------------------------- 6. prepare release -
 SHORT="$(printf '%s' "$TARGET" | cut -c1-7)"
 rssh "mkdir -p '$RELEASES_DIR' '$REMOTE_DIR/deploy' '$REMOTE_DIR/$HISTORY_DIR' '$REMOTE_DIR/$LOG_DIR'"
-REL_EXISTS="$(rssh "git -C '$RELEASES_DIR/$TARGET' rev-parse HEAD 2>/dev/null" || true)"
+REL_EXISTS="$(rssh "git -C '$RELEASES_DIR/$TARGET' rev-parse HEAD 2>/dev/null || cat '$RELEASES_DIR/$TARGET/.release-sha' 2>/dev/null" || true)"
 if [ "$REL_EXISTS" != "$TARGET" ]; then
-	log "fetching release $TARGET"
-	rssh "rm -rf '$RELEASES_DIR/$TARGET' && git init -q '$RELEASES_DIR/$TARGET' && git -C '$RELEASES_DIR/$TARGET' remote add origin https://github.com/chandler-realtyna/hrms.git 2>/dev/null; git -C '$RELEASES_DIR/$TARGET' fetch -q --depth 1 origin '$TARGET' && git -C '$RELEASES_DIR/$TARGET' checkout -q FETCH_HEAD" \
-		|| fail "cannot fetch target commit from origin"
+	log "fetching release $TARGET (exact-SHA tarball)"
+	rssh "rm -rf '$RELEASES_DIR/$TARGET' && mkdir -p '$RELEASES_DIR/$TARGET' && curl -sL --retry 5 --retry-all-errors --max-time 300 'https://github.com/chandler-realtyna/hrms/archive/$TARGET.tar.gz' -o /tmp/release-$TARGET.tgz && EXPECT=\$(tar tzf /tmp/release-$TARGET.tgz 2>/dev/null | grep -vc '/\$') && tar xzf /tmp/release-$TARGET.tgz -C '$RELEASES_DIR/$TARGET' --strip-components=1 && GOT=\$(find '$RELEASES_DIR/$TARGET' -type f | wc -l) && rm -f /tmp/release-$TARGET.tgz && [ \"\$GOT\" -ge \"\$((EXPECT * 95 / 100))\" ] && printf '%s' '$TARGET' > '$RELEASES_DIR/$TARGET/.release-sha'" \
+		|| fail "cannot fetch a COMPLETE target commit tarball from origin (flaky download?)"
 fi
-rssh "git -C '$RELEASES_DIR/$TARGET' rev-parse HEAD | grep -q '^$TARGET' \
+rssh "grep -qx '$TARGET' '$RELEASES_DIR/$TARGET/.release-sha' \
 	&& test -f '$RELEASES_DIR/$TARGET/hrms/hooks.py' \
 	&& test -f '$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'" \
 	|| fail "release $TARGET failed verification"
