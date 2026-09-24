@@ -80,6 +80,7 @@ def _parse_hhmm(time_str) -> _dt.time | None:
 # Granularity for offered start times. Stepping by the meeting duration hides
 # valid starts (e.g. a 60-min meeting at 09:30 when free 09:00-11:00), so we
 # always offer quarter-hour starts and only require the duration to fit.
+# (Deploy-system backend-path canary: this comment exercises release mounts.)
 SLOT_STEP_MINUTES = 15
 # Guardrails so a wide date range stays fast and smooth in the UI.
 MAX_FINDER_DAYS = 31
