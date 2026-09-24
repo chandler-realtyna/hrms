@@ -335,9 +335,11 @@ FINISH_EPOCH="$(date +%s)"
 DUR=$(( FINISH_EPOCH - START_EPOCH ))
 NOW_UTC="$(python3 -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 STARTED_UTC="$(python3 -c 'import datetime; print(datetime.datetime.fromtimestamp('"$START_EPOCH"', datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
-NEW_STATE="$(python3 -c 'import json; print(json.dumps({"active_sha":"'"$TARGET"'","prev_sha":"'"$ACTIVE_SHA"'","class":"'"$CLASS"'","reason":'"$(printf '%s' "$REASON" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"'","time_utc":"'"$NOW_UTC"'","image_tag":"'"$NEW_TAG"'","backup":"'"$BACKUP_ID"'","migrate":"'"$MIGRATE_RESULT"'","health":"ok","mode":"mount","deploy_id":"'"$DEPLOY_ID"'"}))')"
+# Pre-escape once: json.dumps already includes the surrounding quotes.
+REASON_JSON="$(printf '%s' "$REASON" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+NEW_STATE="$(python3 -c 'import json; print(json.dumps({"active_sha":"'"$TARGET"'","prev_sha":"'"$ACTIVE_SHA"'","class":"'"$CLASS"'","reason":'"$REASON_JSON"',"time_utc":"'"$NOW_UTC"'","image_tag":"'"$NEW_TAG"'","backup":"'"$BACKUP_ID"'","migrate":"'"$MIGRATE_RESULT"'","health":"ok","mode":"mount","deploy_id":"'"$DEPLOY_ID"'"}))')"
 rssh "printf '%s' '$NEW_STATE' > '$REMOTE_DIR/$STATE_FILE.tmp' && mv '$REMOTE_DIR/$STATE_FILE.tmp' '$REMOTE_DIR/$STATE_FILE'"
-REPORT="$(python3 -c 'import json,time; print(json.dumps({"deploy_id":"'"$DEPLOY_ID"'","target_sha":"'"$TARGET"'","previous_sha":"'"$ACTIVE_SHA"'","class":"'"$CLASS"'","reason":'"$(printf '%s' "$REASON" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"'","started_utc":"'"$STARTED_UTC"'","finished_utc":"'"$NOW_UTC"'","operations":"'"$OPS"'","backup_id":"'"$BACKUP_ID"'","migration_result":"'"$MIGRATE_RESULT"'","health_result":"ok","rollback_actions":"none","final_sha":"'"$TARGET"'","duration_s":'"$DUR"'}))')"
+REPORT="$(python3 -c 'import json,time; print(json.dumps({"deploy_id":"'"$DEPLOY_ID"'","target_sha":"'"$TARGET"'","previous_sha":"'"$ACTIVE_SHA"'","class":"'"$CLASS"'","reason":$(printf '%s' "$REASON" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),"started_utc":"'"$STARTED_UTC"'","finished_utc":"'"$NOW_UTC"'","operations":"'"$OPS"'","backup_id":"'"$BACKUP_ID"'","migration_result":"'"$MIGRATE_RESULT"'","health_result":"ok","rollback_actions":"none","final_sha":"'"$TARGET"'","duration_s":'"$DUR"'}))')"
 rssh "printf '%s\n' '$REPORT' >> '$REMOTE_DIR/$HISTORY_DIR/deploys.jsonl'; tail -n 30 '$REMOTE_DIR/$HISTORY_DIR/deploys.jsonl' > '$REMOTE_DIR/$HISTORY_DIR/tmp' && mv '$REMOTE_DIR/$HISTORY_DIR/tmp' '$REMOTE_DIR/$HISTORY_DIR/deploys.jsonl'"
 log "state advanced → $TARGET"
 
