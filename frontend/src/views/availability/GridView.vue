@@ -35,9 +35,23 @@
 			>
 				<!-- Name cell -->
 				<div class="px-3 py-3 border-r border-gray-100 flex items-center gap-2 min-w-0">
-					<div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-						{{ initials(emp.employee_name) }}
-					</div>
+					<button
+						type="button"
+						class="relative flex-shrink-0 rounded-full focus:outline-none"
+						:class="isSelected(emp.employee) ? 'ring-2 ring-blue-500 ring-offset-1' : ''"
+						@click="$emit('toggleSelect', emp.employee)"
+						:aria-label="__('Select person')"
+					>
+						<div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">
+							{{ initials(emp.employee_name) }}
+						</div>
+						<span
+							v-if="isSelected(emp.employee)"
+							class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 ring-2 ring-white"
+						>
+							<FeatherIcon name="check" class="h-2.5 w-2.5 text-white" />
+						</span>
+					</button>
 					<span class="text-xs font-medium text-gray-800 truncate">{{ emp.employee_name }}</span>
 				</div>
 
@@ -88,7 +102,14 @@ const __ = inject("$translate")
 const props = defineProps({
 	dates: { type: Array, required: true },
 	employees: { type: Array, required: true },
+	selectedIds: { type: Array, default: () => [] },
 })
+
+const emit = defineEmits(["toggleSelect"])
+
+function isSelected(employeeId) {
+	return (props.selectedIds || []).includes(employeeId)
+}
 
 function slotClass(type) {
 	switch (type) {
@@ -109,6 +130,7 @@ function slotCellLabel(slot) {
 function shortTime(t) {
 	if (!t) return ""
 	const [h, m] = t.split(":").map(Number)
+	if (h >= 24) return "12am"
 	const ampm = h >= 12 ? "pm" : "am"
 	const h12 = h % 12 || 12
 	return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`

@@ -156,6 +156,77 @@ const autosaveState = ref("idle")
 const hasUnsavedChanges = ref(false)
 const hasEverSaved = ref(false)
 
+// ── Local draft (survives refresh when a save fails) ─────────────────────────
+// The server is the source of truth; the draft only ever restores content that
+// is strictly newer than the last confirmed server state.
+function draftKey() {
+	const emp = timesheet.value?.employee || ""
+	const week = timesheet.value?.custom_week_start || route.query.week_start || ""
+	if (!emp || !week) return ""
+	return `hrms_weekly_draft_${emp}_${week}`
+}
+const lastServerModified = ref("")
+
+function persistDraft() {
+	try {
+		const key = draftKey()
+		if (!key || !hasUnsavedChanges.value) return
+		localStorage.setItem(
+			key,
+			JSON.stringify({
+				at: new Date().toISOString(),
+				baseModified: lastServerModified.value,
+				payload: timesheet.value,
+			})
+		)
+	} catch {
+		// storage full/blocked: server remains source of truth
+	}
+}
+
+function clearPersistedDraft() {
+	try {
+		const key = draftKey()
+		if (key) localStorage.removeItem(key)
+	} catch {}
+}
+
+function restoreDraftIfNewer() {
+	try {
+		const key = draftKey()
+		if (!key) return false
+		const raw = localStorage.getItem(key)
+		if (!raw) return false
+		const draft = JSON.parse(raw)
+		if (!draft?.payload || draft.baseModified !== timesheet.value?.modified) {
+			localStorage.removeItem(key)
+			return false
+		}
+		if (!draft.payload?.time_logs?.length && !draft.payload?.note) return false
+		timesheet.value = draft.payload
+		hasUnsavedChanges.value = true
+		recalculate()
+		toast({
+			title: __("Restored unsaved changes"),
+			text: __("Your entries from before the failed save are back. Review and retry."),
+			icon: "check",
+			iconClasses: "text-green-500",
+		})
+		return true
+	} catch {
+		return false
+	}
+}
+
+// ── Autosave storm gate ──────────────────────────────────────────────────────
+// A server rejection (e.g. overlap) is deterministic: retrying the same
+// payload hammers the server and spams the error log. Block automatic retries
+// until the user makes a structural change (add/edit/delete); note edits and
+// manual retry still go through.
+const validationBlocked = ref(false)
+const blockedRev = ref(-1)
+const structRev = ref(0)
+
 let autosaveTimer = null
 let saveQueue = Promise.resolve()
 let changeRevision = 0
@@ -206,20 +277,26 @@ function recalculate() {
 
 function addLog(log) {
 	timesheet.value.time_logs.push(log)
+	structRev.value += 1
 	recalculate()
-	scheduleAutosave(0)
+	persistDraft()
+	scheduleAutosave(0, true)
 }
 
 function updateLog(log, index) {
 	timesheet.value.time_logs[index] = log
+	structRev.value += 1
 	recalculate()
-	scheduleAutosave(0)
+	persistDraft()
+	scheduleAutosave(0, true)
 }
 
 function deleteLog(index) {
 	timesheet.value.time_logs.splice(index, 1)
+	structRev.value += 1
 	recalculate()
-	scheduleAutosave(0)
+	persistDraft()
+	scheduleAutosave(0, true)
 }
 
 async function load() {
@@ -230,17 +307,23 @@ async function load() {
 			week_start: props.id ? undefined : route.query.week_start || undefined,
 		})
 		hasEverSaved.value = Boolean(timesheet.value.name)
+		lastServerModified.value = timesheet.value?.modified || ""
+		if (restoreDraftIfNewer()) {
+			autosaveState.value = "pending"
+		}
 	} finally {
 		readyForAutosave = true
 		loading.value = false
 	}
 }
 
-function scheduleAutosave(delay = 400) {
+function scheduleAutosave(delay = 400, force = false) {
 	if (!readyForAutosave || isReadOnly.value) return
+	if (validationBlocked.value && !force && structRev.value === blockedRev.value) return
 	changeRevision += 1
 	hasUnsavedChanges.value = true
 	autosaveState.value = "pending"
+	persistDraft()
 	window.clearTimeout(autosaveTimer)
 	autosaveTimer = window.setTimeout(() => {
 		autosaveTimer = null
@@ -269,6 +352,9 @@ function queueAutosave() {
 				timesheet.value.name = savedTimesheet.name
 			}
 			hasEverSaved.value = true
+			lastServerModified.value = savedTimesheet.modified || lastServerModified.value
+			validationBlocked.value = false
+			clearPersistedDraft()
 
 			if (wasNew) {
 				await router.replace({
@@ -282,6 +368,13 @@ function queueAutosave() {
 		} catch (error) {
 			hasUnsavedChanges.value = true
 			autosaveState.value = "error"
+			persistDraft()
+			if (error?.messages?.length) {
+				// Deterministic server rejection: stop the retry storm until the
+				// entries themselves change (note edits alone cannot fix it).
+				validationBlocked.value = true
+				blockedRev.value = structRev.value
+			}
 			toast({
 				title: __("Could not save changes"),
 				text: error?.messages?.[0] || error?.message,
@@ -307,7 +400,9 @@ async function flushAutosave() {
 }
 
 function retryAutosave() {
-	if (autosaveState.value === "error") scheduleAutosave(0)
+	if (autosaveState.value !== "error") return
+	validationBlocked.value = false
+	scheduleAutosave(0, true)
 }
 
 async function submitWeek() {

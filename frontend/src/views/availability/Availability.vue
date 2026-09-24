@@ -63,31 +63,122 @@
 				<ion-spinner name="crescent" />
 			</div>
 
+			<!-- Filters: company + timezone -->
+			<div v-if="!availResource.loading" class="mx-4 mt-3 flex gap-2 flex-wrap">
+				<select
+					v-model="companyFilter"
+					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+					:aria-label="__('Company')"
+				>
+					<option value="">{{ __("All companies") }}</option>
+					<option v-for="c in availableCompanies" :key="c" :value="c">{{ c }}</option>
+				</select>
+				<select
+					v-model="viewerTz"
+					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+					:aria-label="__('Timezone')"
+				>
+					<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+						{{ tz.label }}
+					</option>
+				</select>
+				<select
+					v-model="compareTz"
+					class="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+					:aria-label="__('Compare timezone')"
+					:title="__('Second timeline axis')"
+				>
+					<option value="">{{ __("No second axis") }}</option>
+					<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+						{{ tz.label }}
+					</option>
+				</select>
+			</div>
+
 			<!-- Content -->
-			<div v-else class="mx-4 mt-4 pb-10">
+			<div v-if="!availResource.loading" class="mx-4 mt-4 pb-10">
 				<GridView
 					v-if="activeView === 'grid'"
 					:dates="gridDates"
-					:employees="availResource.data || []"
+					:employees="filteredEmployees"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
 				<TimelineView
 					v-else-if="activeView === 'timeline'"
 					:date="selectedDay"
-					:employees="availResource.data || []"
+					:employees="filteredEmployees"
+					:viewerTz="viewerTz"
 					:viewerTzLabel="viewerTzLabel"
+					:compareTz="compareTz"
+					:compareTzLabel="compareTzLabel"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
 				<StatusCards
 					v-else
 					:date="selectedDay"
-					:employees="availResource.data || []"
+					:employees="filteredEmployees"
 					:viewerTzLabel="viewerTzLabel"
+					:selectedIds="selectedIds"
+					@toggleSelect="toggleSelect"
 				/>
+			</div>
+
+			<!-- Selection action bar -->
+			<div
+				v-if="selectedIds.length"
+				class="mx-4 mb-4 p-3 bg-white border rounded-2xl shadow-sm flex items-center gap-3"
+			>
+				<span class="text-xs font-semibold text-gray-700 whitespace-nowrap">
+					{{ selectedIds.length }} {{ __("selected") }}
+				</span>
+				<button
+					class="grow bg-blue-600 active:bg-blue-700 text-white text-sm font-semibold rounded-xl py-2.5 px-3 flex items-center justify-center gap-2"
+					@click="openFinder"
+				>
+					<FeatherIcon name="calendar" class="w-4 h-4" />
+					{{ __("Find meeting time") }}
+				</button>
+				<button
+					class="text-xs font-medium text-gray-400 px-1"
+					@click="selectedIds = []"
+				>
+					{{ __("Clear") }}
+				</button>
 			</div>
 
 			<ion-refresher slot="fixed" @ionRefresh="refresh($event)">
 				<ion-refresher-content />
 			</ion-refresher>
 		</ion-content>
+
+		<!-- Meeting finder popup (plain overlay: bulletproof, no modal machinery) -->
+		<div
+			v-if="showFinder"
+			class="fixed inset-0 z-50 flex flex-col bg-gray-50"
+		>
+			<div class="flex items-center gap-2 bg-white border-b px-3 py-4 shrink-0">
+				<div class="min-w-0 grow text-center">
+					<h1 class="text-lg font-semibold text-gray-900">{{ __("Meeting Finder") }}</h1>
+				</div>
+				<button
+					type="button"
+					class="text-sm font-semibold text-blue-600 px-2 py-1 shrink-0"
+					@click="showFinder = false"
+				>
+					{{ __("Done") }}
+				</button>
+			</div>
+			<div class="grow overflow-y-auto">
+				<MeetingFinderPanel
+					:key="finderKey"
+					:initialEmployees="finderEmployees"
+					:initialFromDate="selectedDay"
+					:initialToDate="finderEndDate"
+				/>
+			</div>
+		</div>
 	</ion-page>
 </template>
 
@@ -95,20 +186,63 @@
 import { ref, computed, watch, onMounted, inject } from "vue"
 import { FeatherIcon } from "frappe-ui"
 import {
-	IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton,
+	IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonButton,
 	IonContent, IonSpinner, IonRefresher, IonRefresherContent,
 } from "@ionic/vue"
 import { createResource } from "frappe-ui"
 import GridView     from "./GridView.vue"
 import TimelineView from "./TimelineView.vue"
 import StatusCards  from "./StatusCards.vue"
+import MeetingFinderPanel from "@/views/meeting/MeetingFinderPanel.vue"
 import { getViewerTimezone, getTimezoneAbbr } from "@/utils/timezone.js"
 
 const __ = inject("$translate")
+const employee = inject("$employee")
 
-// ── Viewer timezone ────────────────────────────────────────────────────────────
-const viewerTz      = getViewerTimezone()           // IANA name  e.g. "America/New_York"
-const viewerTzLabel = getTimezoneAbbr(viewerTz)     // Short abbr e.g. "EST", "CET", "GST"
+// ── Viewer timezone (selectable; always resets to the user's default on load) ─
+const defaultViewerTz = getViewerTimezone() // IANA name  e.g. "America/New_York"
+const viewerTz = ref(defaultViewerTz)
+const viewerTzLabel = computed(() => getTimezoneAbbr(viewerTz.value))
+
+const BASE_TIMEZONES = [
+	"UTC",
+	"America/New_York",
+	"America/Chicago",
+	"America/Denver",
+	"America/Los_Angeles",
+	"America/Anchorage",
+	"Pacific/Honolulu",
+	"America/Toronto",
+	"America/Sao_Paulo",
+	"Europe/London",
+	"Europe/Berlin",
+	"Europe/Paris",
+	"Europe/Moscow",
+	"Africa/Cairo",
+	"Asia/Dubai",
+	"Asia/Karachi",
+	"Asia/Kolkata",
+	"Asia/Bangkok",
+	"Asia/Singapore",
+	"Asia/Tokyo",
+	"Asia/Seoul",
+	"Australia/Sydney",
+	"Pacific/Auckland",
+]
+
+const timezoneOptions = computed(() => {
+	const zones = BASE_TIMEZONES.includes(viewerTz.value)
+		? BASE_TIMEZONES
+		: [viewerTz.value, ...BASE_TIMEZONES]
+	return zones.map((zone) => ({ value: zone, label: `${getTimezoneAbbr(zone)} · ${zone}` }))
+})
+
+// Second timeline axis (compare zone). Defaults to US Eastern unless the
+// viewer is already there (then UTC). Never persisted: refresh resets it.
+const compareTz = ref(
+	defaultViewerTz === "America/New_York" ? "UTC" : "America/New_York"
+)
+const compareTzLabel = computed(() => getTimezoneAbbr(compareTz.value))
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const activeView = ref("timeline")   // "timeline" | "grid" | "cards"
@@ -133,6 +267,56 @@ function getMondayOf(dateStr) {
 
 const weekStart = ref(getMondayOf(todayStr)) // Monday of displayed week
 const selectedDay = ref(todayStr)
+
+// ── People selection for the meeting finder ────────────────────────────────
+const selectedIds = ref([]) // employee names
+const showFinder = ref(false)
+const finderKey = ref(0)
+
+function toggleSelect(employeeId) {
+	if (!employeeId) return
+	const idx = selectedIds.value.indexOf(employeeId)
+	if (idx === -1) selectedIds.value.push(employeeId)
+	else selectedIds.value.splice(idx, 1)
+}
+
+function openFinder() {
+	finderKey.value += 1
+	showFinder.value = true
+}
+
+// ── Company filter (defaults to the viewer's company; "" = all companies) ────
+const companyFilter = ref("")
+
+const availableCompanies = computed(() => {
+	const set = new Set()
+	for (const row of availResource.data || []) {
+		if (row.company) set.add(row.company)
+	}
+	return [...set].sort()
+})
+
+const effectiveCompany = computed(() =>
+	availableCompanies.value.includes(companyFilter.value) ? companyFilter.value : ""
+)
+
+const filteredEmployees = computed(() => {
+	const rows = availResource.data || []
+	if (!effectiveCompany.value) return rows
+	return rows.filter((r) => (r.company || "") === effectiveCompany.value)
+})
+
+const finderEmployees = computed(() => {
+	const byId = new Map((availResource.data || []).map((r) => [r.employee, r]))
+	return selectedIds.value
+		.filter((id) => byId.has(id))
+		.map((id) => {
+			const r = byId.get(id)
+			return { name: id, employee_name: r.employee_name || id, designation: r.designation || "" }
+		})
+})
+
+const finderEndDate = computed(() => addDays(selectedDay.value, 7))
 
 const views = [
 	{ key: "timeline", icon: "clock",  label: __("Timeline") },
@@ -207,11 +391,21 @@ function loadData() {
 	availResource.submit({
 		start_date: apiStartDate.value,
 		end_date:   apiEndDate.value,
-		viewer_timezone: viewerTz,
+		viewer_timezone: viewerTz.value,
 	})
 }
 
-watch([activeView, weekStart, selectedDay], loadData)
+watch([activeView, weekStart, selectedDay, viewerTz], loadData)
+
+// Keep selection to people present in the loaded data.
+// NOTE: this must stay after availResource is defined — the watcher reads it.
+watch(
+	() => availResource.data,
+	(rows) => {
+		const ids = new Set((rows || []).map((r) => r.employee))
+		selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
+	}
+)
 
 async function refresh(event) {
 	loadData()
@@ -224,5 +418,10 @@ async function refresh(event) {
 	}, 100)
 }
 
-onMounted(loadData)
+onMounted(() => {
+	// Default the company filter to the viewer's own company (resets on refresh)
+	const userCompany = employee?.data?.company || ""
+	if (userCompany) companyFilter.value = userCompany
+	loadData()
+})
 </script>

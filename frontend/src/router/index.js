@@ -103,4 +103,23 @@ const router = createRouter({
 	routes,
 })
 
+// If a lazily-loaded view chunk fails to load (e.g. a deploy replaced the
+// hashed bundle files while the app was open), the router outlet would
+// otherwise keep showing the previous page forever — same URL, wrong content,
+// and tapping the tab again is a no-op. Reload once to fetch the fresh bundle.
+const CHUNK_LOAD_FAILURE =
+	/Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed|Loading CSS chunk/i
+
+router.onError((err) => {
+	try {
+		if (!CHUNK_LOAD_FAILURE.test(err?.message || "")) return
+		const last = Number(sessionStorage.getItem("hrms_chunk_reload_at") || 0)
+		if (Date.now() - last < 30000) return
+		sessionStorage.setItem("hrms_chunk_reload_at", String(Date.now()))
+		window.location.reload()
+	} catch {
+		// never break routing because of the recovery itself
+	}
+})
+
 export default router

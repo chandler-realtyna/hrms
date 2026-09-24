@@ -438,8 +438,13 @@ function teamBarWidth(hours) {
 // ── Actions ────────────────────────────────────────────────────────────────────
 
 function fetchMe() {
+	const empName = employee?.data?.name
+	// Never throw during setup: if employee data isn't ready yet, the watcher
+	// below retries as soon as it arrives. A throw here would abort the whole
+	// page mount and leave the previous route's view stuck on screen.
+	if (!empName) return
 	const params = {
-		employee:  employee.data.name,
+		employee:  empName,
 		from_date: fromDate.value,
 		to_date:   toDate.value,
 	}
@@ -528,5 +533,19 @@ function offsetChipClass(hours) {
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────────
-fetchMe()
+// Fetch immediately when employee data is ready; otherwise wait for it instead
+// of throwing (see fetchMe).
+if (employee?.data?.name) {
+	fetchMe()
+} else {
+	const stopEmployeeWatch = watch(
+		() => employee?.data?.name,
+		(name) => {
+			if (name) {
+				stopEmployeeWatch()
+				fetchMe()
+			}
+		}
+	)
+}
 </script>
