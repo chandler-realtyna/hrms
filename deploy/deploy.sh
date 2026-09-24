@@ -346,7 +346,7 @@ log "state advanced → $TARGET"
 # ------------------------------------------------------- 11. retention ------
 # Keep: active + previous releases (dirs), live + previous 2 image tags.
 # Everything computed from explicit keep-sets; running images never touched.
-rssh "cd '$RELEASES_DIR' && ls -1t | tail -n +4 | while read -r d; do [ \"\$d\" = '$TARGET' ] || [ \"\$d\" = '$ACTIVE_SHA' ] || rm -rf \"\$d\"; done"
+rssh "cd '$RELEASES_DIR' && ls -1t | tail -n +4 | while read -r d; do if [ \"\$d\" != '$TARGET' ] && [ \"\$d\" != '$ACTIVE_SHA' ]; then chmod -R u+w \"\$d\" && rm -rf \"\$d\"; fi; done"
 KEEP_TAGS="$NEW_TAG $SNAP_TAG $(rssh "sudo docker images 'realtyna-erpnext-hrms' --format '{{.Tag}}' | grep -v -E '^($NEW_TAG|$SNAP_TAG)$' | head -n 1")"
 for t in $(rssh "sudo docker images 'realtyna-erpnext-hrms' --format '{{.Tag}}'"); do
 	keep=0
