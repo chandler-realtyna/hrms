@@ -101,7 +101,9 @@ else
 	TARGET="$(git rev-parse --verify "$TARGET" 2>/dev/null)" || fail "unknown ref: $TARGET"
 fi
 # Target must exist on origin — the server clones from there.
-git ls-remote -q origin 2>/dev/null | grep -q "^$TARGET" \
+# (Capture first: piping a live command into `grep -q` races SIGPIPE.)
+LSR="$(git ls-remote origin 2>/dev/null)" || fail "cannot reach origin"
+printf '%s\n' "$LSR" | grep -q "^$TARGET" \
 	|| fail "target $TARGET is not on origin — push first (only pushed commits deploy)"
 log "target commit: $TARGET"
 
@@ -256,8 +258,9 @@ if [ "$CLASS" = "full" ]; then
 		sleep 30
 		if ! rssh "ps aux | grep -q '[C]ACHE_BUST=$BUST'" 2>/dev/null; then break; fi
 	done
-	rssh "sudo docker images 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Repository}}'" | grep -q realtyna \
-		|| fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
+	rssh "sudo docker images 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Repository}}'" > /tmp/deploy-img-check 2>/dev/null || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
+	grep -q realtyna /tmp/deploy-img-check || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
+	rm -f /tmp/deploy-img-check
 	log "image built: $NEW_TAG"
 	rssh "cp '$REMOTE_DIR/.env' '$REMOTE_DIR/.env.backup-deploy-$DEPLOY_ID' && sed -i 's/^CUSTOM_TAG=.*/CUSTOM_TAG=$NEW_TAG/' '$REMOTE_DIR/.env'"
 	OPS="$OPS|tag-flip:$SNAP_TAG->$NEW_TAG"
@@ -267,8 +270,10 @@ NEED_MIGRATE=0
 [ "$HAS_SCHEMA" = "1" ] && NEED_MIGRATE=1
 
 if [ "$NEED_MIGRATE" = "1" ]; then
-	BACKUP_ID="$(cx exec -T backend bench --site $SITE backup 2>&1 | grep -o '[0-9_]*-frontend-database.sql.gz' | head -n 1)"
-	[ -n "$BACKUP_ID" ] || fail "pre-migration backup failed — refusing to proceed"
+	BACKUP_OUT="$(cx exec -T backend bench --site $SITE backup 2>&1)" \
+		|| fail "pre-migration backup command failed — refusing to proceed"
+	BACKUP_ID="$(printf '%s\n' "$BACKUP_OUT" | grep -o '[0-9_]*-frontend-database.sql.gz' | head -n 1)"
+	[ -n "$BACKUP_ID" ] || fail "pre-migration backup produced no file — refusing to proceed"
 	OPS="$OPS|backup:$BACKUP_ID"
 	log "backup ok: $BACKUP_ID"
 fi
