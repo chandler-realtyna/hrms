@@ -191,6 +191,63 @@ let ticker = null
 let pauseTimeout = null
 let longRunningTimeout = null
 
+// ─── Browser tab indicator (Toggl-style) ─────────────────────────────────────
+// While the timer runs: "<elapsed> • <project>" in the tab title + red
+// recording favicon. Restores both when the timer stops. Reminder value:
+// you can see at a glance that a timer is still ticking.
+
+let baseTitle = ""
+let baseFavicon = ""
+const RECORDING_FAVICON =
+	"data:image/svg+xml," +
+	encodeURIComponent(
+		"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='#e5484d'/></svg>"
+	)
+
+function compactElapsed(totalSeconds) {
+	const s = Math.max(0, Math.floor(totalSeconds || 0))
+	if (s < 60) return `${s}s`
+	const m = Math.floor(s / 60)
+	if (s < 3600) return `${m}:${String(s % 60).padStart(2, "0")}`
+	return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+}
+
+function setRecordingFavicon() {
+	try {
+		let link = document.querySelector("link[rel~='icon']")
+		if (!link) {
+			link = document.createElement("link")
+			link.rel = "icon"
+			document.head.appendChild(link)
+		}
+		if (!baseFavicon) baseFavicon = link.href || ""
+		if (link.href !== RECORDING_FAVICON) link.href = RECORDING_FAVICON
+	} catch { /* favicon is best-effort */ }
+}
+
+function restoreTabIndicator() {
+	try {
+		if (baseTitle) document.title = baseTitle
+		const link = document.querySelector("link[rel~='icon']")
+		if (link && baseFavicon && link.href !== baseFavicon) link.href = baseFavicon
+	} catch { /* best-effort */ }
+}
+
+function refreshTabIndicator() {
+	try {
+		const label = activeProjectLabel.value || __("Time Tracker")
+		if (isRunning.value) {
+			document.title = `${compactElapsed(elapsed.value)} • ${label}`
+			setRecordingFavicon()
+		} else if (isPaused.value && (elapsed.value > 0 || segments.value.length)) {
+			document.title = `⏸ ${compactElapsed(elapsed.value)} • ${label}`
+			setRecordingFavicon()
+		} else {
+			restoreTabIndicator()
+		}
+	} catch { /* best-effort */ }
+}
+
 // ─── Computed ────────────────────────────────────────────────────────────────
 
 const formattedTime = computed(() => {
@@ -255,6 +312,7 @@ function updateElapsed() {
 	const saved = segments.value.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
 	const current = startTime.value ? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000)) : 0
 	elapsed.value = saved + current
+	refreshTabIndicator()
 }
 
 function loadFavorites() {
@@ -368,6 +426,7 @@ function start() {
 	startTick()
 	scheduleLongRunningHint()
 	persistState()
+	updateElapsed()
 }
 
 function pause() {
@@ -380,6 +439,7 @@ function pause() {
 	isPaused.value = true
 	pausedSince.value = new Date().toISOString()
 	updateElapsed()
+	refreshTabIndicator()
 	persistState()
 	schedulePausedSave()
 }
@@ -418,6 +478,7 @@ function resume() {
 	startTick()
 	scheduleLongRunningHint()
 	persistState()
+	updateElapsed()
 }
 
 async function stop() {
@@ -450,6 +511,7 @@ async function stop() {
 		elapsed.value = 0
 		form.value = { project: "", activity_type: "", description: "" }
 		clearTimeout(longRunningTimeout)
+		restoreTabIndicator()
 
 		toast({
 			title: __("Time log saved!"),
@@ -482,10 +544,14 @@ function discard() {
 	segments.value = []
 	startTime.value = null
 	elapsed.value = 0
+	restoreTabIndicator()
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
-onMounted(() => { loadFavorites(); loadProjects(); loadPersistedState() })
-onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout); clearTimeout(longRunningTimeout) })
+onMounted(() => {
+	try { baseTitle = document.title || "" } catch { baseTitle = "" }
+	loadFavorites(); loadProjects(); loadPersistedState(); refreshTabIndicator()
+})
+onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout); clearTimeout(longRunningTimeout); restoreTabIndicator() })
 </script>
