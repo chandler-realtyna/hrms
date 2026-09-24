@@ -52,7 +52,8 @@ rssh() {
 
 release_lock() {
 	if [ "$LOCK_HELD" = "1" ]; then
-		rssh "rmdir '$REMOTE_DIR/$LOCK_DIR' 2>/dev/null" || true
+		# rm -rf (not rmdir): the dir contains the owner file.
+		rssh "rm -rf '$REMOTE_DIR/$LOCK_DIR'" 2>/dev/null || true
 		LOCK_HELD=0
 	fi
 }
@@ -187,7 +188,8 @@ rssh "grep -qx '$TARGET' '$RELEASES_DIR/$TARGET/.release-sha' \
 	&& test -f '$RELEASES_DIR/$TARGET/hrms/hooks.py' \
 	&& test -f '$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'" \
 	|| fail "release $TARGET failed verification"
-rssh "chmod -R a-w '$RELEASES_DIR/$TARGET' && printf '%s %s\n' '$TARGET' '$(date -u +%FT%TZ)' > '$RELEASES_DIR/$TARGET/.release-meta'"
+# Freeze AFTER all writes: read-only for everyone (container uid == host uid).
+rssh "chmod -R a-w '$RELEASES_DIR/$TARGET'"
 log "release ready: $RELEASES_DIR/$TARGET (exact sha, immutable)"
 
 # ------------------------------------------------------- 7. compose override -
