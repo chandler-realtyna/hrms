@@ -232,9 +232,13 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: \"1\"
 OVERRIDEEOF
-cd '$REMOTE_DIR' && sudo docker compose -f compose.yaml -f pwd.yml -f '$OVERRIDE_FILE' config -q" \
+cd '$REMOTE_DIR' && sudo docker compose -f compose.yaml -f '$OVERRIDE_FILE' config -q" \
 	|| fail "override compose config invalid"
-CFILES="-f compose.yaml -f pwd.yml -f $OVERRIDE_FILE"
+# NOTE: pwd.yml is deliberately NOT included. It redefines the app services
+# with a stale hardcoded image (realtyna-erpnext-hrms:16, which does not
+# exist). App operations use compose.yaml only (image via $CUSTOM_TAG);
+# db/redis live in pwd.yml and are never touched by deploys.
+CFILES="-f compose.yaml -f $OVERRIDE_FILE"
 log "override written + compose config valid"
 
 # ------------------------------------------------------- 8. execute ---------

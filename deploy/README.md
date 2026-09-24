@@ -21,6 +21,8 @@ Only pushed commits deploy. Tracked tree must be clean.
    exact SHA, read-only) bind-mounted into containers
    (`apps/hrms` + served `assets/hrms`), never by copying files into containers.
 3. `schema` runs `bench backup` first, then `migrate`. Everything else skips both.
+   App operations use `compose.yaml` only: `pwd.yml` redefines app services
+   with a stale hardcoded image and must never be mixed into deploy commands.
 4. Health is polled (containers, HTTP, API, Redis, DB, served assets).
    `DEPLOY_STATE.json` advances **only** on success.
 5. `flock`-style lock dir prevents overlapping deploys.
