@@ -1,7 +1,6 @@
 <template>
 	<div>
-		<!-- Sticky header: hour axis + timezone/now row stay visible while scrolling.
-			Deployed via release mounts (see deploy/README.md). -->
+		<!-- Sticky header: hour axis + timezone/now row stay visible while scrolling -->
 		<div class="sticky top-0 z-30 -mx-1 border-b border-gray-100 bg-[var(--ion-background-color,white)] px-1 pb-1 pt-1">
 			<!-- Hour axis labels -->
 			<div class="flex mb-1 pl-40">

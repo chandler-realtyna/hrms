@@ -42,6 +42,10 @@ Only pushed commits deploy. Tracked tree must be clean.
 
 - Health: 6 app containers Up, HTTP 200, `frappe.ping` pong, Redis ×2,
   MariaDB `SELECT 1`, served asset hash matches the release.
+- Frontend proof nuance: HTML/Vue source comments compile out of bundles, so
+  a changed comment may yield byte-identical chunks. Prove frontend activation
+  by inspecting mount sources (`docker inspect` → release SHA) and served
+  asset state, never by comment presence or chunk-content assumptions.
 - Lock: `deploy/deploy.lock` (owner+timestamp); stale >60 min needs `--break-lock`.
 - Kept: 3 releases, live + previous 2 images, 7 DB backups, 5 build logs,
   30 deploy records, all `.env` backups. Builder cache pruned only above 80% disk.
