@@ -882,6 +882,87 @@ def find_meeting_slots(
 	return results
 
 
+@frappe.whitelist()
+def get_finder_coverage(employees, from_date: str, to_date: str) -> list[dict]:
+	"""Contracted working windows per employee per day, in each employee's
+	own timezone. Display-only helper shown when the finder finds no common
+	slot, so users see WHY (e.g. 9–5 GST vs 9:30–5:30 EDT never overlap).
+	Ignores leaves/bookings/Google: contracted hours, not availability."""
+	import json
+
+	if isinstance(employees, str):
+		employees = json.loads(employees)
+	employees = [e for e in (employees or []) if e]
+	if not employees:
+		return []
+
+	start_date = frappe.utils.getdate(from_date)
+	end_date = frappe.utils.getdate(to_date)
+	if not start_date or not end_date:
+		return []
+	if end_date < start_date:
+		start_date, end_date = end_date, start_date
+	if (end_date - start_date).days + 1 > MAX_FINDER_DAYS:
+		end_date = start_date + _dt.timedelta(days=MAX_FINDER_DAYS - 1)
+
+	site_tz_str = frappe.db.get_single_value("System Settings", "time_zone") or "UTC"
+	emp_rows = frappe.db.get_all(
+		"Employee", filters={"name": ["in", employees]}, fields=["name", "employee_name"]
+	)
+	emp_name = {r["name"]: r.get("employee_name") or r["name"] for r in emp_rows}
+	sched_rows = frappe.db.get_all(
+		"Employee Schedule",
+		filters={"employee": ["in", employees], "status": "Approved"},
+		fields=["name", "employee", "timezone"],
+	)
+	sched_name_by_emp = {r["employee"]: r["name"] for r in sched_rows}
+	sched_tz_by_emp = {r["employee"]: r.get("timezone") or site_tz_str for r in sched_rows}
+	days_by_emp: dict[str, dict[int, list]] = {emp: {} for emp in employees}
+	if sched_name_by_emp:
+		day_rows = frappe.db.get_all(
+			"Employee Schedule Day",
+			filters={"parent": ["in", list(sched_name_by_emp.values())]},
+			fields=["parent", "day_of_week", "day_type", "start_time", "end_time"],
+		)
+		parent_to_emp = {v: k for k, v in sched_name_by_emp.items()}
+		for dr in day_rows:
+			emp = parent_to_emp.get(dr["parent"])
+			if not emp:
+				continue
+			try:
+				dow = int(dr["day_of_week"])
+			except Exception:
+				continue
+			if (dr.get("day_type") or "").lower() != "working":
+				continue
+			s_t = _parse_hhmm(dr.get("start_time"))
+			e_t = _parse_hhmm(dr.get("end_time"))
+			if not s_t or not e_t:
+				continue
+			days_by_emp[emp].setdefault(dow, []).append((s_t, e_t))
+
+	out = []
+	for emp in employees:
+		days = {}
+		d = start_date
+		while d <= end_date:
+			slots = days_by_emp.get(emp, {}).get(d.weekday(), [])
+			if slots:
+				days[str(d)] = [
+					{"start": s.strftime("%H:%M"), "end": e.strftime("%H:%M")} for s, e in slots
+				]
+			d += _dt.timedelta(days=1)
+		out.append(
+			{
+				"employee": emp,
+				"employee_name": emp_name.get(emp, emp),
+				"timezone": sched_tz_by_emp.get(emp, site_tz_str),
+				"days": days,
+			}
+		)
+	return out
+
+
 def _subtract_utc_windows(
 	working: list[tuple[_dt.datetime, _dt.datetime]],
 	busy: list[tuple[_dt.datetime, _dt.datetime]],
