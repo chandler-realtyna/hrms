@@ -1720,19 +1720,44 @@ def get_team_availability(
 			personal_holidays[emp].add(str(h.date)[:10])
 
 	# 4. Build result for each employee × date
-	def _to_viewer_tz(time_str, date_obj, emp_tz):
-		"""Convert a "HH:MM" string from emp_tz on date_obj into viewer_tz "HH:MM"."""
-		if not time_str or emp_tz == viewer_tz:
-			return time_str
+	def _split_viewer_day(start_str, end_str, date_obj, emp_tz):
+		"""Convert an employee-tz "HH:MM"–"HH:MM" slot on date_obj to viewer-tz
+		wall times, splitting overnight portions across calendar days.
+
+		Returns [(date_str, start, end), ...]. Same-day midnight end is "24:00"
+		so the frontend can render up to the day edge. Without the split, a
+		slot like 5:30PM–1:30AM collapses to end < start and vanishes.
+		"""
 		try:
-			parts = str(time_str).split(":")
-			h, m = int(parts[0]), int(parts[1])
-			dt = emp_tz.localize(_dt.datetime(date_obj.year, date_obj.month, date_obj.day, h, m))
-			return dt.astimezone(viewer_tz).strftime("%H:%M")
+			parts_s = str(start_str).split(":")
+			parts_e = str(end_str).split(":")
+			s_local = emp_tz.localize(
+				_dt.datetime(date_obj.year, date_obj.month, date_obj.day, int(parts_s[0]), int(parts_s[1]))
+			)
+			e_local = emp_tz.localize(
+				_dt.datetime(date_obj.year, date_obj.month, date_obj.day, int(parts_e[0]), int(parts_e[1]))
+			)
 		except Exception:
-			return time_str
+			return []
+		if e_local <= s_local:
+			e_local += _dt.timedelta(days=1)  # overnight shift in employee tz
+		s_v = s_local.astimezone(viewer_tz)
+		e_v = e_local.astimezone(viewer_tz)
+		day_start = viewer_tz.localize(_dt.datetime(date_obj.year, date_obj.month, date_obj.day))
+		day_end = day_start + _dt.timedelta(days=1)
+		out = []
+		if s_v < day_end and e_v > day_start:
+			seg_start = max(s_v, day_start).strftime("%H:%M")
+			seg_end = e_v.strftime("%H:%M") if e_v < day_end else "24:00"
+			out.append((str(date_obj), seg_start, seg_end))
+		if e_v > day_end:
+			nxt = date_obj + _dt.timedelta(days=1)
+			tail_end = e_v if e_v < day_end + _dt.timedelta(days=1) else None
+			out.append((str(nxt), "00:00", tail_end.strftime("%H:%M") if tail_end else "24:00"))
+		return out
 
 	result = []
+	spillovers: dict[str, list] = {}
 	for emp_id, sdata in schedule_map.items():
 		try:
 			emp_tz = pytz.timezone(sdata["timezone"])
@@ -1760,16 +1785,22 @@ def get_team_availability(
 					"slots": [],
 				}
 			else:
-				# Convert each slot's times to viewer's timezone
+				# Convert each slot's times to viewer's timezone, splitting
+				# overnight portions (plus spillovers from the previous day).
 				converted_slots = []
 				for slot in day_slots:
-					s_est = _to_viewer_tz(slot["start"], d, emp_tz)
-					e_est = _to_viewer_tz(slot["end"], d, emp_tz)
-					converted_slots.append({
-						"type": slot["type"],
-						"start": s_est,
-						"end": e_est,
-					})
+					for part_date, part_start, part_end in _split_viewer_day(
+						slot["start"], slot["end"], d, emp_tz
+					):
+						if part_date == date_str:
+							converted_slots.append({"type": slot["type"], "start": part_start, "end": part_end})
+						elif part_date > date_str:
+							spillovers.setdefault(part_date, []).append(
+								{"type": slot["type"], "start": part_start, "end": part_end}
+							)
+				for extra in spillovers.pop(date_str, []):
+					converted_slots.append(extra)
+				converted_slots.sort(key=lambda s: (s["start"], s["end"]))
 				emp_days[date_str] = {
 					"override": None,
 					"override_label": None,
