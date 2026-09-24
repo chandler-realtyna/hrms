@@ -1,21 +1,24 @@
 <template>
 	<div>
-		<!-- Hour axis labels -->
-		<div class="flex mb-1 pl-40">
-			<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
-				{{ formatHour(h) }}
+		<!-- Sticky header: hour axis + timezone/now row stay visible while scrolling -->
+		<div class="sticky top-0 z-30 -mx-1 border-b border-gray-100 bg-[var(--ion-background-color,white)] px-1 pb-1 pt-1">
+			<!-- Hour axis labels -->
+			<div class="flex mb-1 pl-40">
+				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
+					{{ formatHour(h) }}
+				</div>
 			</div>
-		</div>
-		<!-- Timezone label row -->
-		<div class="relative pl-40 mb-2">
-			<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
-			<div
-				v-if="showNowMarker"
-				class="absolute top-0 flex -translate-x-1/2 items-center gap-1"
-				:style="nowMarkerStyle"
-			>
-				<span class="h-2 w-2 rounded-full bg-red-500 shadow-sm" />
-				<span class="text-[10px] font-semibold text-red-500">{{ __("Now") }}</span>
+			<!-- Timezone label row -->
+			<div class="relative pl-40 mb-2">
+				<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
+				<div
+					v-if="showNowMarker"
+					class="absolute top-0 flex -translate-x-1/2 items-center gap-1"
+					:style="nowMarkerStyle"
+				>
+					<span class="h-2 w-2 rounded-full bg-red-500 shadow-sm" />
+					<span class="text-[10px] font-semibold text-red-500">{{ __("Now") }}</span>
+				</div>
 			</div>
 		</div>
 
