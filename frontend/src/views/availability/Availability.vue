@@ -38,7 +38,7 @@
 					</svg>
 				</button>
 
-				<!-- Grid: show week range. Timeline/Cards: show single day -->
+				<!-- Grid: show week range. Timeline: show single day -->
 				<div class="text-center">
 					<p v-if="activeView === 'grid'" class="text-sm font-semibold text-gray-800">
 						{{ weekRangeLabel }}
@@ -105,21 +105,13 @@
 					@toggleSelect="toggleSelect"
 				/>
 				<TimelineView
-					v-else-if="activeView === 'timeline'"
+					v-if="activeView === 'timeline'"
 					:date="selectedDay"
 					:employees="filteredEmployees"
 					:viewerTz="viewerTz"
 					:viewerTzLabel="viewerTzLabel"
 					:compareTz="compareTz"
 					:compareTzLabel="compareTzLabel"
-					:selectedIds="selectedIds"
-					@toggleSelect="toggleSelect"
-				/>
-				<StatusCards
-					v-else
-					:date="selectedDay"
-					:employees="filteredEmployees"
-					:viewerTzLabel="viewerTzLabel"
 					:selectedIds="selectedIds"
 					@toggleSelect="toggleSelect"
 				/>
@@ -192,7 +184,6 @@ import {
 import { createResource } from "frappe-ui"
 import GridView     from "./GridView.vue"
 import TimelineView from "./TimelineView.vue"
-import StatusCards  from "./StatusCards.vue"
 import MeetingFinderPanel from "@/views/meeting/MeetingFinderPanel.vue"
 import { getViewerTimezone, getTimezoneAbbr } from "@/utils/timezone.js"
 
@@ -297,7 +288,7 @@ const compareTz = ref(
 const compareTzLabel = computed(() => getTimezoneAbbr(compareTz.value))
 
 // ── State ──────────────────────────────────────────────────────────────────────
-const activeView = ref("timeline")   // "timeline" | "grid" | "cards"
+const activeView = ref("timeline")   // "timeline" | "grid"
 
 // Base anchor: start-of-week (Monday) for Grid view, or a single day for Timeline/Cards
 // Store as ISO string "YYYY-MM-DD"
@@ -373,7 +364,6 @@ const finderEndDate = computed(() => addDays(selectedDay.value, 7))
 const views = [
 	{ key: "timeline", icon: "clock",  label: __("Timeline") },
 	{ key: "grid",     icon: "grid",   label: __("Grid") },
-	{ key: "cards",    icon: "layout", label: __("Cards") },
 ]
 
 // ── Computed dates ─────────────────────────────────────────────────────────────
