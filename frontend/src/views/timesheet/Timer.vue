@@ -539,6 +539,9 @@ function applyAdjust() {
 			iconClasses: "text-green-500",
 		})
 		adjustDir.value = 0
+		// Re-arm the 2h reminder from the adjusted start: crossing 2h via +/-
+		// fires on the next tick instead of waiting for the original schedule.
+		if (isRunning.value) scheduleLongRunningHint()
 	}
 }
 
