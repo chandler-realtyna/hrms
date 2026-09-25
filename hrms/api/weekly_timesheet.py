@@ -658,6 +658,21 @@ def hr_close_weekly_timesheet(name: str):
 	return _serialize_weekly(doc)
 
 
+def _trunc_minute(value):
+	"""Truncate a datetime to minute precision for overlap comparison.
+
+	Best practice: entries are displayed and entered at HH:MM precision, so
+	second-level jitter (e.g. a timer stopping at 11:00:37 against a manual
+	11:00 start) must not count as an overlap. Back-to-back entries like
+	10:00–11:00 and 11:00–12:00 always pass; genuine minute-level overlaps
+	still fail.
+	"""
+	try:
+		return value.replace(second=0, microsecond=0)
+	except Exception:
+		return value
+
+
 def _validate_time_rows(doc):
 	if not doc.time_logs:
 		return
@@ -684,7 +699,7 @@ def _validate_time_rows(doc):
 			frappe.throw(_("Row {0}: End time must be after start time.").format(row.idx))
 		if to_time > week_end_exclusive:
 			frappe.throw(_("Row {0}: End time must be inside the selected week.").format(row.idx))
-		intervals.append((from_time, to_time, row.idx, row.project or ""))
+		intervals.append((_trunc_minute(from_time), _trunc_minute(to_time), row.idx, row.project or ""))
 
 	conflicts = []
 	ordered = sorted(intervals)
