@@ -225,6 +225,7 @@ import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { FeatherIcon, Button, call, toast } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
+import { TIMER_NOTIFIED_KEY } from "@/composables/useTimerReminder.js"
 
 const router = useRouter()
 const __ = inject("$translate")
@@ -335,6 +336,9 @@ function persistState() {
 
 function clearPersistedState() {
 	localStorage.removeItem(STORAGE_KEY)
+	try {
+		localStorage.removeItem(TIMER_NOTIFIED_KEY)
+	} catch {}
 }
 
 function loadPersistedState() {
@@ -556,6 +560,9 @@ function start() {
 	isPaused.value = false
 	startTime.value = new Date().toISOString()
 	longRunningNotified.value = false
+	try {
+		localStorage.removeItem(TIMER_NOTIFIED_KEY)
+	} catch {}
 	isRunning.value = true
 	startTick()
 	scheduleLongRunningHint()
@@ -593,9 +600,20 @@ function scheduleLongRunningHint() {
 	const remaining = Math.max(0, 2 * 60 * 60 * 1000 - (Date.now() - new Date(startTime.value).getTime()))
 	longRunningTimeout = setTimeout(async () => {
 		if (!isRunning.value || longRunningNotified.value) return
+		// Shared exactly-once flag with the global watchdog (App.vue): if it
+		// already notified for this timer start, stay quiet.
+		try {
+			if (localStorage.getItem(TIMER_NOTIFIED_KEY) === startTime.value) {
+				longRunningNotified.value = true
+				return
+			}
+		} catch {}
 		try {
 			await call("hrms.api.notify_long_running_timer", { employee: employee.data.name, project: form.value.project, started_at: startTime.value })
 			longRunningNotified.value = true
+			try {
+				localStorage.setItem(TIMER_NOTIFIED_KEY, startTime.value)
+			} catch {}
 			toast({ title: __("This timer has been running for over two hours. You may have forgotten to save it."), icon: "alert-circle", iconClasses: "text-amber-500" })
 		} catch { /* keep timer usable if mail is unavailable */ }
 	}, remaining)
