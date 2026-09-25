@@ -155,12 +155,12 @@
 						<button
 							v-if="form.project"
 							type="button"
-							class="flex items-center gap-1 text-xs font-medium"
-							:class="isFavorite(form.project) ? 'text-amber-500' : 'text-gray-500'"
+							class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+							:class="isFavorite(form.project) ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-300'"
 							@click="toggleFavorite(form.project)"
 							:title="isFavorite(form.project) ? __('Remove favorite') : __('Add to favorites')"
 						>
-							<FeatherIcon name="heart" class="h-3.5 w-3.5" :class="isFavorite(form.project) && 'fill-amber-400'" />
+							<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(form.project) && 'fill-amber-400 text-amber-500'" />
 							{{ isFavorite(form.project) ? __("Favorited") : __("Favorite") }}
 						</button>
 					</div>
@@ -173,33 +173,17 @@
 								class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
 							/>
 						</div>
-						<div v-if="favoriteProjects.length && !projectSearch" class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-							{{ __("Favorites") }}
-						</div>
-						<div v-if="!projectSearch">
-							<div v-for="project in favoriteProjects" :key="'fav-' + project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-								<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
-									<span class="truncate font-medium" :class="form.project === project.name ? 'text-blue-600' : 'text-gray-700 dark:text-gray-200'">{{ projectDisplayLabel(project) }}</span>
-									<FeatherIcon v-if="form.project === project.name" name="check" class="h-4 w-4 shrink-0 text-blue-600" />
-								</button>
-								<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Remove favorite')">
-									<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
-								</button>
-							</div>
-						</div>
-						<div v-if="visibleProjectGroups.length" class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-							{{ projectSearch ? __("Matches") : __("All projects") }}
-						</div>
-						<div v-if="!visibleProjectGroups.length" class="px-3 py-4 text-center text-xs text-gray-400">
+						<div v-if="!pickerProjects.length" class="px-3 py-4 text-center text-xs text-gray-400">
 							{{ __("No projects match your search.") }}
 						</div>
-						<div v-for="project in visibleProjectGroups" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
+						<div v-for="project in pickerProjects" :key="project.name" class="flex items-center gap-1 px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+							<button class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left" @click="selectProject(project.name)">
+								<FeatherIcon v-if="isFavorite(project.name)" name="heart" class="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
 								<span class="truncate" :class="form.project === project.name ? 'font-medium text-blue-600' : 'text-gray-700 dark:text-gray-200'">{{ projectDisplayLabel(project) }}</span>
 								<FeatherIcon v-if="form.project === project.name" name="check" class="h-4 w-4 shrink-0 text-blue-600" />
 							</button>
-							<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')">
-								<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
+							<button type="button" class="rounded-lg p-2.5" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')" :title="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')">
+								<FeatherIcon name="heart" class="h-5 w-5" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-300 dark:text-gray-500'" />
 							</button>
 						</div>
 					</div>
@@ -465,12 +449,14 @@ function projectMatchesQuery(project, query) {
 	)
 }
 
-const visibleProjectGroups = computed(() => {
+const pickerProjects = computed(() => {
 	const q = projectSearch.value || ""
 	const favNames = new Set(favoriteProjects.value.map((item) => item.name))
-	return availableProjects.value.filter(
-		(project) => (q || !favNames.has(project.name)) && projectMatchesQuery(project, q)
-	)
+	const matched = availableProjects.value.filter((project) => projectMatchesQuery(project, q))
+	return [
+		...matched.filter((project) => favNames.has(project.name)),
+		...matched.filter((project) => !favNames.has(project.name)),
+	]
 })
 function projectDisplayLabel(project) {
 	if (!project) return ""
