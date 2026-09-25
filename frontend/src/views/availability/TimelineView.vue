@@ -1,15 +1,19 @@
 <template>
 	<div>
+		<!-- Horizontally scrollable on phones: full-fidelity timeline with a
+		     sticky name column (best practice for dense grids on small screens). -->
+		<div class="overflow-x-auto -mx-1 px-1">
+		<div class="min-w-[620px] md:min-w-0">
 		<!-- Sticky header: hour axis + timezone/now row stay visible while scrolling -->
-		<div class="sticky top-0 z-30 -mx-1 border-b border-gray-100 bg-[var(--ion-background-color,white)] px-1 pb-1 pt-1">
-			<!-- Hour axis labels (positions must stay fixed: hide text, not ticks) -->
-			<div class="flex mb-1 pl-28 md:pl-40">
-				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-[10px] md:text-xs text-gray-400 font-medium">
-					<span :class="{ invisible: !showHourLabel(h) }">{{ formatHour(h) }}</span>
+		<div class="sticky top-0 z-30 border-b border-gray-100 bg-[var(--ion-background-color,white)] pb-1 pt-1">
+			<!-- Hour axis labels -->
+			<div class="flex mb-1 pl-40">
+				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
+					{{ formatHour(h) }}
 				</div>
 			</div>
 			<!-- Timezone label row -->
-			<div class="relative pl-28 md:pl-40 mb-2">
+			<div class="relative pl-40 mb-2">
 				<span class="text-[10px] text-gray-400 italic">{{ viewerTzLabel }}</span>
 				<div
 					v-if="showNowMarker"
@@ -36,15 +40,15 @@
 			/>
 
 		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-50' : ''">
-			<div v-if="group.label && group.employees.length" class="mb-3 pl-28 md:pl-40 text-xs font-semibold text-gray-400">
+			<div v-if="group.label && group.employees.length" class="mb-3 pl-40 text-xs font-semibold text-gray-400">
 				{{ group.label }}
 			</div>
 
 			<div v-if="group.employees.length" class="relative">
 
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
-					<!-- Name label -->
-					<div class="w-28 md:w-40 shrink-0 flex items-center gap-1.5 md:gap-2 pr-2 md:pr-3 pt-0.5">
+					<!-- Name label: sticky so it stays visible while scrolling sideways -->
+					<div class="w-40 shrink-0 sticky left-0 z-10 flex items-center gap-2 pr-3 pt-0.5 bg-[var(--ion-background-color,white)]">
 						<button
 							type="button"
 							class="relative flex-shrink-0 rounded-full focus:outline-none"
@@ -111,15 +115,17 @@
 
 		<!-- Compare-timezone axis -->
 		<div v-if="showCompareAxis" class="mt-3">
-			<div class="flex pl-28 md:pl-40">
-				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-[10px] md:text-xs text-gray-400 font-medium">
-					<span :class="{ invisible: !showHourLabel(h) }">{{ compareHourLabel(h) }}</span>
+			<div class="flex pl-40">
+				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
+					{{ compareHourLabel(h) }}
 				</div>
 			</div>
-			<div class="pl-28 md:pl-40 mt-0.5">
+			<div class="pl-40 mt-0.5">
 				<span class="text-[10px] text-gray-400 italic">{{ compareTzLabel }}</span>
 			</div>
 		</div>
+		</div><!-- /scroll inner -->
+		</div><!-- /scroll container -->
 
 		<!-- Legend -->
 		<div class="flex flex-wrap gap-3 mt-4 pt-3 border-t border-gray-100">
@@ -132,7 +138,7 @@
 </template>
 
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref } from "vue"
+import { computed, inject, onBeforeUnmount, ref } from "vue"
 import { FeatherIcon } from "frappe-ui"
 const __ = inject("$translate")
 
@@ -155,34 +161,18 @@ function isSelected(employeeId) {
 const START_HOUR = 7
 const END_HOUR = 22
 const TOTAL_HOURS = END_HOUR - START_HOUR
-// Name-column width must match the pl-*/w-* classes above (7rem mobile, 10rem desktop).
-const isDesktop = ref(false)
-let mediaQuery = null
-function syncViewport(e) {
-	isDesktop.value = e?.matches ?? false
-}
-onMounted(() => {
-	try {
-		mediaQuery = window.matchMedia("(min-width: 768px)")
-		syncViewport(mediaQuery)
-		mediaQuery.addEventListener?.("change", syncViewport)
-	} catch { isDesktop.value = false }
-})
-onBeforeUnmount(() => {
-	try { mediaQuery?.removeEventListener?.("change", syncViewport) } catch { /* noop */ }
-	clearInterval(nowInterval)
-})
-const LABEL_WIDTH_REM = computed(() => (isDesktop.value ? 10 : 7))
-// Show every hour on desktop, every 2nd hour on phones (positions stay fixed).
-function showHourLabel(h) {
-	return isDesktop.value || (h - START_HOUR) % 2 === 0
-}
+// Name-column width matches the w-40/pl-40 classes above.
+const LABEL_WIDTH_REM = 10
 
 const visibleHours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => START_HOUR + i)
 const now = ref(new Date())
 const nowInterval = setInterval(() => {
 	now.value = new Date()
 }, 60 * 1000)
+
+onBeforeUnmount(() => {
+	clearInterval(nowInterval)
+})
 
 const activeEmployees = computed(() =>
 	props.employees.map((emp) => ({
@@ -245,9 +235,8 @@ const showNowMarker = computed(() => {
 
 const nowMarkerStyle = computed(() => {
 	const percent = ((currentHour.value - START_HOUR) / TOTAL_HOURS) * 100
-	const labelRem = LABEL_WIDTH_REM.value
 	return {
-		left: `calc(${labelRem}rem + ((100% - ${labelRem}rem) * ${percent / 100}))`,
+		left: `calc(${LABEL_WIDTH_REM}rem + ((100% - ${LABEL_WIDTH_REM}rem) * ${percent / 100}))`,
 	}
 })
 

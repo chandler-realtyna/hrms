@@ -66,7 +66,7 @@
 								class="text-xs px-2.5 py-1.5 rounded-lg border"
 								:class="approvalClass(approval.status)"
 							>
-								{{ approval.project }} · {{ __(approval.status) }}
+								{{ projectDisplayName(approval.project) }} · {{ __(approval.status) }}
 							</span>
 						</div>
 					</div>
@@ -142,6 +142,9 @@ import { useRoute, useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call, toast } from "frappe-ui"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
+import { useProjectLabels } from "@/composables/useProjectLabels.js"
+
+const { displayName: projectDisplayName, load: loadProjectLabels } = useProjectLabels()
 
 const props = defineProps({ id: { type: String, required: false } })
 const __ = inject("$translate")
@@ -428,5 +431,5 @@ watch(
 	}
 )
 
-onMounted(load)
+onMounted(() => { load(); loadProjectLabels() })
 </script>

@@ -3,14 +3,14 @@
 		<ion-content :fullscreen="true">
 			<div class="min-h-full bg-gray-50">
 				<header class="bg-white border-b px-4 py-5 sticky top-0 z-20">
-					<div class="max-w-4xl mx-auto flex items-center justify-between gap-3">
+					<div class="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 						<div>
 							<h1 class="text-xl font-semibold text-gray-900">{{ __("Weekly Timesheets") }}</h1>
 							<p class="text-xs text-gray-500 mt-1">
 								{{ __("Add time anytime. Submit once at the end of the week.") }}
 							</p>
 						</div>
-						<Button variant="solid" @click="router.push({ name: 'TimesheetFormView' })">
+						<Button variant="solid" class="w-full md:w-auto py-3 md:py-2" @click="router.push({ name: 'TimesheetFormView' })">
 							{{ __("Open this week") }}
 						</Button>
 					</div>

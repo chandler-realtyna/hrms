@@ -2,7 +2,7 @@
 	<ion-page>
 		<ion-header>
 			<ion-toolbar>
-				<ion-buttons slot="start"><ion-back-button default-href="/home" /></ion-buttons>
+				<ion-buttons slot="start" class="avail-back"><ion-back-button default-href="/home" /></ion-buttons>
 				<ion-title>{{ __("Team Availability") }}</ion-title>
 			</ion-toolbar>
 		</ion-header>
@@ -467,3 +467,12 @@ onMounted(() => {
 	loadData()
 })
 </script>
+
+<style scoped>
+/* No back button on phones: bottom tabs own navigation there. */
+@media (max-width: 767px) {
+	.avail-back {
+		display: none;
+	}
+}
+</style>
