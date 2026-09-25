@@ -511,17 +511,20 @@ function latestEndAtOrBefore(ms) {
 }
 
 function addTime(totalSeconds) {
+	const requestedMin = Math.max(1, Math.floor(totalSeconds / 60))
+	const truncMin = (ms) => Math.floor(ms / 60000) * 60000
 	if (startTime.value) {
 		const startMs = new Date(startTime.value).getTime()
 		const bound = latestEndAtOrBefore(startMs)
-		const capSecs = Math.max(0, Math.floor((startMs - (bound ? new Date(bound.to).getTime() : 0)) / 1000))
-		const wholeMin = Math.floor(Math.min(totalSeconds, capSecs) / 60)
-		if (wholeMin <= 0) return { appliedSecs: 0, blocked: true, bound }
-		const applied = wholeMin * 60
+		const boundMs = bound ? new Date(bound.to).getTime() : 0
+		const capMin = Math.max(0, Math.floor((truncMin(startMs) - truncMin(boundMs)) / 60000))
+		const appliedMin = Math.min(requestedMin, capMin)
+		if (appliedMin <= 0) return { appliedSecs: 0, blocked: true, bound }
+		const applied = appliedMin * 60
 		startTime.value = new Date(startMs - applied * 1000).toISOString()
 		updateElapsed()
 		persistState()
-		return { appliedSecs: applied, blocked: false, capped: applied < totalSeconds, bound }
+		return { appliedSecs: applied, blocked: false, capped: appliedMin < requestedMin, bound }
 	}
 	const mine = activeProjectSegments()
 	if (!mine.length) {
@@ -531,15 +534,16 @@ function addTime(totalSeconds) {
 	const last = mine[mine.length - 1]
 	const fromMs = new Date(last.from).getTime()
 	const bound = latestEndAtOrBefore(fromMs)
-	const capSecs = Math.max(0, Math.floor((fromMs - (bound ? new Date(bound.to).getTime() : 0)) / 1000))
-	const wholeMin = Math.floor(Math.min(totalSeconds, capSecs) / 60)
-	if (wholeMin <= 0) return { appliedSecs: 0, blocked: true, bound }
-	const applied = wholeMin * 60
+	const boundMs = bound ? new Date(bound.to).getTime() : 0
+	const capMin = Math.max(0, Math.floor((truncMin(fromMs) - truncMin(boundMs)) / 60000))
+	const appliedMin = Math.min(requestedMin, capMin)
+	if (appliedMin <= 0) return { appliedSecs: 0, blocked: true, bound }
+	const applied = appliedMin * 60
 	last.from = new Date(fromMs - applied * 1000).toISOString()
 	last.seconds = Number(last.seconds || 0) + applied
 	updateElapsed()
 	persistState()
-	return { appliedSecs: applied, blocked: false, capped: applied < totalSeconds, bound }
+	return { appliedSecs: applied, blocked: false, capped: appliedMin < requestedMin, bound }
 }
 
 function trimTime(totalSeconds) {

@@ -204,7 +204,10 @@ function logKey(log) {
 
 function intervalsOverlap(aFrom, aTo, bFrom, bTo) {
 	if (!aFrom || !aTo || !bFrom || !bTo) return false
-	return aFrom < bTo && bFrom < aTo
+	// Minute precision, like the server: second-level jitter (e.g. a timer
+	// stopping at 11:00:37 against a manual 11:00 start) is not an overlap.
+	const minute = (dt) => String(dt).substring(0, 16)
+	return minute(aFrom) < minute(bTo) && minute(bFrom) < minute(aTo)
 }
 
 const overlapPairs = computed(() => {
