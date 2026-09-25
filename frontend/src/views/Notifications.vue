@@ -66,7 +66,7 @@
 										v-html="item.message"
 									></div>
 									<div class="text-xs font-normal text-gray-500">
-										{{ dayjs(item.creation).fromNow() }}
+										{{ timeAgo(item.creation) }}
 									</div>
 								</div>
 							</router-link>
@@ -95,6 +95,7 @@ import { call, createResource, FeatherIcon } from "frappe-ui"
 import { computed, inject, onMounted, ref } from "vue"
 import EmployeeAvatar from "@/components/EmployeeAvatar.vue"
 import EmptyState from "@/components/EmptyState.vue"
+import { timeAgo as serverTimeAgo } from "@/utils/serverTime.js"
 
 import {
 	unreadNotificationsCount,
@@ -105,6 +106,12 @@ import {
 const dayjs = inject("$dayjs")
 const router = useRouter()
 const __ = inject("$translate")
+
+// Server datetimes are EST wall times; plain dayjs() would misread them as
+// browser-local and skew "x ago" labels by the timezone difference.
+function timeAgo(value) {
+	return serverTimeAgo(dayjs, value)
+}
 const currentStart = ref(0)
 const pageLength = 10
 
