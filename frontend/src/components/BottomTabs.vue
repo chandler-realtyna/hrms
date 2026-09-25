@@ -39,14 +39,14 @@ const route = useRoute()
 
 const tabItems = [
 	{
-		icon: HomeIcon,
-		title: __("Home"),
-		route: "/home",
-	},
-	{
 		icon: TimerIcon,
 		title: __("Timer"),
 		route: "/timesheets/timer",
+	},
+	{
+		icon: HomeIcon,
+		title: __("Home"),
+		route: "/home",
 	},
 	{
 		icon: TimesheetIcon,

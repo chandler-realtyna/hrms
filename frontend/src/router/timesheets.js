@@ -4,11 +4,8 @@ const routes = [
 		path: "/timesheets",
 		component: () => import("@/views/timesheet/List.vue"),
 	},
-	{
-		name: "TimesheetTimer",
-		path: "/timesheets/timer",
-		component: () => import("@/views/timesheet/Timer.vue"),
-	},
+	// NOTE: TimesheetTimer lives under TabbedView in router/index.js so it
+	// renders inside the bottom-tab outlet (it's the default tab).
 	{
 		name: "TimesheetProjectApprovals",
 		path: "/timesheets/approvals",

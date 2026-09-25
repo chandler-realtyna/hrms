@@ -15,7 +15,7 @@ import meetingRoutes from "./meeting"
 const routes = [
 	{
 		path: "/",
-		redirect: "/home",
+		redirect: "/timesheets/timer",
 	},
 	{
 		path: "/",
@@ -23,12 +23,17 @@ const routes = [
 		children: [
 			{
 				path: "",
-				redirect: "/home",
+				redirect: "/timesheets/timer",
 			},
 			{
 				path: "/home",
 				name: "Home",
 				component: () => import("@/views/Home.vue"),
+			},
+			{
+				path: "/timesheets/timer",
+				name: "TimesheetTimer",
+				component: () => import("@/views/timesheet/Timer.vue"),
 			},
 			{
 				path: "/dashboard/leaves",
