@@ -11,7 +11,7 @@
 			routerDirection="root"
 			:class="[
 				'bg-white text-xs space-y-1.5 !hover:border-gray-300 !hover:text-gray-700 transition active:scale-95',
-				route.path === item.route
+				isActive(item)
 					? 'border-gray-900 text-gray-800 font-semibold'
 					: 'text-gray-600 font-normal',
 			]"
@@ -36,6 +36,11 @@ import { inject } from "vue"
 const __ = inject("$translate")
 
 const route = useRoute()
+
+function isActive(item) {
+	if (route.path === item.route) return true
+	return item.route !== "/home" && route.path.startsWith(item.route + "/")
+}
 
 const tabItems = [
 	{

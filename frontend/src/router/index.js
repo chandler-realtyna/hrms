@@ -49,6 +49,10 @@ const routes = [
 				name: "InvoicesDashboard",
 				component: () => import("@/views/invoice/List.vue"),
 			},
+			// Tab pages: nested under TabbedView so the bottom tabs stay
+			// mounted and working on mobile.
+			...timesheetRoutes,
+			...availabilityRoutes,
 		],
 	},
 	{
@@ -90,10 +94,8 @@ const routes = [
 	...claimRoutes,
 	...employeeAdvanceRoutes,
 	...invoiceRoutes,
-	...timesheetRoutes,
 	...holidayRoutes,
 	...scheduleRoutes,
-	...availabilityRoutes,
 	...docsRoutes,
 	...meetingRoutes,
 ]
