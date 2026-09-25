@@ -33,16 +33,79 @@
 						>
 							{{ activeProjectLabel }}
 						</span>
+						<button
+							type="button"
+							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Add time')"
+							:title="__('Forgot to start earlier? Add minutes')"
+							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+						>
+							+
+						</button>
+						<button
+							type="button"
+							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Remove time')"
+							:title="__('Forgot to stop sooner? Remove minutes')"
+							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+						>
+							−
+						</button>
 					</div>
 					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
-						<span>{{ __("Stopped") }}</span>
+						<span>{{ isPaused ? __("Paused") : __("Stopped") }}</span>
 						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
 						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600 dark:text-gray-300">
 							{{ activeProjectLabel }}
 						</span>
+						<button
+							v-if="isPaused"
+							type="button"
+							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Add time')"
+							:title="__('Forgot to start earlier? Add minutes')"
+							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+						>
+							+
+						</button>
+						<button
+							v-if="isPaused"
+							type="button"
+							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Remove time')"
+							:title="__('Forgot to stop sooner? Remove minutes')"
+							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+						>
+							−
+						</button>
 					</div>
 					<div v-else class="mt-3 text-sm text-gray-400">
 						{{ __("Press Start to begin tracking") }}
+					</div>
+					<div v-if="adjustDir !== 0" class="mt-3 flex items-center gap-2">
+						<input
+							v-model.number="adjustMinutes"
+							type="number"
+							min="1"
+							step="1"
+							class="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+							:aria-label="__('Minutes')"
+						/>
+						<span class="text-xs text-gray-500">{{ __("min") }}</span>
+						<button
+							type="button"
+							class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white"
+							@click="applyAdjust"
+						>
+							{{ adjustDir > 0 ? __("Add") : __("Trim") }}
+						</button>
+						<button
+							type="button"
+							class="px-1 text-sm text-gray-400"
+							@click="adjustDir = 0"
+						>
+							{{ __("Cancel") }}
+						</button>
 					</div>
 				</div>
 
@@ -399,6 +462,78 @@ function toggleProjectTimer(project) {
 	if (status === "running") return pause()
 	if (status === "paused") return resume()
 	startProject(project)
+}
+
+// ─── Manual time adjustment (± minutes, e.g. forgot to start/stop) ──────────
+// Adjustments apply to the ACTIVE project only and are baked into segments /
+// startTime, so they persist and are saved like normally tracked time.
+const adjustDir = ref(0) // 0 = hidden, 1 = add, -1 = trim
+const adjustMinutes = ref(15)
+
+function activeProjectSegments() {
+	return segments.value.filter((segment) => segment.project === form.value.project)
+}
+
+function addTime(totalSeconds) {
+	if (startTime.value) {
+		startTime.value = new Date(new Date(startTime.value).getTime() - totalSeconds * 1000).toISOString()
+	} else {
+		const mine = activeProjectSegments()
+		if (!mine.length) {
+			toast({ title: __("Nothing to adjust yet"), icon: "alert-circle", iconClasses: "text-amber-500" })
+			return false
+		}
+		const last = mine[mine.length - 1]
+		last.from = new Date(new Date(last.from).getTime() - totalSeconds * 1000).toISOString()
+		last.seconds = Number(last.seconds || 0) + totalSeconds
+	}
+	updateElapsed()
+	persistState()
+	return true
+}
+
+function trimTime(totalSeconds) {
+	let remaining = totalSeconds
+	if (startTime.value) {
+		const current = Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+		const take = Math.min(current, remaining)
+		startTime.value = new Date(new Date(startTime.value).getTime() + take * 1000).toISOString()
+		remaining -= take
+	}
+	const mine = activeProjectSegments()
+	for (let i = mine.length - 1; i >= 0 && remaining > 0; i--) {
+		const segment = mine[i]
+		const take = Math.min(Number(segment.seconds || 0), remaining)
+		segment.seconds = Number(segment.seconds || 0) - take
+		segment.to = new Date(new Date(segment.to).getTime() - take * 1000).toISOString()
+		remaining -= take
+		if (Number(segment.seconds) <= 0) {
+			segments.value.splice(segments.value.indexOf(segment), 1)
+		}
+	}
+	updateElapsed()
+	persistState()
+	if (remaining > 0) {
+		toast({ title: __("Trimmed down to zero"), icon: "alert-circle", iconClasses: "text-amber-500" })
+	}
+	return true
+}
+
+function applyAdjust() {
+	const minutes = Math.max(1, Math.floor(Number(adjustMinutes.value) || 0))
+	adjustMinutes.value = minutes
+	const ok = adjustDir.value > 0 ? addTime(minutes * 60) : trimTime(minutes * 60)
+	if (ok) {
+		toast({
+			title:
+				adjustDir.value > 0
+					? __("Added {0} min", [minutes])
+					: __("Trimmed {0} min", [minutes]),
+			icon: "check",
+			iconClasses: "text-green-500",
+		})
+		adjustDir.value = 0
+	}
 }
 
 function pushCurrentSegment() {
