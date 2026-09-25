@@ -230,6 +230,14 @@
 					</div>
 				</div>
 			</div>
+			<div class="px-4 pb-8">
+				<Button @click="logout" variant="outline" theme="red" class="w-full shadow py-4">
+					<template #prefix>
+						<FeatherIcon name="log-out" class="w-4" />
+					</template>
+					{{ __("Log Out") }}
+				</Button>
+			</div>
 		</ion-content>
 	</ion-page>
 </template>
@@ -250,11 +258,13 @@ import {
 import { computed, inject, ref, watch } from "vue"
 
 import { arePushNotificationsEnabled } from "@/data/notifications"
+import { showErrorAlert } from "@/utils/dialogs"
 import { useDarkMode } from "@/utils/darkMode"
 import ProfileImageEditor from "@/components/ProfileImageEditor.vue"
 
 const __ = inject("$translate")
 const router = useRouter()
+const session = inject("$session")
 const { isDark, toggleDarkMode } = useDarkMode()
 
 const goToCalendarConnect = () => {
@@ -404,5 +414,15 @@ const enablePushNotifications = () => {
 		.finally(() => {
 			isLoading.value = false
 		})
+}
+
+const logout = async () => {
+	try {
+		await session.logout.submit()
+	} catch (e) {
+		const msg = "An error occurred while attempting to log out!"
+		console.error(msg, e)
+		showErrorAlert(msg)
+	}
 }
 </script>
