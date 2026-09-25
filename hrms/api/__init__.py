@@ -1092,7 +1092,11 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 	if not project or (now_datetime() - started).total_seconds() < 2 * 60 * 60:
 		return False
 	user = frappe.session.user
-	message = _("Your timer for {0} has been running for more than two hours. You may have forgotten to save it.").format(frappe.bold(project))
+	project_label = project
+	project_name = frappe.db.get_value("Project", project, "project_name")
+	if project_name and project_name != project:
+		project_label = f"{project_name} - {project}"
+	message = _("Your timer for {0} has been running for more than two hours. You may have forgotten to save it.").format(frappe.bold(project_label))
 	frappe.get_doc({
 		"doctype": "Notification Log",
 		"subject": _("Timer running longer than two hours"),
