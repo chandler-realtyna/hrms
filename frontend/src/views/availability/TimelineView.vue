@@ -26,17 +26,21 @@
 			{{ __("No availability data for this day.") }}
 		</div>
 
+		<div class="relative">
+			<!-- Single Now line spanning ALL groups (active + not-active) so the
+			     timeline runs fully to the bottom without stopping mid-list. -->
+			<div
+				v-if="showNowMarker"
+				class="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
+				:style="nowMarkerStyle"
+			/>
+
 		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-50' : ''">
 			<div v-if="group.label && group.employees.length" class="mb-3 pl-40 text-xs font-semibold text-gray-400">
 				{{ group.label }}
 			</div>
 
 			<div v-if="group.employees.length" class="relative">
-				<div
-					v-if="showNowMarker && !group.muted"
-					class="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
-					:style="nowMarkerStyle"
-				/>
 
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
 					<!-- Name label -->
@@ -102,6 +106,8 @@
 				</div>
 			</div>
 		</div>
+		</div>
+		<!-- /Now-line wrapper: the red line above spans every group -->
 
 		<!-- Compare-timezone axis -->
 		<div v-if="showCompareAxis" class="mt-3">
