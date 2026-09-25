@@ -47,8 +47,10 @@
 			<div v-if="group.employees.length" class="relative">
 
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
-					<!-- Name label: sticky so it stays visible while scrolling sideways -->
-					<div class="w-40 shrink-0 sticky left-0 z-10 flex items-center gap-2 pr-3 pt-0.5 bg-white dark:bg-[#0f0f11]">
+					<!-- Name label: sticky on desktop so it stays visible while
+					     scrolling sideways; on phones it scrolls with the
+					     content so it can never cover the bars. -->
+					<div class="w-40 shrink-0 md:sticky md:left-0 md:z-10 flex items-center gap-2 pr-3 pt-0.5 md:bg-white md:dark:bg-[#0f0f11]">
 						<button
 							type="button"
 							class="relative flex-shrink-0 rounded-full focus:outline-none"
