@@ -5,6 +5,9 @@
 				<div class="flex flex-col bg-white shadow-sm p-4">
 					<div class="flex flex-row justify-between items-center">
 						<div class="flex flex-row items-center gap-2">
+							<ion-buttons v-if="props.showBack" slot="start">
+								<ion-back-button default-href="/home" />
+							</ion-buttons>
 							<h2 class="text-xl font-bold text-gray-900">
 								{{ props.pageTitle || __("Realtyna HRMS") }}
 							</h2>
@@ -49,7 +52,7 @@
 </template>
 
 <script setup>
-import { IonHeader, IonContent, IonPage } from "@ionic/vue"
+import { IonHeader, IonContent, IonPage, IonButtons, IonBackButton } from "@ionic/vue"
 import { FeatherIcon, Avatar } from "frappe-ui"
 
 import { unreadNotificationsCount } from "@/data/notifications"
@@ -63,6 +66,11 @@ const props = defineProps({
 		type: String,
 		required: false,
 		default: "",
+	},
+	showBack: {
+		type: Boolean,
+		required: false,
+		default: false,
 	},
 })
 </script>

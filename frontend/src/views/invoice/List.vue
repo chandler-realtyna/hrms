@@ -4,11 +4,16 @@
 			<div class="min-h-full bg-gray-50">
 				<header class="bg-white border-b px-4 py-5 sticky top-0 z-20">
 					<div class="max-w-5xl mx-auto flex items-center justify-between gap-3">
-						<div>
+						<div class="flex items-center gap-2">
+							<router-link :to="{ name: 'Home' }" class="md:hidden text-gray-500" :aria-label="__('Back')">
+								<FeatherIcon name="chevron-left" class="h-5 w-5" />
+							</router-link>
+							<div>
 							<h1 class="text-xl font-semibold text-gray-900">{{ __("Invoices") }}</h1>
 							<p class="text-xs text-gray-500 mt-1">
 								{{ __("Review worked hours, confirm, and follow payment status.") }}
 							</p>
+						</div>
 						</div>
 						<Button variant="solid" @click="router.push({ name: 'EmployeeInvoiceNewView' })">{{
 							__("New invoice")
@@ -94,7 +99,7 @@
 import { inject, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
-import { Button, call } from "frappe-ui"
+import { Button, call, FeatherIcon } from "frappe-ui"
 
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")

@@ -35,30 +35,33 @@ const routes = [
 				name: "TimesheetTimer",
 				component: () => import("@/views/timesheet/Timer.vue"),
 			},
-			{
-				path: "/dashboard/leaves",
-				name: "LeavesDashboard",
-				component: () => import("@/views/leave/Dashboard.vue"),
-			},
-			{
-				path: "/dashboard/expense-claims",
-				name: "ExpenseClaimsDashboard",
-				component: () => import("@/views/expense_claim/Dashboard.vue"),
-			},
-			{
-				path: "/dashboard/salary-slips",
-				redirect: "/dashboard/invoices",
-			},
-			{
-				path: "/dashboard/invoices",
-				name: "InvoicesDashboard",
-				component: () => import("@/views/invoice/List.vue"),
-			},
+			// NOTE: every child of TabbedView must own a bottom tab, or the
+			// tab outlet can keep showing a stale view while the URL changes.
+			// Dashboards without tabs live as top-level routes below.
 			// Tab pages: nested under TabbedView so the bottom tabs stay
 			// mounted and working on mobile.
 			...timesheetRoutes,
 			...availabilityRoutes,
 		],
+	},
+	{
+		path: "/dashboard/leaves",
+		name: "LeavesDashboard",
+		component: () => import("@/views/leave/Dashboard.vue"),
+	},
+	{
+		path: "/dashboard/expense-claims",
+		name: "ExpenseClaimsDashboard",
+		component: () => import("@/views/expense_claim/Dashboard.vue"),
+	},
+	{
+		path: "/dashboard/salary-slips",
+		redirect: "/dashboard/invoices",
+	},
+	{
+		path: "/dashboard/invoices",
+		name: "InvoicesDashboard",
+		component: () => import("@/views/invoice/List.vue"),
 	},
 	{
 		path: "/login",
