@@ -12,10 +12,23 @@ import availabilityRoutes from "./availability"
 import docsRoutes from "./docs"
 import meetingRoutes from "./meeting"
 
+function isMobileDevice() {
+	try {
+		if (typeof window === "undefined") return false
+		if (window.matchMedia?.("(max-width: 767px)").matches) return true
+		return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "")
+	} catch {
+		return false
+	}
+}
+
+// On phones the timer is the main page; desktop keeps Home.
+const defaultLanding = () => (isMobileDevice() ? "/timesheets/timer" : "/home")
+
 const routes = [
 	{
 		path: "/",
-		redirect: "/home",
+		redirect: defaultLanding,
 	},
 	{
 		path: "/",
@@ -23,7 +36,7 @@ const routes = [
 		children: [
 			{
 				path: "",
-				redirect: "/home",
+				redirect: defaultLanding,
 			},
 			{
 				path: "/home",

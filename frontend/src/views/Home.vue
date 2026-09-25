@@ -2,13 +2,16 @@
 	<BaseLayout>
 		<template #body>
 			<div class="p-4 md:p-6 flex flex-col gap-6">
-				<!-- Mobile: Quick Links as card lists at the top -->
+				<!-- Charts first, then quick menu: glanceable status on top,
+				     actions one scroll away on every screen size. -->
+				<WorkingHoursDashboard />
+
+				<!-- Mobile: Quick Links as card lists right below the charts -->
 				<div class="md:hidden flex flex-col">
 					<QuickLinks :items="quickLinks" :title="__('Quick Links')" />
 					<QuickLinks :items="meetingLinks" :title="__('Meetings')" />
 				</div>
 
-				<WorkingHoursDashboard />
 				<RequestPanel />
 			</div>
 		</template>

@@ -28,9 +28,9 @@ import { useRoute } from "vue-router"
 import { IonTabBar, IonTabButton, IonLabel } from "@ionic/vue"
 
 import HomeIcon from "@/components/icons/HomeIcon.vue"
-import LeaveIcon from "@/components/icons/LeaveIcon.vue"
-import ExpenseIcon from "@/components/icons/ExpenseIcon.vue"
-import SalaryIcon from "@/components/icons/SalaryIcon.vue"
+import TimerIcon from "@/components/icons/TimerIcon.vue"
+import TimesheetIcon from "@/components/icons/TimesheetIcon.vue"
+import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
 import { inject } from "vue"
 
 const __ = inject("$translate")
@@ -43,20 +43,20 @@ const tabItems = [
 		title: __("Home"),
 		route: "/home",
 	},
-{
-		icon: LeaveIcon,
-		title: __("Leaves"),
-		route: "/dashboard/leaves",
+	{
+		icon: TimerIcon,
+		title: __("Timer"),
+		route: "/timesheets/timer",
 	},
 	{
-		icon: ExpenseIcon,
-		title: __("Expenses"),
-		route: "/dashboard/expense-claims",
+		icon: TimesheetIcon,
+		title: __("Timesheets"),
+		route: "/timesheets",
 	},
 	{
-		icon: SalaryIcon,
-		title: __("Salary"),
-		route: "/dashboard/salary-slips",
+		icon: AvailabilityIcon,
+		title: __("Team"),
+		route: "/availability",
 	},
 ]
 </script>

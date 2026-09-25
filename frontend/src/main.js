@@ -92,6 +92,10 @@ const registerServiceWorker = async () => {
 		navigator.serviceWorker
 			.register(serviceWorkerURL, {
 				type: "classic",
+				// App lives at /hrms/* but sw.js is served from /assets.
+				// The server sends `Service-Worker-Allowed: /hrms/` for it,
+				// so the worker can control app pages (needed for install).
+				scope: "/hrms/",
 			})
 			.then((registration) => {
 				if (config) {
