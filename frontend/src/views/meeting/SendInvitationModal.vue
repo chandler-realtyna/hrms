@@ -136,20 +136,30 @@ async function send() {
 		// Prefer absolute UTC times; fall back to legacy date+start for old results.
 		const start = props.slot?.start_utc ? utcToNaive(props.slot.start_utc) : `${props.slot.date} ${props.slot.start}:00`
 		const end = props.slot?.end_utc ? utcToNaive(props.slot.end_utc) : `${props.slot.date} ${props.slot.end}:00`
-		await call("hrms.api.calendar.send_meeting_invitation", {
+		const result = await call("hrms.api.calendar.send_meeting_invitation", {
 			employees: JSON.stringify(props.participants),
 			start,
 			end,
 			title: title.value.trim(),
 			description: description.value.trim(),
 		})
-		toast({
-			title: __("Invitation Sent"),
-			text: __("Meeting invitations have been sent to all participants."),
-			icon: "check-circle",
-			position: "bottom-center",
-			iconClasses: "text-green-500",
-		})
+		if (result?.calendar_status === "queued") {
+			toast({
+				title: __("Invitation is being sent"),
+				text: __("Google Calendar is taking longer than usual. Invites will arrive shortly."),
+				icon: "clock",
+				position: "bottom-center",
+				iconClasses: "text-amber-500",
+			})
+		} else {
+			toast({
+				title: __("Invitation Sent"),
+				text: __("Meeting invitations have been sent to all participants."),
+				icon: "check-circle",
+				position: "bottom-center",
+				iconClasses: "text-green-500",
+			})
+		}
 		emit("sent")
 		emit("update:modelValue", false)
 	} catch (e) {

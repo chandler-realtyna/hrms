@@ -1070,42 +1070,110 @@ def send_meeting_invitation(
 
 	event_link = None
 	meet_link  = None
+	calendar_status = "skipped"
 
-	if organizer_gcal:
-		try:
-			from frappe.integrations.doctype.google_calendar.google_calendar import get_google_calendar_object
-			google_service, _ = get_google_calendar_object(organizer_gcal)
+	if not organizer_gcal:
+		frappe.throw(
+			_("Your Google Calendar is not connected. Connect it first, then send the invitation again.")
+		)
 
-			event_body = {
-				"summary": title,
-				"description": description or "",
-				"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
-				"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
-				"attendees": attendees,
-				"conferenceData": {
-					"createRequest": {
-						"requestId": str(_uuid.uuid4()),
-						"conferenceSolutionKey": {"type": "hangoutsMeet"},
-					}
-				},
-			}
+	try:
+		from frappe.integrations.doctype.google_calendar.google_calendar import get_google_calendar_object
+		google_service, _ = get_google_calendar_object(organizer_gcal)
 
-			created = google_service.events().insert(
-				calendarId="primary",
-				body=event_body,
-				conferenceDataVersion=1,
-				sendUpdates="all",
-			).execute()
+		event_body = {
+			"summary": title,
+			"description": description or "",
+			"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
+			"end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": org_tz_str},
+			"attendees": attendees,
+			"conferenceData": {
+				"createRequest": {
+					"requestId": str(_uuid.uuid4()),
+					"conferenceSolutionKey": {"type": "hangoutsMeet"},
+				}
+			},
+		}
 
+		created = _google_insert_bounded(google_service, event_body, GOOGLE_INSERT_TIMEOUT_SECS)
+
+		if created is None:
+			# Google didn't answer in time: the web request must return NOW
+			# (otherwise the proxy kills it and the UI shows a cryptic error).
+			# A background job owns the actual creation from here.
+			frappe.enqueue(
+				"hrms.api.calendar._create_invite_event",
+				queue="long",
+				timeout=300,
+				organizer_gcal=organizer_gcal,
+				event_body=event_body,
+			)
+			calendar_status = "queued"
+		else:
 			event_link = created.get("htmlLink")
 			for ep in created.get("conferenceData", {}).get("entryPoints", []):
 				if ep.get("entryPointType") == "video":
 					meet_link = ep.get("uri")
 					break
-		except Exception as e:
-			frappe.log_error(str(e), "send_meeting_invitation: Google Calendar failed")
+			calendar_status = "created"
+	except frappe.ValidationError:
+		raise
+	except Exception as e:
+		frappe.log_error(str(e), "send_meeting_invitation: Google Calendar failed")
+		frappe.throw(
+			_("Google Calendar didn't respond. Your invites were not sent — please try again.")
+		)
 
-	return {"event_link": event_link, "meet_link": meet_link}
+	return {"event_link": event_link, "meet_link": meet_link, "calendar_status": calendar_status}
+
+
+# Bound for the synchronous Google insert. The google API client has no
+# default timeout: an unanswered call used to hang the web worker until the
+# proxy killed the request, and the UI showed only the bare method path.
+GOOGLE_INSERT_TIMEOUT_SECS = 25
+
+
+def _google_insert_bounded(google_service, event_body: dict, timeout_secs: int):
+	"""
+	Run the Calendar insert in a worker thread and wait at most timeout_secs.
+	Returns the created event dict, or None on timeout (caller must retry
+	elsewhere — the thread itself is left alone, it performs no Frappe calls).
+	Real API errors propagate to the caller.
+	"""
+	import concurrent.futures as _futures
+
+	executor = _futures.ThreadPoolExecutor(max_workers=1)
+	try:
+		future = executor.submit(
+			lambda: google_service.events().insert(
+				calendarId="primary",
+				body=event_body,
+				conferenceDataVersion=1,
+				sendUpdates="all",
+			).execute()
+		)
+		try:
+			return future.result(timeout=timeout_secs)
+		except _futures.TimeoutError:
+			return None
+	finally:
+		# Do NOT wait: shutdown(wait=False) lets a hung call linger in a
+		# daemon thread instead of blocking this request.
+		executor.shutdown(wait=False, cancel_futures=False)
+
+
+def _create_invite_event(organizer_gcal: str, event_body: dict) -> dict:
+	"""Background creation of a meeting invitation event (see send_meeting_invitation)."""
+	from frappe.integrations.doctype.google_calendar.google_calendar import get_google_calendar_object
+
+	google_service, _ = get_google_calendar_object(organizer_gcal)
+	created = google_service.events().insert(
+		calendarId="primary",
+		body=event_body,
+		conferenceDataVersion=1,
+		sendUpdates="all",
+	).execute()
+	return {"event_link": created.get("htmlLink")}
 
 
 # ── Google Calendar connect helper ────────────────────────────────────────────
