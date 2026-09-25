@@ -1084,9 +1084,11 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 	started = get_datetime(started_at)
 	if getattr(started, "tzinfo", None) is not None:
 		# Browser timestamps carry an offset (ISO "...Z") while now_datetime()
-		# is naive system-local; subtracting the two raised TypeError, which
-		# silently killed every reminder. Normalize to the same frame first.
-		started = convert_utc_to_system_timezone(started)
+		# is naive system-local. convert_utc_to_system_timezone() still returns
+		# an aware value, so strip tzinfo AFTER converting: only two naive
+		# datetimes in the same frame can be subtracted without TypeError
+		# (which previously killed every reminder silently).
+		started = convert_utc_to_system_timezone(started).replace(tzinfo=None)
 	if not project or (now_datetime() - started).total_seconds() < 2 * 60 * 60:
 		return False
 	user = frappe.session.user
