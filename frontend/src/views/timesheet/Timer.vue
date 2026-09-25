@@ -480,22 +480,69 @@ function activeProjectSegments() {
 	return segments.value.filter((segment) => segment.project === form.value.project)
 }
 
+function projectNameLabel(name) {
+	if (!name) return ""
+	const found =
+		availableProjects.value.find((item) => item.name === name) ||
+		favoriteProjects.value.find((item) => item.name === name)
+	return projectDisplayLabel(found || { name })
+}
+
+function describeSegment(segment) {
+	if (!segment) return ""
+	const fmt = (iso) => {
+		const d = new Date(iso)
+		const p = (n) => String(n).padStart(2, "0")
+		return `${p(d.getHours())}:${p(d.getMinutes())}`
+	}
+	return `${projectNameLabel(segment.project)} ${fmt(segment.from)}–${fmt(segment.to)}`
+}
+
+// Latest segment ending at or before ms (any project: one person, one timeline).
+function latestEndAtOrBefore(ms) {
+	let best = null
+	let bestTo = -1
+	for (const segment of segments.value) {
+		const to = new Date(segment.to).getTime()
+		if (Number.isNaN(to) || to > ms) continue
+		if (to > bestTo) {
+			bestTo = to
+			best = segment
+		}
+	}
+	return best
+}
+
 function addTime(totalSeconds) {
 	if (startTime.value) {
-		startTime.value = new Date(new Date(startTime.value).getTime() - totalSeconds * 1000).toISOString()
-	} else {
-		const mine = activeProjectSegments()
-		if (!mine.length) {
-			toast({ title: __("Nothing to adjust yet"), icon: "alert-circle", iconClasses: "text-amber-500" })
-			return false
-		}
-		const last = mine[mine.length - 1]
-		last.from = new Date(new Date(last.from).getTime() - totalSeconds * 1000).toISOString()
-		last.seconds = Number(last.seconds || 0) + totalSeconds
+		const startMs = new Date(startTime.value).getTime()
+		const bound = latestEndAtOrBefore(startMs)
+		const capSecs = Math.max(0, Math.floor((startMs - (bound ? new Date(bound.to).getTime() : 0)) / 1000))
+		const wholeMin = Math.floor(Math.min(totalSeconds, capSecs) / 60)
+		if (wholeMin <= 0) return { appliedSecs: 0, blocked: true, bound }
+		const applied = wholeMin * 60
+		startTime.value = new Date(startMs - applied * 1000).toISOString()
+		updateElapsed()
+		persistState()
+		return { appliedSecs: applied, blocked: false, capped: applied < totalSeconds, bound }
 	}
+	const mine = activeProjectSegments()
+	if (!mine.length) {
+		toast({ title: __("Nothing to adjust yet"), icon: "alert-circle", iconClasses: "text-amber-500" })
+		return { appliedSecs: 0, blocked: true, empty: true }
+	}
+	const last = mine[mine.length - 1]
+	const fromMs = new Date(last.from).getTime()
+	const bound = latestEndAtOrBefore(fromMs)
+	const capSecs = Math.max(0, Math.floor((fromMs - (bound ? new Date(bound.to).getTime() : 0)) / 1000))
+	const wholeMin = Math.floor(Math.min(totalSeconds, capSecs) / 60)
+	if (wholeMin <= 0) return { appliedSecs: 0, blocked: true, bound }
+	const applied = wholeMin * 60
+	last.from = new Date(fromMs - applied * 1000).toISOString()
+	last.seconds = Number(last.seconds || 0) + applied
 	updateElapsed()
 	persistState()
-	return true
+	return { appliedSecs: applied, blocked: false, capped: applied < totalSeconds, bound }
 }
 
 function trimTime(totalSeconds) {
@@ -528,19 +575,51 @@ function trimTime(totalSeconds) {
 function applyAdjust() {
 	const minutes = Math.max(1, Math.floor(Number(adjustMinutes.value) || 0))
 	adjustMinutes.value = minutes
-	const ok = adjustDir.value > 0 ? addTime(minutes * 60) : trimTime(minutes * 60)
+	if (adjustDir.value > 0) {
+		const res = addTime(minutes * 60)
+		if (!res || res.blocked || res.appliedSecs <= 0) {
+			toast({
+				title: __("No time added"),
+				text: res?.bound
+					? __("Limited to avoid overlap with {0}.", [describeSegment(res.bound)])
+					: __("Nothing recorded for this project yet."),
+				icon: "alert-circle",
+				iconClasses: "text-amber-500",
+			})
+			return // keep the panel open so a smaller value can be entered
+		}
+		const appliedMin = Math.floor(res.appliedSecs / 60)
+		adjustMinutes.value = appliedMin
+		if (res.capped) {
+			toast({
+				title: __("Added {0} min instead of {1}", [appliedMin, minutes]),
+				text: res.bound
+					? __("Limited to avoid overlap with {0}.", [describeSegment(res.bound)])
+					: undefined,
+				icon: "check",
+				iconClasses: "text-green-500",
+			})
+		} else {
+			toast({
+				title: __("Added {0} min", [appliedMin]),
+				icon: "check",
+				iconClasses: "text-green-500",
+			})
+		}
+		adjustDir.value = 0
+		// Re-arm the 2h reminder from the adjusted start: crossing 2h via +/-
+		// fires on the next tick instead of waiting for the original schedule.
+		if (isRunning.value) scheduleLongRunningHint()
+		return
+	}
+	const ok = trimTime(minutes * 60)
 	if (ok) {
 		toast({
-			title:
-				adjustDir.value > 0
-					? __("Added {0} min", [minutes])
-					: __("Trimmed {0} min", [minutes]),
+			title: __("Trimmed {0} min", [minutes]),
 			icon: "check",
 			iconClasses: "text-green-500",
 		})
 		adjustDir.value = 0
-		// Re-arm the 2h reminder from the adjusted start: crossing 2h via +/-
-		// fires on the next tick instead of waiting for the original schedule.
 		if (isRunning.value) scheduleLongRunningHint()
 	}
 }
@@ -564,6 +643,7 @@ function start() {
 	segments.value = []
 	elapsed.value = 0
 	isPaused.value = false
+	adjustDir.value = 0
 	startTime.value = new Date().toISOString()
 	longRunningNotified.value = false
 	try {
@@ -667,6 +747,7 @@ async function stop() {
 		clearPersistedState()
 		isRunning.value = false
 		isPaused.value = false
+		adjustDir.value = 0
 		pausedSince.value = null
 		segments.value = []
 		startTime.value = null
@@ -702,6 +783,7 @@ function discard() {
 	clearPersistedState()
 	isRunning.value = false
 	isPaused.value = false
+	adjustDir.value = 0
 	pausedSince.value = null
 	segments.value = []
 	startTime.value = null
