@@ -160,7 +160,7 @@
 						class="flex flex-col gap-1"
 					>
 						<div class="flex justify-between items-baseline gap-2">
-							<span class="text-sm text-gray-700 truncate">{{ proj.project }}</span>
+							<span class="text-sm text-gray-700 truncate" :title="projectLabel(proj.project, ' - ')">{{ projectLabel(proj.project, " - ") }}</span>
 							<span class="text-xs font-semibold text-gray-500 shrink-0 tabular-nums">
 								{{ proj.hours }}h
 							</span>
@@ -323,6 +323,10 @@
 import { ref, computed, inject, watch } from "vue"
 import { createResource, LoadingIndicator } from "frappe-ui"
 import { getViewerTimezone, getTimezoneAbbr, getOffsetDiffHours, formatOffsetDiff } from "@/utils/timezone.js"
+import { useProjectLabels } from "@/composables/useProjectLabels.js"
+
+const { displayName: projectLabel, load: loadProjectLabels } = useProjectLabels()
+loadProjectLabels()
 
 const props = defineProps({
 	// When true, render extra breakdowns (stats, activity, per-day list).

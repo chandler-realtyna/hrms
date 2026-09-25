@@ -3,9 +3,9 @@
 		<!-- Horizontally scrollable on phones: full-fidelity timeline with a
 		     sticky name column (best practice for dense grids on small screens). -->
 		<div class="overflow-x-auto -mx-1 px-1">
-		<div class="min-w-[620px] md:min-w-0">
+		<div class="min-w-[760px] md:min-w-0">
 		<!-- Sticky header: hour axis + timezone/now row stay visible while scrolling -->
-		<div class="sticky top-0 z-30 border-b border-gray-100 bg-[var(--ion-background-color,white)] pb-1 pt-1">
+		<div class="sticky top-0 z-30 border-b border-gray-100 bg-white dark:bg-[#0f0f11] pb-1 pt-1">
 			<!-- Hour axis labels -->
 			<div class="flex mb-1 pl-40">
 				<div v-for="h in visibleHours" :key="h" class="flex-1 text-center text-xs text-gray-400 font-medium">
@@ -39,7 +39,7 @@
 				:style="nowMarkerStyle"
 			/>
 
-		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-50' : ''">
+		<div v-for="group in employeeGroups" :key="group.key" :class="group.muted ? 'mt-5 border-t border-gray-100 pt-4 opacity-70' : ''">
 			<div v-if="group.label && group.employees.length" class="mb-3 pl-40 text-xs font-semibold text-gray-400">
 				{{ group.label }}
 			</div>
@@ -48,7 +48,7 @@
 
 				<div v-for="emp in group.employees" :key="emp.employee" class="flex items-start mb-3">
 					<!-- Name label: sticky so it stays visible while scrolling sideways -->
-					<div class="w-40 shrink-0 sticky left-0 z-10 flex items-center gap-2 pr-3 pt-0.5 bg-[var(--ion-background-color,white)]">
+					<div class="w-40 shrink-0 sticky left-0 z-10 flex items-center gap-2 pr-3 pt-0.5 bg-white dark:bg-[#0f0f11]">
 						<button
 							type="button"
 							class="relative flex-shrink-0 rounded-full focus:outline-none"
@@ -159,7 +159,7 @@ function isSelected(employeeId) {
 }
 
 const START_HOUR = 7
-const END_HOUR = 22
+const END_HOUR = 24
 const TOTAL_HOURS = END_HOUR - START_HOUR
 // Name-column width matches the w-40/pl-40 classes above.
 const LABEL_WIDTH_REM = 10
@@ -294,6 +294,7 @@ function shortTime(t) {
 }
 
 function formatHour(h) {
+	if (h >= 24) return "12AM"
 	const ampm = h >= 12 ? "PM" : "AM"
 	const h12 = h % 12 || 12
 	return `${h12}${ampm}`

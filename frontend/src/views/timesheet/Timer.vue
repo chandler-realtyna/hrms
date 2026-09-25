@@ -2,11 +2,8 @@
 	<ion-page>
 		<ion-content :fullscreen="true">
 			<div class="flex flex-col min-h-full bg-gray-50">
-				<!-- Header -->
-				<header class="flex items-center bg-white shadow-sm px-3 py-4 sticky top-0 z-10 gap-1">
-					<Button variant="ghost" class="!pl-0 hover:bg-white" @click="router.push('/home')">
-						<FeatherIcon name="chevron-left" class="h-5 w-5" />
-					</Button>
+				<!-- Header (no back button: bottom tabs + sidebar own navigation) -->
+				<header class="flex items-center bg-white shadow-sm px-4 py-4 sticky top-0 z-10 gap-1">
 					<h1 class="text-xl font-semibold text-gray-900">{{ __("Time Tracker") }}</h1>
 				</header>
 

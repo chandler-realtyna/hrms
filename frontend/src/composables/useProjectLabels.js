@@ -21,8 +21,7 @@ export function useProjectLabels() {
 				const name = row[0] || row.name
 				const label = row[1] || row[0] || row.name
 				if (!name) continue
-				map[name] =
-					!label || label === name || label.includes(name) ? label || name : `${label} : ${name}`
+				map[name] = label || name
 			}
 			labels.value = map
 		} catch {
@@ -30,8 +29,11 @@ export function useProjectLabels() {
 		}
 	}
 
-	function displayName(code) {
-		return labels.value[code] || code || ""
+	function displayName(code, sep = " : ") {
+		const label = labels.value[code]
+		if (!label || !code) return label || code || ""
+		if (label === code || label.includes(code)) return label
+		return `${label}${sep}${code}`
 	}
 
 	return { labels, load, displayName }
