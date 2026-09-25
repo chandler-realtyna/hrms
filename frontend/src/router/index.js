@@ -31,6 +31,11 @@ const routes = [
 				component: () => import("@/views/Home.vue"),
 			},
 			{
+				path: "/timesheets/timer",
+				name: "TimesheetTimer",
+				component: () => import("@/views/timesheet/Timer.vue"),
+			},
+			{
 				path: "/dashboard/leaves",
 				name: "LeavesDashboard",
 				component: () => import("@/views/leave/Dashboard.vue"),
