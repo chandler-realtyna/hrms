@@ -62,8 +62,9 @@ export function useTimerReminder() {
 				icon: "alert-circle",
 				iconClasses: "text-amber-500",
 			})
-		} catch {
-			// Reminder must never break the app.
+		} catch (err) {
+			// Reminder must never break the app, but never fail silently either.
+			console.warn("Timer reminder check failed:", err)
 		}
 	}
 

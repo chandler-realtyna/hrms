@@ -5,7 +5,7 @@ from frappe import _
 from frappe.model import get_permitted_fields
 from frappe.model.workflow import get_workflow_name
 from frappe.query_builder import Order
-from frappe.utils import add_days, cint, date_diff, get_datetime, getdate, now_datetime, strip_html
+from frappe.utils import add_days, cint, convert_utc_to_system_timezone, date_diff, get_datetime, getdate, now_datetime, strip_html
 
 from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
 
@@ -1081,7 +1081,13 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 	current = get_current_employee()
 	if current != employee:
 		frappe.throw(_("You can only receive timer alerts for yourself."), frappe.PermissionError)
-	if not project or (now_datetime() - get_datetime(started_at)).total_seconds() < 2 * 60 * 60:
+	started = get_datetime(started_at)
+	if getattr(started, "tzinfo", None) is not None:
+		# Browser timestamps carry an offset (ISO "...Z") while now_datetime()
+		# is naive system-local; subtracting the two raised TypeError, which
+		# silently killed every reminder. Normalize to the same frame first.
+		started = convert_utc_to_system_timezone(started)
+	if not project or (now_datetime() - started).total_seconds() < 2 * 60 * 60:
 		return False
 	user = frappe.session.user
 	message = _("Your timer for {0} has been running for more than two hours. You may have forgotten to save it.").format(frappe.bold(project))

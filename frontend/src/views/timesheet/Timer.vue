@@ -702,7 +702,10 @@ function scheduleLongRunningHint() {
 				localStorage.setItem(TIMER_NOTIFIED_KEY, startTime.value)
 			} catch {}
 			toast({ title: __("This timer has been running for over two hours. You may have forgotten to save it."), icon: "alert-circle", iconClasses: "text-amber-500" })
-		} catch { /* keep timer usable if mail is unavailable */ }
+		} catch (err) {
+			// Keep the timer usable if mail is unavailable, but leave a trace.
+			console.warn("Timer reminder failed:", err)
+		}
 	}, remaining)
 }
 
