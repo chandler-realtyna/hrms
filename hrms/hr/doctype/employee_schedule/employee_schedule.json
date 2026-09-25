@@ -45,7 +45,7 @@
    "fieldname": "timezone",
    "fieldtype": "Select",
    "label": "Timezone",
-   "options": "America/New_York\nAmerica/Chicago\nAmerica/Denver\nAmerica/Los_Angeles\nAmerica/Phoenix\nAmerica/Anchorage\nPacific/Honolulu\nAmerica/Toronto\nAmerica/Vancouver\nAmerica/Sao_Paulo\nEurope/London\nEurope/Paris\nEurope/Berlin\nEurope/Istanbul\nAfrica/Cairo\nAsia/Dubai\nAsia/Tehran\nAsia/Kolkata\nAsia/Dhaka\nAsia/Bangkok\nAsia/Singapore\nAsia/Tokyo\nAsia/Seoul\nAustralia/Sydney\nPacific/Auckland"
+   "options": "UTC\nPacific/Midway\nPacific/Honolulu\nAmerica/Anchorage\nAmerica/Los_Angeles\nAmerica/Vancouver\nAmerica/Phoenix\nAmerica/Denver\nAmerica/Chicago\nAmerica/Mexico_City\nAmerica/New_York\nAmerica/Toronto\nAmerica/Bogota\nAmerica/Lima\nAmerica/Halifax\nAmerica/Caracas\nAmerica/Santiago\nAmerica/St_Johns\nAmerica/Sao_Paulo\nAmerica/Buenos_Aires\nAtlantic/Azores\nEurope/London\nAfrica/Lagos\nEurope/Paris\nEurope/Berlin\nEurope/Madrid\nEurope/Rome\nEurope/Athens\nAfrica/Cairo\nAfrica/Johannesburg\nEurope/Istanbul\nEurope/Moscow\nAfrica/Nairobi\nAsia/Baghdad\nAsia/Riyadh\nAsia/Tehran\nAsia/Yerevan\nAsia/Baku\nAsia/Tbilisi\nAsia/Dubai\nAsia/Kabul\nAsia/Karachi\nAsia/Tashkent\nAsia/Almaty\nAsia/Kolkata\nAsia/Colombo\nAsia/Kathmandu\nAsia/Dhaka\nAsia/Bangkok\nAsia/Jakarta\nAsia/Singapore\nAsia/Hong_Kong\nAsia/Shanghai\nAsia/Taipei\nAsia/Manila\nAustralia/Perth\nAsia/Tokyo\nAsia/Seoul\nAustralia/Adelaide\nAustralia/Sydney\nAustralia/Brisbane\nPacific/Fiji\nPacific/Auckland\nPacific/Chatham"
   },
   {
    "default": "Draft",

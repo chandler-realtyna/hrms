@@ -206,34 +206,86 @@ const viewerTzLabel = computed(() => getTimezoneAbbr(viewerTz.value))
 
 const BASE_TIMEZONES = [
 	"UTC",
-	"America/New_York",
-	"America/Chicago",
-	"America/Denver",
-	"America/Los_Angeles",
-	"America/Anchorage",
+	"Pacific/Midway",
 	"Pacific/Honolulu",
+	"America/Anchorage",
+	"America/Los_Angeles",
+	"America/Vancouver",
+	"America/Phoenix",
+	"America/Denver",
+	"America/Chicago",
+	"America/Mexico_City",
+	"America/New_York",
 	"America/Toronto",
+	"America/Bogota",
+	"America/Lima",
+	"America/Halifax",
+	"America/Caracas",
+	"America/Santiago",
+	"America/St_Johns",
 	"America/Sao_Paulo",
+	"America/Buenos_Aires",
+	"Atlantic/Azores",
 	"Europe/London",
-	"Europe/Berlin",
+	"Africa/Lagos",
 	"Europe/Paris",
-	"Europe/Moscow",
+	"Europe/Berlin",
+	"Europe/Madrid",
+	"Europe/Rome",
+	"Europe/Athens",
 	"Africa/Cairo",
+	"Africa/Johannesburg",
+	"Europe/Istanbul",
+	"Europe/Moscow",
+	"Africa/Nairobi",
+	"Asia/Baghdad",
+	"Asia/Riyadh",
+	"Asia/Tehran",
+	"Asia/Yerevan",
+	"Asia/Baku",
+	"Asia/Tbilisi",
 	"Asia/Dubai",
+	"Asia/Kabul",
 	"Asia/Karachi",
+	"Asia/Tashkent",
+	"Asia/Almaty",
 	"Asia/Kolkata",
+	"Asia/Colombo",
+	"Asia/Kathmandu",
+	"Asia/Dhaka",
 	"Asia/Bangkok",
+	"Asia/Jakarta",
 	"Asia/Singapore",
+	"Asia/Hong_Kong",
+	"Asia/Shanghai",
+	"Asia/Taipei",
+	"Asia/Manila",
+	"Australia/Perth",
 	"Asia/Tokyo",
 	"Asia/Seoul",
+	"Australia/Adelaide",
 	"Australia/Sydney",
+	"Australia/Brisbane",
+	"Pacific/Fiji",
 	"Pacific/Auckland",
+	"Pacific/Chatham",
 ]
 
+// System list comes from the Employee Schedule DocType options
+// (hrms.api.get_schedule_timezones) so every dropdown stays in sync.
+// Falls back to the bundled list if the API is unreachable.
+const scheduleTimezones = createResource({
+	url: "hrms.api.get_schedule_timezones",
+	auto: true,
+})
+
 const timezoneOptions = computed(() => {
-	const zones = BASE_TIMEZONES.includes(viewerTz.value)
-		? BASE_TIMEZONES
-		: [viewerTz.value, ...BASE_TIMEZONES]
+	const serverList = scheduleTimezones.data?.timezones?.length
+		? scheduleTimezones.data.timezones
+		: BASE_TIMEZONES
+	const zones = serverList.includes(viewerTz.value)
+		? serverList
+		: [viewerTz.value, ...serverList]
 	return zones.map((zone) => ({ value: zone, label: `${getTimezoneAbbr(zone)} · ${zone}` }))
 })
 
