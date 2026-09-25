@@ -43,8 +43,7 @@
 								<div>
 									<div class="font-medium text-gray-900">{{ item.name }}</div>
 									<div class="text-xs text-gray-500 mt-1">
-										{{ formatPeriod(item) }} · {{ Number(item.worked_hours || 0).toFixed(2) }}
-										{{ __("hours") }}
+										{{ formatPeriod(item) }} · {{ formatHours(item.worked_hours) }}
 									</div>
 								</div>
 								<div class="text-right">
@@ -100,6 +99,7 @@ import { inject, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, call, FeatherIcon } from "frappe-ui"
+import { formatHours } from "@/utils/formatters.js"
 
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")

@@ -70,7 +70,7 @@
 											{{ formatWeek(doc.start_date, doc.end_date) }}
 										</div>
 										<div class="text-sm text-gray-500 mt-1">
-											{{ Number(doc.total_hours || 0).toFixed(2) }} {{ __("hours") }}
+											{{ formatHours(doc.total_hours) }}
 										</div>
 									</div>
 									<span
@@ -112,7 +112,7 @@
 										{{ formatWeek(doc.start_date, doc.end_date) }}
 									</div>
 									<div class="text-xs text-gray-500 mt-0.5">
-										{{ Number(doc.total_hours || 0).toFixed(2) }} {{ __("hours") }}
+										{{ formatHours(doc.total_hours) }}
 									</div>
 								</div>
 								<span class="text-xs text-gray-500">{{ __(doc.status || "Draft") }}</span>
@@ -130,6 +130,7 @@ import { inject, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call } from "frappe-ui"
+import { formatHours } from "@/utils/formatters.js"
 
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")

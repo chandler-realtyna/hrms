@@ -142,6 +142,7 @@ import { useRoute, useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call, toast } from "frappe-ui"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
+import { formatHours } from "@/utils/formatters.js"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
 
 const { displayName: projectDisplayName, load: loadProjectLabels } = useProjectLabels()
@@ -243,7 +244,7 @@ const totalHours = computed(() => {
 		(sum, row) => sum + Number(row.hours || 0),
 		0
 	)
-	return `${total.toFixed(2)} h`
+	return formatHours(total)
 })
 const autosaveLabel = computed(() => {
 	if (autosaveState.value === "saving") return __("Saving automatically…")

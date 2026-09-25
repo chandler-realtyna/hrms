@@ -86,9 +86,8 @@
 					<!-- Total -->
 					<div class="mb-4 flex items-baseline gap-2">
 						<span class="text-4xl font-bold text-gray-900 tabular-nums">
-							{{ hoursData.total ?? 0 }}
+							{{ formatHours(hoursData.total) }}
 						</span>
-						<span class="text-sm text-gray-500">{{ __("hours") }}</span>
 						<span class="text-xs text-gray-400 ml-auto">{{ periodLabel }}</span>
 					</div>
 
@@ -107,7 +106,7 @@
 										: 'bg-gray-100'
 								"
 								:style="{ height: `${barHeight(day.hours)}%` }"
-								:title="`${formatDateFull(day.date)}: ${day.hours}h`"
+								:title="`${formatDateFull(day.date)}: ${formatHours(day.hours)}`"
 							/>
 						</div>
 						<!-- X labels -->
@@ -139,11 +138,11 @@
 							<span class="text-[11px] text-gray-400">{{ __("Days logged") }}</span>
 						</div>
 						<div class="flex flex-col">
-							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ stats.avgPerDay }}h</span>
+							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ formatHours(stats.avgPerDay) }}</span>
 							<span class="text-[11px] text-gray-400">{{ __("Avg / logged day") }}</span>
 						</div>
 						<div class="flex flex-col">
-							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ stats.busiest.hours }}h</span>
+							<span class="text-lg font-bold text-gray-900 tabular-nums">{{ formatHours(stats.busiest.hours) }}</span>
 							<span class="text-[11px] text-gray-400 truncate">{{ stats.busiest.label }}</span>
 						</div>
 					</div>
@@ -162,7 +161,7 @@
 						<div class="flex justify-between items-baseline gap-2">
 							<span class="text-sm text-gray-700 truncate" :title="projectLabel(proj.project, ' - ')">{{ projectLabel(proj.project, " - ") }}</span>
 							<span class="text-xs font-semibold text-gray-500 shrink-0 tabular-nums">
-								{{ proj.hours }}h
+								{{ formatHours(proj.hours) }}
 							</span>
 						</div>
 						<div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -187,7 +186,7 @@
 						<div class="flex justify-between items-baseline gap-2">
 							<span class="text-sm text-gray-700 truncate">{{ act.activity_type }}</span>
 							<span class="text-xs font-semibold text-gray-500 shrink-0 tabular-nums">
-								{{ act.hours }}h
+								{{ formatHours(act.hours) }}
 							</span>
 						</div>
 						<div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -218,7 +217,7 @@
 								{{ __("Today") }}
 							</span>
 						</span>
-						<span class="text-sm font-semibold text-gray-800 tabular-nums">{{ day.hours }}h</span>
+						<span class="text-sm font-semibold text-gray-800 tabular-nums">{{ formatHours(day.hours) }}</span>
 					</div>
 				</div>
 			</div>
@@ -298,7 +297,7 @@
 							<!-- Hours + mini bar -->
 							<div class="flex flex-col items-end gap-1 shrink-0">
 								<span class="text-sm font-bold text-gray-900 tabular-nums">
-									{{ emp.total_hours }}h
+									{{ formatHours(emp.total_hours) }}
 								</span>
 								<!-- Mini bar relative to team max -->
 								<div class="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -323,6 +322,7 @@
 import { ref, computed, inject, watch } from "vue"
 import { createResource, LoadingIndicator } from "frappe-ui"
 import { getViewerTimezone, getTimezoneAbbr, getOffsetDiffHours, formatOffsetDiff } from "@/utils/timezone.js"
+import { formatHours } from "@/utils/formatters.js"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
 
 const { displayName: projectLabel, load: loadProjectLabels } = useProjectLabels()

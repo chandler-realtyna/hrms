@@ -105,6 +105,7 @@ import { inject, onMounted, reactive, ref } from "vue"
 import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call, toast } from "frappe-ui"
+import { formatHours } from "@/utils/formatters.js"
 
 const __ = inject("$translate")
 const dayjs = inject("$dayjs")
@@ -115,10 +116,6 @@ const loading = ref(true)
 
 function formatWeek(start, end) {
 	return `${dayjs(start).format("D MMM")} – ${dayjs(end).format("D MMM YYYY")}`
-}
-
-function formatHours(hours) {
-	return Number(hours || 0).toFixed(2)
 }
 
 async function load() {

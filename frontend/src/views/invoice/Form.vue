@@ -102,17 +102,17 @@
 								<h2 class="font-semibold text-gray-900">{{ __("Calculation") }}</h2>
 								<Row label="Method" :value="doc.calculation_method" /><Row
 									label="Worked hours"
-									:value="Number(doc.worked_hours).toFixed(2)"
+									:value="formatHours(doc.worked_hours)"
 								/><Row
 									label="Paid leave hours"
-									:value="Number(doc.paid_leave_hours).toFixed(2)"
+									:value="formatHours(doc.paid_leave_hours)"
 								/><Row
 									label="Sick leave hours"
-									:value="Number(doc.sick_leave_hours).toFixed(2)"
+									:value="formatHours(doc.sick_leave_hours)"
 								/><Row
 									label="Unpaid leave hours"
-									:value="Number(doc.unpaid_leave_hours).toFixed(2)"
-								/><Row label="Payable hours" :value="Number(doc.payable_hours).toFixed(2)" /><Row
+									:value="formatHours(doc.unpaid_leave_hours)"
+								/><Row label="Payable hours" :value="formatHours(doc.payable_hours)" /><Row
 									:label="
 										doc.calculation_method === 'Hourly' ? __('Hourly rate') : __('Monthly amount')
 									"
@@ -241,7 +241,7 @@
 										>
 											<td class="py-2">{{ row.date }}</td>
 											<td>{{ row.timesheet }}</td>
-											<td class="text-right">{{ Number(row.hours).toFixed(2) }}</td>
+											<td class="text-right">{{ formatHours(row.hours) }}</td>
 											<td
 												class="text-right"
 												:class="row.status === 'Finalized' ? 'text-green-700' : 'text-amber-700'"
@@ -385,6 +385,7 @@ import { computed, h, inject, onMounted, reactive, ref } from "vue"
 import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
 import { Button, FeatherIcon, call } from "frappe-ui"
+import { formatHours } from "@/utils/formatters.js"
 
 const props = defineProps({ id: { type: String, default: null } })
 const __ = inject("$translate")

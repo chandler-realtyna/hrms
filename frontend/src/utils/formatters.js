@@ -32,6 +32,17 @@ export const formatCurrency = (value, currency) => {
 	)
 }
 
+/**
+ * Format decimal hours as H:MM ("42.7" → "42:42"). Used everywhere durations
+ * are displayed instead of raw decimals.
+ */
+export const formatHours = (hours) => {
+	const totalMinutes = Math.round(Number(hours || 0) * 60)
+	const h = Math.floor(totalMinutes / 60)
+	const m = totalMinutes % 60
+	return `${h}:${String(m).padStart(2, "0")}`
+}
+
 export const formatTimestamp = (timestamp) => {
 	const formattedTime = dayjs(timestamp).format("hh:mm a")
 
