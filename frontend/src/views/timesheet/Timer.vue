@@ -33,16 +33,79 @@
 						>
 							{{ activeProjectLabel }}
 						</span>
+						<button
+							type="button"
+							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Add time')"
+							:title="__('Forgot to start earlier? Add minutes')"
+							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+						>
+							+
+						</button>
+						<button
+							type="button"
+							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Remove time')"
+							:title="__('Forgot to stop sooner? Remove minutes')"
+							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+						>
+							−
+						</button>
 					</div>
 					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
-						<span>{{ __("Stopped") }}</span>
+						<span>{{ isPaused ? __("Paused") : __("Stopped") }}</span>
 						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
 						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600 dark:text-gray-300">
 							{{ activeProjectLabel }}
 						</span>
+						<button
+							v-if="isPaused"
+							type="button"
+							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Add time')"
+							:title="__('Forgot to start earlier? Add minutes')"
+							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+						>
+							+
+						</button>
+						<button
+							v-if="isPaused"
+							type="button"
+							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							:aria-label="__('Remove time')"
+							:title="__('Forgot to stop sooner? Remove minutes')"
+							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+						>
+							−
+						</button>
 					</div>
 					<div v-else class="mt-3 text-sm text-gray-400">
 						{{ __("Press Start to begin tracking") }}
+					</div>
+					<div v-if="adjustDir !== 0" class="mt-3 flex items-center gap-2">
+						<input
+							v-model.number="adjustMinutes"
+							type="number"
+							min="1"
+							step="1"
+							class="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+							:aria-label="__('Minutes')"
+						/>
+						<span class="text-xs text-gray-500">{{ __("min") }}</span>
+						<button
+							type="button"
+							class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white"
+							@click="applyAdjust"
+						>
+							{{ adjustDir > 0 ? __("Add") : __("Trim") }}
+						</button>
+						<button
+							type="button"
+							class="px-1 text-sm text-gray-400"
+							@click="adjustDir = 0"
+						>
+							{{ __("Cancel") }}
+						</button>
 					</div>
 				</div>
 
@@ -81,21 +144,65 @@
 						:reqd="true"
 						@change="persistState"
 					/>
-					<button type="button" class="-mt-2 self-start text-xs text-gray-500" @click="showProjectList = !showProjectList">
-						{{ showProjectList ? __("Hide project list") : __("Browse projects") }}
-					</button>
-					<div v-if="showProjectList && availableProjects.length" class="max-h-40 overflow-y-auto rounded-lg border bg-gray-50 p-1">
-						<div v-for="project in availableProjects" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm">
-							<button class="min-w-0 flex-1 truncate text-left text-gray-700" @click="selectProject(project.name)">{{ projectDisplayLabel(project) }}</button>
+					<div class="-mt-2 flex items-center gap-2">
+						<button type="button" class="flex items-center gap-1 text-xs font-medium text-gray-500" @click="toggleProjectList">
+							<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 transition-transform" :class="showProjectList && 'rotate-180'" />
+							{{ showProjectList ? __("Hide project list") : __("Browse projects") }}
+							<span v-if="availableProjects.length" class="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+								{{ availableProjects.length }}
+							</span>
+						</button>
+						<button
+							v-if="form.project"
+							type="button"
+							class="flex items-center gap-1 text-xs font-medium"
+							:class="isFavorite(form.project) ? 'text-amber-500' : 'text-gray-500'"
+							@click="toggleFavorite(form.project)"
+							:title="isFavorite(form.project) ? __('Remove favorite') : __('Add to favorites')"
+						>
+							<FeatherIcon name="heart" class="h-3.5 w-3.5" :class="isFavorite(form.project) && 'fill-amber-400'" />
+							{{ isFavorite(form.project) ? __("Favorited") : __("Favorite") }}
+						</button>
+					</div>
+					<div v-if="showProjectList" class="max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
+						<div class="sticky top-0 border-b border-gray-100 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
+							<input
+								v-model="projectSearch"
+								type="text"
+								:placeholder="__('Search projects...')"
+								class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+							/>
+						</div>
+						<div v-if="favoriteProjects.length && !projectSearch" class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+							{{ __("Favorites") }}
+						</div>
+						<div v-if="!projectSearch">
+							<div v-for="project in favoriteProjects" :key="'fav-' + project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+								<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
+									<span class="truncate font-medium" :class="form.project === project.name ? 'text-blue-600' : 'text-gray-700 dark:text-gray-200'">{{ projectDisplayLabel(project) }}</span>
+									<FeatherIcon v-if="form.project === project.name" name="check" class="h-4 w-4 shrink-0 text-blue-600" />
+								</button>
+								<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Remove favorite')">
+									<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
+								</button>
+							</div>
+						</div>
+						<div v-if="visibleProjectGroups.length" class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+							{{ projectSearch ? __("Matches") : __("All projects") }}
+						</div>
+						<div v-if="!visibleProjectGroups.length" class="px-3 py-4 text-center text-xs text-gray-400">
+							{{ __("No projects match your search.") }}
+						</div>
+						<div v-for="project in visibleProjectGroups" :key="project.name" class="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
+								<span class="truncate" :class="form.project === project.name ? 'font-medium text-blue-600' : 'text-gray-700 dark:text-gray-200'">{{ projectDisplayLabel(project) }}</span>
+								<FeatherIcon v-if="form.project === project.name" name="check" class="h-4 w-4 shrink-0 text-blue-600" />
+							</button>
 							<button type="button" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')">
 								<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
 							</button>
 						</div>
 					</div>
-					<button v-if="form.project" type="button" class="-mt-2 self-start text-xs text-gray-500" @click="toggleFavorite(form.project)">
-						<FeatherIcon name="heart" class="mr-1 inline h-3.5 w-3.5" :class="isFavorite(form.project) ? 'fill-amber-400 text-amber-500' : ''" />
-						{{ isFavorite(form.project) ? __("Remove favorite") : __("Add to favorites") }}
-					</button>
 					<FormField
 						fieldtype="Link"
 						fieldname="activity_type"
@@ -185,6 +292,7 @@ const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([])
 const availableProjects = ref([])
 const showProjectList = ref(false)
+const projectSearch = ref("")
 const longRunningNotified = ref(false)
 
 let ticker = null
@@ -336,7 +444,34 @@ function toggleFavorite(project) {
 	else favoriteProjects.value = [availableProjects.value.find((item) => item.name === project) || { name: project, label: project }, ...favoriteProjects.value]
 	localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteProjects.value))
 }
-function selectProject(project) { form.value.project = project; persistState() }
+function selectProject(project) {
+	form.value.project = project
+	persistState()
+	showProjectList.value = false
+	projectSearch.value = ""
+}
+
+function toggleProjectList() {
+	showProjectList.value = !showProjectList.value
+	if (!showProjectList.value) projectSearch.value = ""
+}
+
+function projectMatchesQuery(project, query) {
+	const q = query.toLowerCase().trim()
+	if (!q) return true
+	return (
+		(project.name || "").toLowerCase().includes(q) ||
+		(project.label || "").toLowerCase().includes(q)
+	)
+}
+
+const visibleProjectGroups = computed(() => {
+	const q = projectSearch.value || ""
+	const favNames = new Set(favoriteProjects.value.map((item) => item.name))
+	return availableProjects.value.filter(
+		(project) => (q || !favNames.has(project.name)) && projectMatchesQuery(project, q)
+	)
+})
 function projectDisplayLabel(project) {
 	if (!project) return ""
 	const label = project.label || ""
@@ -399,6 +534,78 @@ function toggleProjectTimer(project) {
 	if (status === "running") return pause()
 	if (status === "paused") return resume()
 	startProject(project)
+}
+
+// ─── Manual time adjustment (± minutes, e.g. forgot to start/stop) ──────────
+// Adjustments apply to the ACTIVE project only and are baked into segments /
+// startTime, so they persist and are saved like normally tracked time.
+const adjustDir = ref(0) // 0 = hidden, 1 = add, -1 = trim
+const adjustMinutes = ref(15)
+
+function activeProjectSegments() {
+	return segments.value.filter((segment) => segment.project === form.value.project)
+}
+
+function addTime(totalSeconds) {
+	if (startTime.value) {
+		startTime.value = new Date(new Date(startTime.value).getTime() - totalSeconds * 1000).toISOString()
+	} else {
+		const mine = activeProjectSegments()
+		if (!mine.length) {
+			toast({ title: __("Nothing to adjust yet"), icon: "alert-circle", iconClasses: "text-amber-500" })
+			return false
+		}
+		const last = mine[mine.length - 1]
+		last.from = new Date(new Date(last.from).getTime() - totalSeconds * 1000).toISOString()
+		last.seconds = Number(last.seconds || 0) + totalSeconds
+	}
+	updateElapsed()
+	persistState()
+	return true
+}
+
+function trimTime(totalSeconds) {
+	let remaining = totalSeconds
+	if (startTime.value) {
+		const current = Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+		const take = Math.min(current, remaining)
+		startTime.value = new Date(new Date(startTime.value).getTime() + take * 1000).toISOString()
+		remaining -= take
+	}
+	const mine = activeProjectSegments()
+	for (let i = mine.length - 1; i >= 0 && remaining > 0; i--) {
+		const segment = mine[i]
+		const take = Math.min(Number(segment.seconds || 0), remaining)
+		segment.seconds = Number(segment.seconds || 0) - take
+		segment.to = new Date(new Date(segment.to).getTime() - take * 1000).toISOString()
+		remaining -= take
+		if (Number(segment.seconds) <= 0) {
+			segments.value.splice(segments.value.indexOf(segment), 1)
+		}
+	}
+	updateElapsed()
+	persistState()
+	if (remaining > 0) {
+		toast({ title: __("Trimmed down to zero"), icon: "alert-circle", iconClasses: "text-amber-500" })
+	}
+	return true
+}
+
+function applyAdjust() {
+	const minutes = Math.max(1, Math.floor(Number(adjustMinutes.value) || 0))
+	adjustMinutes.value = minutes
+	const ok = adjustDir.value > 0 ? addTime(minutes * 60) : trimTime(minutes * 60)
+	if (ok) {
+		toast({
+			title:
+				adjustDir.value > 0
+					? __("Added {0} min", [minutes])
+					: __("Trimmed {0} min", [minutes]),
+			icon: "check",
+			iconClasses: "text-green-500",
+		})
+		adjustDir.value = 0
+	}
 }
 
 function pushCurrentSegment() {

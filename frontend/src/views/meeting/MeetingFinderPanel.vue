@@ -175,8 +175,25 @@
 				</template>
 			</div>
 
-			<div v-else-if="searched && !searching" class="text-center py-10 text-gray-400 text-sm">
-				{{ __("No overlapping free slots found. Try a different date range or fewer participants.") }}
+			<div v-else-if="searched && !searching" class="text-center py-10 px-4">
+				<p class="text-gray-400 text-sm">
+					{{ __("No overlapping free slots found. Try a different date range or fewer participants.") }}
+				</p>
+				<div v-if="coverage.length" class="mt-4 text-left bg-white rounded-2xl shadow-sm p-5">
+					<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+						{{ __("Contracted hours in this range") }}
+					</p>
+					<div v-for="c in coverage" :key="c.employee" class="py-2 border-b border-gray-50 last:border-b-0">
+						<p class="text-sm font-semibold text-gray-800">
+							{{ c.employee_name }}
+							<span class="ml-1 text-xs font-medium text-gray-400">{{ tzAbbr(c.timezone) }}</span>
+						</p>
+						<p class="text-xs text-gray-500 mt-0.5">{{ coverageSummary(c) }}</p>
+					</div>
+					<p class="mt-2 text-[11px] text-gray-400">
+						{{ __("If these windows never coincide, no meeting time exists — leaves and bookings can only shrink them further.") }}
+					</p>
+				</div>
 			</div>
 		</div>
 
@@ -195,6 +212,7 @@ import { ref, computed, inject, onMounted } from "vue"
 import { FeatherIcon, createResource, call, Button } from "frappe-ui"
 
 import SendInvitationModal from "./SendInvitationModal.vue"
+import { getTimezoneAbbr } from "@/utils/timezone.js"
 
 const __ = inject("$translate")
 const currentEmployee = inject("$employee")
@@ -264,6 +282,7 @@ const rangeError = ref("")
 const slots = ref([])
 const searching = ref(false)
 const searched = ref(false)
+const coverage = ref([])
 const showInviteModal = ref(false)
 const activeSlot = ref(null)
 
@@ -355,9 +374,45 @@ function validateRange() {
 	}
 }
 
+function tzAbbr(tz) {
+	return getTimezoneAbbr(tz || "UTC")
+}
+
+function fmtWall(hhmm) {
+	if (!hhmm) return ""
+	const [h, m] = hhmm.split(":").map(Number)
+	const ampm = h >= 12 && h < 24 ? "PM" : "AM"
+	const h12 = h % 12 || 12
+	return m === 0 ? `${h12} ${ampm}` : `${h12}:${String(m).padStart(2, "0")} ${ampm}`
+}
+
+function coverageSummary(c) {
+	const windows = new Set()
+	for (const slots of Object.values(c.days || {})) {
+		for (const s of slots || []) {
+			if (s?.start && s?.end) windows.add(`${fmtWall(s.start)}–${fmtWall(s.end)}`)
+		}
+	}
+	if (!windows.size) return __("No working hours in this range")
+	return [...windows].join(" · ")
+}
+
 function addEmployee(emp) {
 	selectedEmployees.value.push(emp)
 	employeeSearch.value = ""
+}
+
+async function loadCoverage() {
+	coverage.value = []
+	try {
+		coverage.value = await call("hrms.api.calendar.get_finder_coverage", {
+			employees: JSON.stringify(selectedEmployees.value.map(e => e.name)),
+			from_date: fromDate.value,
+			to_date: toDate.value,
+		}) || []
+	} catch {
+		coverage.value = []
+	}
 }
 
 function removeEmployee(id) {
@@ -373,6 +428,7 @@ async function findSlots() {
 	searching.value = true
 	searched.value = false
 	slots.value = []
+	coverage.value = []
 	try {
 		const result = await call("hrms.api.calendar.find_meeting_slots", {
 			employees: JSON.stringify(selectedEmployees.value.map(e => e.name)),
@@ -381,8 +437,10 @@ async function findSlots() {
 			to_date: toDate.value,
 		})
 		slots.value = result || []
+		if (!slots.value.length) await loadCoverage()
 	} catch (e) {
 		slots.value = []
+		await loadCoverage()
 	} finally {
 		searching.value = false
 		searched.value = true
