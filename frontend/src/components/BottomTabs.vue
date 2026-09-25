@@ -39,9 +39,18 @@ const __ = inject("$translate")
 const route = useRoute()
 const router = useRouter()
 
+function matchLength(item) {
+	if (route.path === item.route) return item.route.length
+	if (item.route !== "/home" && route.path.startsWith(item.route + "/")) return item.route.length
+	return -1
+}
+
+// Longest-prefix match: on /timesheets/timer only Timer lights up,
+// on /timesheets/123 only Timesheets. Home never partially matches.
 function isActive(item) {
-	if (route.path === item.route) return true
-	return item.route !== "/home" && route.path.startsWith(item.route + "/")
+	let best = -1
+	for (const t of tabItems) best = Math.max(best, matchLength(t))
+	return matchLength(item) === best && best >= 0
 }
 
 // Plain buttons + router.push: deterministic navigation that does not depend
