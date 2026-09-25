@@ -22,20 +22,22 @@
 					</div>
 					<div
 						v-if="isRunning"
-						class="mt-3 flex items-center gap-2 text-sm text-green-600 font-medium"
+						class="mt-3 flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 text-sm text-green-600 font-medium"
 					>
-						<span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-						{{ __("Recording…") }}
-						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
+						<span class="h-2 w-2 shrink-0 rounded-full bg-green-500 animate-pulse"></span>
+						<span class="shrink-0">{{ __("Recording…") }}</span>
+						<span v-if="activeProjectLabel" class="shrink-0 text-gray-300 dark:text-gray-500">·</span>
 						<span
 							v-if="activeProjectLabel"
-							class="max-w-[240px] truncate font-semibold text-gray-800 dark:text-gray-100"
+							class="min-w-0 max-w-full truncate font-semibold text-gray-800 dark:text-gray-100"
+							:title="activeProjectLabel"
 						>
 							{{ activeProjectLabel }}
 						</span>
+						<span class="flex shrink-0 items-center gap-1">
 						<button
 							type="button"
-							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
 							:aria-label="__('Add time')"
 							:title="__('Forgot to start earlier? Add minutes')"
 							@click="adjustDir = adjustDir === 1 ? 0 : 1"
@@ -51,11 +53,12 @@
 						>
 							−
 						</button>
+						</span>
 					</div>
-					<div v-else-if="elapsed > 0" class="mt-3 flex items-center gap-2 text-sm text-gray-400">
-						<span>{{ isPaused ? __("Paused") : __("Stopped") }}</span>
-						<span v-if="activeProjectLabel" class="text-gray-300 dark:text-gray-500">·</span>
-						<span v-if="activeProjectLabel" class="max-w-[240px] truncate font-medium text-gray-600 dark:text-gray-300">
+					<div v-else-if="elapsed > 0" class="mt-3 flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 text-sm text-gray-400">
+						<span class="shrink-0">{{ isPaused ? __("Paused") : __("Stopped") }}</span>
+						<span v-if="activeProjectLabel" class="shrink-0 text-gray-300 dark:text-gray-500">·</span>
+						<span v-if="activeProjectLabel" class="min-w-0 max-w-full truncate font-medium text-gray-600 dark:text-gray-300" :title="activeProjectLabel">
 							{{ activeProjectLabel }}
 						</span>
 						<button
@@ -112,10 +115,10 @@
 				<div v-if="favoriteProjects.length" class="mx-4 mt-3">
 					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Favorite projects") }}</div>
 					<div class="flex flex-col gap-2">
-						<div v-for="project in favoriteProjects" :key="project.name" class="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+						<div v-for="project in favoriteProjects" :key="project.name" class="flex items-center gap-2 overflow-hidden rounded-xl border bg-white px-3 py-2 shadow-sm">
 							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
-								<FeatherIcon name="heart" class="h-4 w-4 fill-amber-400 text-amber-500" />
-								<span class="truncate text-sm font-medium text-gray-800">{{ projectDisplayLabel(project) }}</span>
+								<FeatherIcon name="heart" class="h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />
+								<span class="truncate text-sm font-medium text-gray-800" :title="projectDisplayLabel(project)">{{ projectDisplayLabel(project) }}</span>
 							</button>
 							<div class="shrink-0 text-right leading-tight">
 								<div class="font-mono text-xs font-semibold tabular-nums text-gray-700">
@@ -125,7 +128,7 @@
 									{{ projectStatusLabel(project.name) }}
 								</div>
 							</div>
-							<button class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
+							<button class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
 								{{ projectButtonLabel(project.name) }}
 							</button>
 						</div>
