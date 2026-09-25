@@ -22,9 +22,11 @@ import DesktopSidebar from "@/components/DesktopSidebar.vue"
 import InstallPrompt from "@/components/InstallPrompt.vue"
 import { showNotification } from "@/utils/pushNotifications"
 import { useDarkMode } from "@/utils/darkMode"
+import { useTimerReminder } from "@/composables/useTimerReminder.js"
 
 const route = useRoute()
 useDarkMode() // initialises watchEffect to keep html class in sync
+useTimerReminder() // global 2h running-timer watchdog (works from any page)
 
 // Only show the sidebar on authenticated pages
 const GUEST_ROUTES = ["Login", "InvalidEmployee"]
