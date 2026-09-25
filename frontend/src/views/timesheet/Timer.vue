@@ -144,16 +144,8 @@
 						:reqd="true"
 						@change="persistState"
 					/>
-					<div class="-mt-2 flex items-center gap-2">
-						<button type="button" class="flex items-center gap-1 text-xs font-medium text-gray-500" @click="toggleProjectList">
-							<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 transition-transform" :class="showProjectList && 'rotate-180'" />
-							{{ showProjectList ? __("Hide project list") : __("Browse projects") }}
-							<span v-if="availableProjects.length" class="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-								{{ availableProjects.length }}
-							</span>
-						</button>
+					<div v-if="form.project" class="-mt-2 flex items-center gap-2">
 						<button
-							v-if="form.project"
 							type="button"
 							class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
 							:class="isFavorite(form.project) ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-300'"
@@ -163,29 +155,6 @@
 							<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(form.project) && 'fill-amber-400 text-amber-500'" />
 							{{ isFavorite(form.project) ? __("Favorited") : __("Favorite") }}
 						</button>
-					</div>
-					<div v-if="showProjectList" class="max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
-						<div class="sticky top-0 border-b border-gray-100 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
-							<input
-								v-model="projectSearch"
-								type="text"
-								:placeholder="__('Search projects...')"
-								class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-							/>
-						</div>
-						<div v-if="!pickerProjects.length" class="px-3 py-4 text-center text-xs text-gray-400">
-							{{ __("No projects match your search.") }}
-						</div>
-						<div v-for="project in pickerProjects" :key="project.name" class="flex items-center gap-1 px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-							<button class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left" @click="selectProject(project.name)">
-								<FeatherIcon v-if="isFavorite(project.name)" name="heart" class="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
-								<span class="truncate" :class="form.project === project.name ? 'font-medium text-blue-600' : 'text-gray-700 dark:text-gray-200'">{{ projectDisplayLabel(project) }}</span>
-								<FeatherIcon v-if="form.project === project.name" name="check" class="h-4 w-4 shrink-0 text-blue-600" />
-							</button>
-							<button type="button" class="rounded-lg p-2.5" @click="toggleFavorite(project.name)" :aria-label="__('Toggle favorite')" :title="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')">
-								<FeatherIcon name="heart" class="h-5 w-5" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-300 dark:text-gray-500'" />
-							</button>
-						</div>
 					</div>
 					<FormField
 						fieldtype="Link"
@@ -275,8 +244,6 @@ const isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([])
 const availableProjects = ref([])
-const showProjectList = ref(false)
-const projectSearch = ref("")
 const longRunningNotified = ref(false)
 
 let ticker = null
@@ -431,33 +398,7 @@ function toggleFavorite(project) {
 function selectProject(project) {
 	form.value.project = project
 	persistState()
-	showProjectList.value = false
-	projectSearch.value = ""
 }
-
-function toggleProjectList() {
-	showProjectList.value = !showProjectList.value
-	if (!showProjectList.value) projectSearch.value = ""
-}
-
-function projectMatchesQuery(project, query) {
-	const q = query.toLowerCase().trim()
-	if (!q) return true
-	return (
-		(project.name || "").toLowerCase().includes(q) ||
-		(project.label || "").toLowerCase().includes(q)
-	)
-}
-
-const pickerProjects = computed(() => {
-	const q = projectSearch.value || ""
-	const favNames = new Set(favoriteProjects.value.map((item) => item.name))
-	const matched = availableProjects.value.filter((project) => projectMatchesQuery(project, q))
-	return [
-		...matched.filter((project) => favNames.has(project.name)),
-		...matched.filter((project) => !favNames.has(project.name)),
-	]
-})
 function projectDisplayLabel(project) {
 	if (!project) return ""
 	const label = project.label || ""
