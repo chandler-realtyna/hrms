@@ -5,7 +5,7 @@
 		<!-- Branding -->
 		<div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
 			<FrappeHRLogo class="h-8 w-8" />
-			<span class="text-base font-semibold text-gray-900">Frappe HR</span>
+			<span class="text-base font-semibold text-gray-900">Realtyna HRMS</span>
 		</div>
 
 		<!-- User info -->

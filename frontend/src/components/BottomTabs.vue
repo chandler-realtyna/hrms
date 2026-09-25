@@ -3,31 +3,32 @@
 		slot="bottom"
 		class="bg-white shadow-md py-2 pb-2 standalone:pb-safe-bottom md:!hidden"
 	>
-		<ion-tab-button
+		<button
 			v-for="item in tabItems"
-			:key="item.title"
-			:tab="item.title"
-			:routerLink="item.route"
-			routerDirection="root"
+			:key="item.route"
+			type="button"
+			@click="go(item.route)"
 			:class="[
-				'bg-white text-xs space-y-1.5 !hover:border-gray-300 !hover:text-gray-700 transition active:scale-95',
+				'flex-1 bg-white text-xs space-y-1.5 transition active:scale-95 flex flex-col items-center justify-center py-1',
 				isActive(item)
-					? 'border-gray-900 text-gray-800 font-semibold'
-					: 'text-gray-600 font-normal',
+					? 'text-gray-900 font-semibold'
+					: 'text-gray-500 font-normal',
 			]"
+			:aria-label="item.title"
 		>
-			<component :is="item.icon" class="h-5 w-5" />
+			<component v-if="typeof item.icon !== 'string'" :is="item.icon" class="h-5 w-5" />
+			<FeatherIcon v-else :name="item.icon" class="h-5 w-5" />
 			<div>{{ item.title }}</div>
-		</ion-tab-button>
+		</button>
 	</ion-tab-bar>
 </template>
 
 <script setup>
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 
-import { IonTabBar, IonTabButton, IonLabel } from "@ionic/vue"
+import { IonTabBar } from "@ionic/vue"
 
-import HomeIcon from "@/components/icons/HomeIcon.vue"
+import { FeatherIcon } from "frappe-ui"
 import TimerIcon from "@/components/icons/TimerIcon.vue"
 import TimesheetIcon from "@/components/icons/TimesheetIcon.vue"
 import AvailabilityIcon from "@/components/icons/AvailabilityIcon.vue"
@@ -36,10 +37,17 @@ import { inject } from "vue"
 const __ = inject("$translate")
 
 const route = useRoute()
+const router = useRouter()
 
 function isActive(item) {
 	if (route.path === item.route) return true
 	return item.route !== "/home" && route.path.startsWith(item.route + "/")
+}
+
+// Plain buttons + router.push: deterministic navigation that does not depend
+// on Ionic tab-router wiring.
+function go(path) {
+	if (route.path !== path) router.push(path)
 }
 
 const tabItems = [
@@ -47,11 +55,6 @@ const tabItems = [
 		icon: TimerIcon,
 		title: __("Timer"),
 		route: "/timesheets/timer",
-	},
-	{
-		icon: HomeIcon,
-		title: __("Home"),
-		route: "/home",
 	},
 	{
 		icon: TimesheetIcon,
@@ -62,6 +65,11 @@ const tabItems = [
 		icon: AvailabilityIcon,
 		title: __("Team"),
 		route: "/availability",
+	},
+	{
+		icon: "menu",
+		title: __("Menu"),
+		route: "/home",
 	},
 ]
 </script>

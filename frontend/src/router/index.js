@@ -15,7 +15,7 @@ import meetingRoutes from "./meeting"
 const routes = [
 	{
 		path: "/",
-		redirect: "/home",
+		redirect: "/timesheets/timer",
 	},
 	{
 		path: "/",
@@ -23,7 +23,7 @@ const routes = [
 		children: [
 			{
 				path: "",
-				redirect: "/home",
+				redirect: "/timesheets/timer",
 			},
 			{
 				path: "/home",
