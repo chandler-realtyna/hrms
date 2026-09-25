@@ -146,6 +146,11 @@ function markAsRead(name) {
 }
 
 function getItemRoute(item) {
+	// Timer alerts carry no document reference ("Timer" is not a DocType);
+	// send them to the timer instead of building a broken route.
+	if (!item.reference_document_type) {
+		return { name: "TimesheetTimer" }
+	}
 	if (item.reference_document_type === "Timesheet Project Approval") {
 		return { name: "TimesheetProjectApprovals" }
 	}

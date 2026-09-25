@@ -1,6 +1,8 @@
 import { onMounted, onUnmounted, inject } from "vue"
 import { call, toast } from "frappe-ui"
 
+import { unreadNotificationsCount } from "@/data/notifications"
+
 import {
 	TIMER_STORAGE_KEY,
 	TIMER_NOTIFIED_KEY,
@@ -57,6 +59,7 @@ export function useTimerReminder() {
 				started_at: state.startTime,
 			})
 			localStorage.setItem(TIMER_NOTIFIED_KEY, state.startTime)
+			unreadNotificationsCount.reload().catch(() => {})
 			toast({
 				title: __("This timer has been running for over two hours. You may have forgotten to save it."),
 				icon: "alert-circle",

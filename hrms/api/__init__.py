@@ -1100,6 +1100,17 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 		"for_user": user,
 		"type": "Alert",
 	}).insert(ignore_permissions=True)
+	# Mirror into PWA Notification: that is what the bell badge and the
+	# Notifications page actually read. (Notification Log is desk-only.)
+	if not frappe.db.exists(
+		"PWA Notification",
+		{"to_user": user, "message": message, "read": 0},
+	):
+		pwa_notification = frappe.new_doc("PWA Notification")
+		pwa_notification.from_user = user
+		pwa_notification.to_user = user
+		pwa_notification.message = message
+		pwa_notification.insert(ignore_permissions=True)
 	if "@" in user and user not in {"Guest", "Administrator"}:
 		frappe.sendmail(recipients=[user], subject=_("HRMS timer reminder"), message=message)
 	return True

@@ -100,6 +100,24 @@ def _notify(users, subject: str, message: str, timesheet: str):
 				"document_name": timesheet,
 			}
 		).insert(ignore_permissions=True)
+		# Mirror into PWA Notification as well: Notification Log is desk-only,
+		# while the bell badge and Notifications page read PWA Notification.
+		# reference_document_type must be a real DocType ("Timer" is not one).
+		if not frappe.db.exists(
+			"PWA Notification",
+			{
+				"to_user": user,
+				"reference_document_type": "Timesheet",
+				"reference_document_name": timesheet,
+			},
+		):
+			pwa_notification = frappe.new_doc("PWA Notification")
+			pwa_notification.from_user = frappe.session.user
+			pwa_notification.to_user = user
+			pwa_notification.message = f"{subject}: {message}"
+			pwa_notification.reference_document_type = "Timesheet"
+			pwa_notification.reference_document_name = timesheet
+			pwa_notification.insert(ignore_permissions=True)
 
 
 def _notify_project_report(user: str, project: str, week_start):

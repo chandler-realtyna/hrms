@@ -226,6 +226,7 @@ import { IonPage, IonContent } from "@ionic/vue"
 import { FeatherIcon, Button, call, toast } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { TIMER_NOTIFIED_KEY } from "@/composables/useTimerReminder.js"
+import { unreadNotificationsCount } from "@/data/notifications"
 
 const router = useRouter()
 const __ = inject("$translate")
@@ -701,6 +702,7 @@ function scheduleLongRunningHint() {
 			try {
 				localStorage.setItem(TIMER_NOTIFIED_KEY, startTime.value)
 			} catch {}
+			unreadNotificationsCount.reload().catch(() => {})
 			toast({ title: __("This timer has been running for over two hours. You may have forgotten to save it."), icon: "alert-circle", iconClasses: "text-amber-500" })
 		} catch (err) {
 			// Keep the timer usable if mail is unavailable, but leave a trace.

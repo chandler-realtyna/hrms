@@ -48,6 +48,14 @@ app.component("EmptyState", EmptyState)
 app.use(router)
 app.use(IonicVue, getIonicConfig())
 
+// Keep the notification bell badge fresh: it otherwise only loads once at
+// boot and when the Notifications page is opened.
+router.afterEach(() => {
+	if (session?.isLoggedIn) {
+		unreadNotificationsCount.reload().catch(() => {})
+	}
+})
+
 if (session?.isLoggedIn && !employeeResource?.data) {
 	employeeResource.reload()
 }
