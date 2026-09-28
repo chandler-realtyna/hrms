@@ -12,9 +12,12 @@
 
 		<ion-content :fullscreen="true">
 			<div class="p-4 space-y-4 max-w-3xl mx-auto pb-24">
-				<p v-if="!detail" class="text-xs text-gray-500">
-					{{ __("Weeks your projects need a decision on. Approving sends them to HR review.") }}
-				</p>
+				<div>
+					<h1 class="text-lg font-semibold text-gray-900">{{ __("Review team member hours") }}</h1>
+					<p class="text-xs text-gray-500 mt-0.5">
+						{{ __("Approve or return submitted hours before HR review") }}
+					</p>
+				</div>
 
 				<div v-if="loading" class="bg-white border rounded-xl p-8 text-center text-sm text-gray-500">
 					{{ __("Loading reviews…") }}

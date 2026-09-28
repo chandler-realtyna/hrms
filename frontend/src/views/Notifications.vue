@@ -159,7 +159,7 @@ function getItemRoute(item) {
 		return { name: "TimesheetTimer" }
 	}
 	if (item.reference_document_type === "Timesheet Project Approval") {
-		return { name: "TimesheetProjectApprovals" }
+		return { name: "ProjectTimesheets" }
 	}
 	if (item.reference_document_type === "Employee Invoice") {
 		return { name: "EmployeeInvoiceDetailView", params: { id: item.reference_document_name } }
