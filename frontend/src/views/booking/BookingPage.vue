@@ -205,7 +205,8 @@
 										</div>
 										<div v-else-if="slots.length===0" style="text-align:center;padding:1.5rem 0">
 											<p style="font-size:.875rem;font-weight:500;color:#475569;margin-bottom:.25rem">No slots available</p>
-											<p style="font-size:.8125rem;color:#94a3b8">Try another date</p>
+											<p v-if="slotsError" style="font-size:.8125rem;color:#dc2626">{{ slotsError }}</p>
+											<p v-else style="font-size:.8125rem;color:#94a3b8">Try another date</p>
 										</div>
 										<div v-else class="slot-grid">
 											<button
@@ -346,6 +347,7 @@ const meetingDescription = ref("")
 const slots             = ref([])
 const slotsTimezone     = ref("")
 const slotsLoading      = ref(false)
+const slotsError        = ref("")
 
 // ── Theme ──────────────────────────────────────────
 // Initial value: user's saved preference, or system preference if none saved.
@@ -543,9 +545,17 @@ function selectDuration(d) {
 
 async function callApi(method, args={}) {
 	const params = new URLSearchParams({ cmd: method, ...args })
+	// Logged-in visitors must send their real CSRF token: Frappe rejects
+	// authenticated POSTs with a placeholder ("fetch") token (403), which
+	// used to surface as a misleading "No slots available". Guests send none.
+	const headers = { "Content-Type": "application/x-www-form-urlencoded" }
+	try {
+		const token = window.csrf_token
+		if (token && token !== "{{ csrf_token }}") headers["X-Frappe-CSRF-Token"] = token
+	} catch { /* best-effort */ }
 	const res = await fetch("/api/method/"+method, {
 		method:"POST",
-		headers:{ "Content-Type":"application/x-www-form-urlencoded","X-Frappe-CSRF-Token":"fetch" },
+		headers,
 		body: params,
 	})
 	const json = await res.json()
@@ -555,12 +565,12 @@ async function callApi(method, args={}) {
 
 async function loadSlots() {
 	if (!selectedDate.value||!selectedDuration.value) return
-	selectedSlot.value = null; slotsLoading.value = true; slots.value = []
+	selectedSlot.value = null; slotsLoading.value = true; slots.value = []; slotsError.value = ""
 	try {
 		const res = await callApi("hrms.api.calendar.get_available_slots",{ slug, date:selectedDate.value, duration_minutes:selectedDuration.value })
 		slots.value = res?.slots || []
 		slotsTimezone.value = res?.timezone || ""
-	} catch { slots.value = [] }
+	} catch(e) { slots.value = []; slotsError.value = e?.message || "" }
 	finally { slotsLoading.value = false }
 }
 
