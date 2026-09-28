@@ -23,7 +23,7 @@
 					{{ __("Loading reviews…") }}
 				</div>
 
-				<div v-else-if="!sections.length" class="bg-white border rounded-xl p-10 text-center">
+				<div v-else-if="!orderedSections.length" class="bg-white border rounded-xl p-10 text-center">
 					<FeatherIcon name="check-circle" class="h-8 w-8 text-green-500 mx-auto" />
 					<div class="font-medium text-gray-800 mt-3">{{ __("Nothing waiting for review") }}</div>
 				</div>
@@ -34,7 +34,7 @@
 				     returned, approved) are muted so the pending queue stands out. -->
 				<template v-if="!detail">
 					<article
-						v-for="row in sections"
+						v-for="row in orderedSections"
 						:key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`"
 						class="border rounded-xl overflow-hidden"
 						:class="row.actionable ? 'bg-white' : 'bg-gray-50'"
@@ -110,13 +110,13 @@
 					<div class="divide-y divide-gray-50">
 						<div v-for="(log, i) in detail.logs" :key="i" class="px-4 py-3">
 							<div class="flex items-baseline justify-between gap-2">
-								<span class="text-sm font-medium text-gray-900">{{ log.date }}</span>
+								<span class="text-sm font-medium text-gray-900">{{ formatDateFull(log.date) }}</span>
 								<span class="text-sm font-semibold text-blue-600 tabular-nums">
 									{{ formatHours(log.duration) }}
 								</span>
 							</div>
 							<div class="text-xs text-gray-500 mt-0.5">
-								{{ log.from_time }}–{{ log.to_time }} · {{ log.activity_type || __("Activity: Unassigned") }}
+								{{ log.from_time }}–{{ log.to_time }} · {{ activityLabel(log.activity_type) }}
 							</div>
 							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
 								{{ log.description }}
@@ -176,6 +176,28 @@ const detailProjectTotal = computed(() =>
 function formatWeek(start, end) {
 	return `${dayjs(start).format("D MMM")} – ${dayjs(end).format("D MMM YYYY")}`
 }
+
+function formatDateFull(date) {
+	return dayjs(date).format("ddd, D MMM")
+}
+
+// The server stores a literal "Unassigned" default: label it explicitly so it
+// never reads as a real activity type.
+function activityLabel(activityType) {
+	if (!activityType || activityType === "Unassigned") return __("Activity: Unassigned")
+	return activityType
+}
+
+// Actionable (Pending) sections first, then newest week first. Display order
+// only — the queue itself and all workflow actions are untouched.
+const orderedSections = computed(() =>
+	[...(sections.value || [])].sort((a, b) => {
+		if (Boolean(a.actionable) !== Boolean(b.actionable)) return a.actionable ? -1 : 1
+		if (a.week_start !== b.week_start) return a.week_start < b.week_start ? 1 : -1
+		if (a.project !== b.project) return a.project < b.project ? 1 : -1
+		return (a.employee_name || "").localeCompare(b.employee_name || "")
+	})
+)
 
 function statusClass(status) {
 	if (status === "Approved") return "bg-green-50 text-green-700"
