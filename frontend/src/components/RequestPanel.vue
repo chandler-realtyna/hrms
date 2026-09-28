@@ -1,5 +1,7 @@
 <template>
-	<div class="w-full">
+	<!-- Leave/expense requests only — never timesheet review. Hidden entirely
+	     when both lists are confirmed empty (still shown while loading). -->
+	<div v-if="showPanel" class="w-full">
 		<TabButtons
 			:buttons="TAB_BUTTONS"
 			v-model="activeTab"
@@ -34,6 +36,13 @@ const TAB_BUTTONS = ["My Requests", "Team Requests"]
 
 const myRequests = computed(() => buildRequests(myLeaves, myClaims))
 const teamRequests = computed(() => buildRequests(teamLeaves, teamClaims))
+
+const panelLoading = computed(() =>
+	[myLeaves, teamLeaves, myClaims, teamClaims].some((r) => r.loading)
+)
+const showPanel = computed(
+	() => panelLoading.value || myRequests.value.length + teamRequests.value.length > 0
+)
 
 function buildRequests(leaves, claims) {
 	const componentMap = {

@@ -74,6 +74,10 @@ def _is_schema(path: str) -> bool:
         return True
     if path.startswith(("hrms/setup/", "hrms/install.py", "hrms/uninstall.py", "hrms/fixtures/")):
         return True
+    # Desk reports / workspaces sync into the DB on migrate (a new Report doc
+    # only exists after migrate) — no image rebuild needed (released via mounts).
+    if "/report/" in path or "/workspace/" in path:
+        return True
     if "/doctype/" in path and path.endswith(".json"):
         return True
     if path == "hrms/patches.txt" or path.startswith("hrms/patches/"):

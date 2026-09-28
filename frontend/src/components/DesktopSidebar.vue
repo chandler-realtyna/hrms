@@ -135,7 +135,6 @@ const isHR = computed(() => {
 })
 
 const isProjectManager = computed(() => Boolean(user.data?.is_project_manager))
-const isProjectLead = computed(() => Boolean(user.data?.is_project_lead))
 const mySchedule = createResource({
 	url: "hrms.api.get_my_schedule",
 	params: { year: String(new Date().getFullYear()) },
@@ -160,16 +159,9 @@ const navItems = computed(() => {
 			route: "TimesheetListView",
 			path: "/timesheets",
 		},
-		...(isProjectLead.value
-			? [
-					{
-						icon: markRaw(TimesheetIcon),
-						title: "Project Timesheets",
-						route: "ProjectTimesheets",
-						path: "/project-timesheets",
-					},
-			  ]
-			: []),
+		// NOTE: the "Project Timesheets" lead review entry is intentionally hidden
+		// here — leads get a single "Team hours to review" card on Home instead
+		// (one clear review entry, no competing surfaces).
 		...(isProjectManager.value
 			? [
 					{

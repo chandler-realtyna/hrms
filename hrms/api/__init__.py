@@ -1127,7 +1127,11 @@ def get_working_hours_summary(employee: str, from_date: str, to_date: str) -> di
 	"""
 	Returns daily working hours for an employee between from_date and to_date (inclusive).
 	All dates in the range are returned; days with no logs get hours=0.
+
+	Privacy: employees may only query their own hours. HR/admins may query anyone.
 	"""
+	if employee != _get_employee_for_user() and not _is_hr_or_admin():
+		frappe.throw(_("You can only view your own working hours."), frappe.PermissionError)
 	from frappe.utils import getdate, add_days
 
 	rows = frappe.db.sql(
@@ -1167,7 +1171,11 @@ def get_employee_project_summary(employee: str, from_date: str, to_date: str) ->
 	"""
 	Returns the employee's hours broken down by project for the given date range,
 	ordered by hours descending (top 8).
+
+	Privacy: employees may only query their own breakdown. HR/admins may query anyone.
 	"""
+	if employee != _get_employee_for_user() and not _is_hr_or_admin():
+		frappe.throw(_("You can only view your own working hours."), frappe.PermissionError)
 	rows = frappe.db.sql(
 		"""
 		SELECT
@@ -1197,7 +1205,11 @@ def get_employee_activity_summary(employee: str, from_date: str, to_date: str) -
 	"""
 	Returns the employee's hours broken down by activity type for the given date
 	range, ordered by hours descending (top 8).
+
+	Privacy: employees may only query their own breakdown. HR/admins may query anyone.
 	"""
+	if employee != _get_employee_for_user() and not _is_hr_or_admin():
+		frappe.throw(_("You can only view your own working hours."), frappe.PermissionError)
 	rows = frappe.db.sql(
 		"""
 		SELECT
@@ -1228,32 +1240,56 @@ def get_employee_activity_summary(employee: str, from_date: str, to_date: str) -
 @frappe.whitelist()
 def get_team_working_hours_summary(from_date: str, to_date: str) -> list[dict]:
 	"""
-	Returns working-hours totals for all active employees who logged time in the
-	given period, together with each employee's IANA timezone (sourced from their
-	approved Employee Schedule, if one exists).
+	Returns working-hours totals together with each employee's IANA timezone
+	(sourced from their approved Employee Schedule, if one exists).
+
+	Scoping (server-enforced):
+	- HR/admins see all active employees who logged time (up to 25, by hours desc).
+	- Project Leads see only employees with hours logged on projects they lead.
+	- Everyone else sees an empty list.
 
 	The caller can use the timezone values to compute UTC-offset differences
 	and display how far ahead/behind each colleague is relative to the viewer.
-
-	Returns up to 25 employees, ordered by total hours descending.
 	"""
+	unrestricted = _is_hr_or_admin()
+	project_filter = ""
+	params: dict = {"from_date": from_date, "to_date": to_date}
+	if not unrestricted:
+		employee = _get_employee_for_user()
+		lead_projects = (
+			frappe.get_all(
+				"Project",
+				filters={"custom_project_lead": employee, "status": "Open"},
+				pluck="name",
+			)
+			if employee
+			else []
+		)
+		if not lead_projects:
+			return []
+		project_filter = "AND tsd.project IN %(projects)s"
+		params["projects"] = lead_projects
+
 	rows = frappe.db.sql(
-		"""
+		f"""
 		SELECT
 			ts.employee,
 			MAX(e.employee_name) AS employee_name,
-			ROUND(SUM(tsd.hours), 1) AS total_hours
+			-- Two decimals: the UI renders H:MM, and 1-decimal rounding can
+			-- shift the displayed minutes by up to 3 (e.g. 0.25h -> "0:18").
+			ROUND(SUM(tsd.hours), 2) AS total_hours
 		FROM `tabTimesheet Detail` tsd
 		INNER JOIN `tabTimesheet`  ts ON tsd.parent = ts.name
 		INNER JOIN `tabEmployee`   e  ON e.name = ts.employee
 		WHERE ts.docstatus != 2
 		  AND e.status = 'Active'
 		  AND DATE(tsd.from_time) BETWEEN %(from_date)s AND %(to_date)s
+		  {project_filter}
 		GROUP BY ts.employee
 		ORDER BY total_hours DESC
 		LIMIT 25
 		""",
-		{"from_date": from_date, "to_date": to_date},
+		params,
 		as_dict=True,
 	)
 

@@ -27,6 +27,30 @@ frappe.ui.form.on("Employee Schedule", {
 			}).addClass("btn-primary")
 		}
 
+		// Employees can edit after first submit: a Rejected schedule can be
+		// resubmitted, and an Approved one resubmitted as a change request.
+		if ((frm.doc.status === "Rejected" || frm.doc.status === "Approved") && !frm.is_new()) {
+			frm.add_custom_button(
+				frm.doc.status === "Approved"
+					? __("Request Change Approval")
+					: __("Resubmit for Approval"),
+				() => {
+					frappe.confirm(__("Submit this schedule for HR approval?"), () => {
+						frappe.call({
+							method: "hrms.api.submit_employee_schedule",
+							args: { name: frm.doc.name },
+							callback(r) {
+								if (!r.exc) {
+									frm.reload_doc()
+									frappe.show_alert({ message: __("Schedule submitted"), indicator: "green" })
+								}
+							},
+						})
+					})
+				}
+			).addClass("btn-primary")
+		}
+
 		if (frm.doc.status === "Submitted" && isHR) {
 			frm.add_custom_button(__("Approve"), () => {
 				frappe.confirm(__("Approve schedule for {0}?", [frm.doc.employee_name]), () => {
@@ -60,11 +84,8 @@ frappe.ui.form.on("Employee Schedule", {
 		}
 
 		frm.set_df_property("status", "read_only", 1)
-		const userIsEmployee =
-			!frappe.user.has_role(["HR Manager", "HR User", "System Manager"]) &&
-			frappe.user.name !== "Administrator"
-		if (frm.doc.status !== "Draft" && userIsEmployee) {
-			frm.disable_form()
-		}
+		// Employees keep edit access after first submit (Draft, Rejected,
+		// Approved and Submitted are all editable — server-side validation
+		// routes Approved/Submitted edits back through HR approval).
 	},
 })

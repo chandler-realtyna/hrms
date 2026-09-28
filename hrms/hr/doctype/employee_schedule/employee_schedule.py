@@ -102,8 +102,12 @@ class EmployeeSchedule(Document):
 		"""Send email notifications on status transitions."""
 		prev = getattr(self, "_prev_status", None)
 
-		if self.status == "Submitted" and prev != "Submitted":
-			_notify_hr_schedule_submission(self)
+		if self.status == "Submitted":
+			# Notify HR on first submit AND when an employee updates a
+			# pending request or edits an approved schedule (both land
+			# here as Submitted). Skip when HR themselves saved it.
+			if prev != "Submitted" or not _is_hr_or_admin():
+				_notify_hr_schedule_submission(self)
 		elif self.status == "Approved" and prev != "Approved":
 			_notify_employee_schedule_approved(self)
 		elif self.status == "Rejected" and prev != "Rejected":

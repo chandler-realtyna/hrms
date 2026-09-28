@@ -777,6 +777,86 @@ def get_project_review_queue():
 			}
 		)
 	result.sort(key=lambda r: (r["week_start"], r["project"], r["employee_name"]), reverse=True)
+
+	# Draft weeks have no approval rows yet: derive sections from time logs so
+	# leads can already review them (read-only, no actions until submitted).
+	parents_with_approvals = {a.parent for a in approvals}
+	draft_docs = frappe.get_all(
+		"Timesheet",
+		filters={
+			"custom_is_weekly": 1,
+			"docstatus": 0,
+			"custom_weekly_status": WEEKLY_DRAFT,
+		},
+		fields=[
+			"name",
+			"employee",
+			"employee_name",
+			"custom_week_start",
+			"custom_week_end",
+			"custom_weekly_status",
+			"modified",
+		],
+		order_by="modified desc",
+		limit_page_length=500,
+	)
+	draft_docs = [d for d in draft_docs if d.name not in parents_with_approvals]
+	if draft_docs:
+		if hr:
+			scoped_projects = None
+		else:
+			scoped_projects = lead_projects
+		detail_rows = frappe.db.get_all(
+			"Timesheet Detail",
+			filters={"parent": ("in", [d.name for d in draft_docs])},
+			fields=["parent", "project", "hours", "from_time"],
+		)
+		docs_by_name = {d.name: d for d in draft_docs}
+		proj_names = {r.project for r in detail_rows if r.project}
+		proj_labels = {}
+		if proj_names:
+			for p in frappe.db.get_all(
+				"Project", filters={"name": ("in", list(proj_names))}, fields=["name", "project_name"]
+			):
+				proj_labels[p.name] = p.project_name or p.name
+		grouped = {}
+		for row in detail_rows:
+			if not row.project or not row.from_time:
+				continue
+			if scoped_projects is not None and row.project not in scoped_projects:
+				continue
+			doc = docs_by_name.get(row.parent)
+			if doc is None:
+				continue
+			key = (row.project, str(doc.custom_week_start), doc.employee)
+			grouped.setdefault(key, {"doc": doc, "hours": 0.0, "count": 0})
+			grouped[key]["hours"] += flt(row.hours)
+			grouped[key]["count"] += 1
+		for (project, week_start, _employee), group in grouped.items():
+			doc = group["doc"]
+			result.append(
+				{
+					"approval_name": None,
+					"project": project,
+					"project_label": proj_labels.get(project, project),
+					"week_start": str(doc.custom_week_start),
+					"week_end": str(doc.custom_week_end),
+					"employee": doc.employee,
+					"employee_name": doc.employee_name,
+					"hours": round(group["hours"], 2),
+					"log_count": group["count"],
+					"project_status": WEEKLY_DRAFT,
+					"hr_status": doc.custom_weekly_status,
+					"return_reason": None,
+					"reviewed_by": None,
+					"reviewed_at": None,
+					"submitted_at": None,
+					"modified": str(doc.modified),
+					"actionable": False,
+					"routed_to_hr_reason": None,
+				}
+			)
+	result.sort(key=lambda r: (r["week_start"], r["project"], r["employee_name"]), reverse=True)
 	return result
 
 
@@ -819,7 +899,7 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"employee": doc.employee,
 		"employee_name": doc.employee_name,
 		"hr_status": doc.custom_weekly_status,
-		"project_status": approval.status if approval else None,
+		"project_status": approval.status if approval else WEEKLY_DRAFT,
 		"approval_name": approval.name if approval else None,
 		"return_reason": approval.return_reason if approval else None,
 		"actionable": bool(approval) and approval.status == APPROVAL_PENDING,

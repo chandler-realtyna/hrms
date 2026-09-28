@@ -5,8 +5,9 @@
 			<h2 class="text-base font-semibold text-gray-800">{{ __("Working Hours") }}</h2>
 
 			<div class="flex items-center gap-2">
-				<!-- Me / Team toggle -->
-				<div class="flex rounded-lg overflow-hidden border border-gray-200">
+				<!-- Me / Team toggle (leads + HR only: team hours are scoped to
+				     projects they lead, everyone else sees their own hours) -->
+				<div v-if="canViewTeam" class="flex rounded-lg overflow-hidden border border-gray-200">
 					<button
 						v-for="v in VIEWS"
 						:key="v.value"
@@ -356,6 +357,17 @@ const __ = inject("$translate")
 const dayjs = inject("$dayjs")
 const employee = inject("$employee")
 
+// Team hours are restricted: project leads see hours on projects they lead,
+// HR/admins see all. Everyone else gets the Me view only (the API also
+// enforces this server-side and returns [] for anyone without access).
+const userInfo = createResource({ url: "hrms.api.get_current_user_info", auto: true })
+const canViewTeam = computed(() => {
+	const roles = userInfo.data?.roles || []
+	if (roles.some((r) => ["HR Manager", "HR User", "System Manager", "Administrator"].includes(r)))
+		return true
+	return Boolean(userInfo.data?.is_project_lead)
+})
+
 // ── Viewer timezone ────────────────────────────────────────────────────────────
 const viewerTz      = getViewerTimezone()
 const viewerTzLabel = getTimezoneAbbr(viewerTz)
@@ -521,6 +533,7 @@ function fetchMe() {
 }
 
 function fetchTeam() {
+	if (!canViewTeam.value) return
 	teamResource.submit({
 		from_date: fromDate.value,
 		to_date:   toDate.value,
@@ -528,6 +541,7 @@ function fetchTeam() {
 }
 
 function selectView(value) {
+	if (value === "team" && !canViewTeam.value) value = "me"
 	view.value = value
 	if (value === "me")   fetchMe()
 	if (value === "team") fetchTeam()
@@ -543,6 +557,11 @@ function refetch() {
 	if (view.value === "me")   fetchMe()
 	if (view.value === "team") fetchTeam()
 }
+
+// If access resolves to Me-only while Team is selected, fall back to Me.
+watch(canViewTeam, (allowed) => {
+	if (!allowed && view.value === "team") selectView("me")
+})
 
 // Re-fetch when the user adjusts the custom range (only relevant in 'custom' mode).
 watch([customFrom, customTo], () => {

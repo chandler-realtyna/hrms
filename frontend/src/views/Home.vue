@@ -6,6 +6,49 @@
 				     actions one scroll away on every screen size. -->
 				<WorkingHoursDashboard />
 
+				<!-- Single review entry for project leads (replaces the hidden
+				     sidebar item): opens the per-section review flow. Shown
+				     whenever there is anything to see — pending items get the
+				     amber treatment, otherwise a neutral all-caught-up card so
+				     the page is never unreachable. -->
+				<router-link
+					v-if="showReviewCard"
+					:to="{ name: 'ProjectTimesheets' }"
+					class="rounded-xl p-4 flex items-center justify-between gap-3 border"
+					:class="
+						pendingReviewCount > 0
+							? 'bg-amber-50 border-amber-200'
+							: 'bg-white border-gray-200'
+					"
+				>
+					<div class="min-w-0">
+						<div
+							class="font-semibold"
+							:class="pendingReviewCount > 0 ? 'text-amber-900' : 'text-gray-800'"
+						>
+							{{ pendingReviewCount > 0 ? __("Team hours to review") : __("Team hours") }}
+						</div>
+						<div
+							class="text-sm mt-1"
+							:class="pendingReviewCount > 0 ? 'text-amber-700' : 'text-gray-500'"
+						>
+							{{
+								pendingReviewCount > 0
+									? __("Team members submitted hours on your projects")
+									: __("Nothing waiting for review")
+							}}
+						</div>
+						<div v-if="pendingReviewCount > 0" class="text-xs font-medium text-amber-600 mt-1">
+							{{ __("{0} waiting", [pendingReviewCount]) }}
+						</div>
+					</div>
+					<FeatherIcon
+						name="chevron-right"
+						class="h-5 w-5 shrink-0"
+						:class="pendingReviewCount > 0 ? 'text-amber-700' : 'text-gray-400'"
+					/>
+				</router-link>
+
 				<!-- Mobile: Meetings first, then Quick Links -->
 				<div class="md:hidden flex flex-col">
 					<QuickLinks :items="meetingLinks" :title="__('Meetings')" />
@@ -19,8 +62,8 @@
 </template>
 
 <script setup>
-import { inject, markRaw, computed } from "vue"
-import { createResource } from "frappe-ui"
+import { inject, markRaw, computed, watch } from "vue"
+import { createResource, FeatherIcon } from "frappe-ui"
 
 import QuickLinks from "@/components/QuickLinks.vue"
 import BaseLayout from "@/components/BaseLayout.vue"
@@ -53,7 +96,31 @@ const isHR = computed(() => {
 	)
 })
 
-const isProjectController = computed(() => Boolean(userInfo.data?.is_project_controller))
+const isProjectLead = computed(() => Boolean(userInfo.data?.is_project_lead))
+
+// Single review entry: leads with pending team hours get one card that opens
+// the per-section review flow (ProjectTimesheets). Hidden otherwise.
+const reviewQueue = createResource({
+	url: "hrms.api.weekly_timesheet.get_project_review_queue",
+	auto: false,
+})
+const pendingReviewCount = computed(
+	() => (reviewQueue.data || []).filter((row) => row.actionable).length
+)
+// The page must stay reachable even with zero actionable items (returned /
+// draft sections still need to be visible) — otherwise leads lose the only
+// entry point exactly when everything was returned.
+const showReviewCard = computed(
+	() => isProjectLead.value && (reviewQueue.data || []).length > 0
+)
+
+watch(
+	() => userInfo.data?.is_project_lead,
+	(isLead) => {
+		if (isLead) reviewQueue.fetch()
+	},
+	{ immediate: true }
+)
 
 const mySchedule = createResource({
 	url: "hrms.api.get_my_schedule",
@@ -74,15 +141,6 @@ const quickLinks = computed(() => {
 			title: __("My Timesheets"),
 			route: "TimesheetListView",
 		},
-		...(isProjectController.value
-			? [
-					{
-						icon: markRaw(TimesheetIcon),
-						title: __("Project Approvals"),
-						route: "TimesheetProjectApprovals",
-					},
-			  ]
-			: []),
 		{
 			icon: markRaw(LeaveIcon),
 			title: __("Request Leave"),
