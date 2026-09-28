@@ -23,19 +23,38 @@
 				</div>
 
 				<!-- Period selector -->
-				<div class="flex rounded-lg overflow-hidden border border-gray-200">
+				<div class="flex items-center gap-1">
 					<button
-						v-for="opt in PERIODS"
-						:key="opt.value"
-						@click="selectPeriod(opt.value)"
-						class="px-3 py-1.5 text-xs font-medium transition-colors"
-						:class="
-							period === opt.value
-								? 'bg-gray-800 text-white'
-								: 'bg-white text-gray-500 hover:bg-gray-50'
-						"
+						v-if="period !== 'custom'"
+						@click="stepPeriod(-1)"
+						class="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+						:aria-label="__('Previous period')"
 					>
-						{{ opt.label }}
+						‹
+					</button>
+					<div class="flex rounded-lg overflow-hidden border border-gray-200">
+						<button
+							v-for="opt in PERIODS"
+							:key="opt.value"
+							@click="selectPeriod(opt.value)"
+							class="px-3 py-1.5 text-xs font-medium transition-colors"
+							:class="
+								period === opt.value
+									? 'bg-gray-800 text-white'
+									: 'bg-white text-gray-500 hover:bg-gray-50'
+							"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+					<button
+						v-if="period !== 'custom'"
+						@click="stepPeriod(1)"
+						:disabled="periodOffset >= 0"
+						class="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+						:aria-label="__('Next period')"
+					>
+						›
 					</button>
 				</div>
 			</div>
@@ -357,30 +376,74 @@ const PERIODS = [
 
 const view   = ref("me")
 const period = ref("week")
+// Browse past calendar periods: 0 = current, -1 = previous, … (never future).
+const periodOffset = ref(0)
 
 const todayStr = dayjs().format("YYYY-MM-DD")
+
+function toISODate(d) {
+	const pad = (n) => String(n).padStart(2, "0")
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+function shiftDays(dateStr, n) {
+	const d = new Date(dateStr + "T12:00:00")
+	d.setDate(d.getDate() + n)
+	return toISODate(d)
+}
+function mondayOf(dateStr) {
+	const d = new Date(dateStr + "T12:00:00")
+	const day = d.getDay() // 0=Sun
+	d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+	return toISODate(d)
+}
+function firstOfMonth(dateStr) {
+	return dateStr.slice(0, 7) + "-01"
+}
+function shiftMonths(dateStr, n) {
+	const d = new Date(dateStr.slice(0, 7) + "-01T12:00:00")
+	d.setMonth(d.getMonth() + n)
+	return toISODate(d)
+}
+function clampToday(dateStr) {
+	return dateStr > todayStr ? todayStr : dateStr
+}
+
+// Calendar-aligned ranges matching timesheet weeks (Mon–Sun), so Monday
+// never shows a confusing mix of two timesheet weeks.
+const toDate   = computed(() => {
+	if (period.value === "custom") return customTo.value
+	if (period.value === "month") {
+		const first = shiftMonths(firstOfMonth(todayStr), periodOffset.value)
+		return clampToday(shiftDays(shiftMonths(first, 1), -1))
+	}
+	const span = period.value === "2weeks" ? 14 : 7
+	const monday = shiftDays(mondayOf(todayStr), periodOffset.value * span)
+	return clampToday(shiftDays(monday, span - 1))
+})
+const fromDate = computed(() => {
+	if (period.value === "custom") return customFrom.value
+	if (period.value === "month") return shiftMonths(firstOfMonth(todayStr), periodOffset.value)
+	const span = period.value === "2weeks" ? 14 : 7
+	return shiftDays(mondayOf(todayStr), periodOffset.value * span)
+})
 
 // Custom range — defaults to the last 7 days until the user picks dates.
 const customFrom = ref(dayjs().subtract(6, "day").format("YYYY-MM-DD"))
 const customTo   = ref(todayStr)
 
-const toDate   = computed(() => {
-	if (period.value === "custom") return customTo.value
-	return todayStr
-})
-const fromDate = computed(() => {
-	if (period.value === "custom") return customFrom.value
-	const days = PERIODS.find((p) => p.value === period.value)?.days ?? 7
-	return dayjs().subtract(days - 1, "day").format("YYYY-MM-DD")
-})
-
 const periodLabel = computed(() => {
 	if (period.value === "custom") {
 		return `${dayjs(fromDate.value).format("D MMM")} – ${dayjs(toDate.value).format("D MMM")}`
 	}
-	const days = PERIODS.find((p) => p.value === period.value)?.days ?? 7
-	return `last ${days} days`
+	const range = `${dayjs(fromDate.value).format("D MMM")} – ${dayjs(toDate.value).format("D MMM")}`
+	return periodOffset.value === 0 ? `${range} · ${__("this period")}` : range
 })
+
+function stepPeriod(dir) {
+	if (period.value === "custom") return
+	periodOffset.value = Math.min(0, periodOffset.value + dir)
+	refetch()
+}
 
 // ─── Resources ─────────────────────────────────────────────────────────────────
 
@@ -472,6 +535,7 @@ function selectView(value) {
 
 function selectPeriod(value) {
 	period.value = value
+	periodOffset.value = 0
 	refetch()
 }
 
