@@ -40,7 +40,7 @@
 						class="bg-white border rounded-xl p-4 flex items-center justify-between gap-3"
 					>
 						<div class="text-sm text-gray-700">
-							{{ __("{0} sections waiting", [actionableSections.length]) }}
+							{{ __("{0} to review", [actionableSections.length]) }}
 						</div>
 						<Button
 							variant="solid"
@@ -76,16 +76,16 @@
 								</div>
 								<div class="flex flex-col items-end gap-1.5 shrink-0">
 									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
-										{{ __("Project review") }}: {{ projectStatusLabel(row) }}
+										{{ projectStatusLabel(row) }}
 									</span>
-									<span class="text-[11px] text-gray-400">{{ __("HR review") }}: {{ __(row.hr_status) }}</span>
+									<span class="text-[11px] text-gray-400">{{ __("HR") }}: {{ __(row.hr_status) }}</span>
 								</div>
 							</div>
 							<p v-if="row.routed_to_hr_reason === 'no_lead'" class="mt-2 text-[11px] text-amber-600">
-								{{ __("No Project Lead — routed to HR review") }}
+								{{ __("No Project Lead, routed to HR review") }}
 							</p>
 							<p v-if="row.routed_to_hr_reason === 'self'" class="mt-2 text-[11px] text-gray-400">
-								{{ __("Own section — routed directly to HR") }}
+								{{ __("Own section, routed directly to HR") }}
 							</p>
 							<p v-if="row.return_reason" class="mt-2 text-[11px] text-red-600">
 								{{ __("Returned") }}: {{ row.return_reason }}
@@ -95,7 +95,7 @@
 							<input
 								v-model="reasons[row.approval_name]"
 								class="min-w-0 flex-1 border rounded-lg px-2.5 py-2 text-xs"
-								:placeholder="__('Return reason (to return)')"
+								:placeholder="__('Return reason')"
 							/>
 							<Button variant="solid" size="sm" @click="approveRow(row)">
 								{{ __("Approve") }}
@@ -119,10 +119,10 @@
 						</div>
 						<div class="mt-2 flex flex-wrap gap-1.5">
 							<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(detail.project_status)">
-								{{ __("Project review") }}: {{ projectStatusLabel(detail) }}
+								{{ projectStatusLabel(detail) }}
 							</span>
 							<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-								{{ __("HR review") }}: {{ __(detail.hr_status) }}
+								{{ __("HR") }}: {{ __(detail.hr_status) }}
 							</span>
 						</div>
 						<p v-if="detail.return_reason" class="mt-2 text-xs text-red-600">
@@ -152,7 +152,7 @@
 						<input
 							v-model="detailReason"
 							class="min-w-0 flex-1 border rounded-lg px-2.5 py-2 text-xs"
-							:placeholder="__('Return reason (to return)')"
+							:placeholder="__('Return reason')"
 						/>
 						<Button variant="solid" size="sm" @click="approveDetail">
 							{{ __("Approve") }}
@@ -218,8 +218,8 @@ function updatedAgo(value) {
 	return serverTimeAgo(dayjs, value)
 }
 
-// Actionable (Pending) sections first, then newest week first. Display order
-// only — the queue itself and all workflow actions are untouched.
+// Actionable sections first, then newest week first. Display order only;
+// the queue itself and all workflow actions are untouched.
 const orderedSections = computed(() =>
 	[...(sections.value || [])].sort((a, b) => {
 		if (Boolean(a.actionable) !== Boolean(b.actionable)) return a.actionable ? -1 : 1
@@ -236,7 +236,7 @@ const actionableSections = computed(() => orderedSections.value.filter((row) => 
 async function approveAll() {
 	const rows = actionableSections.value
 	if (!rows.length || approvingAll.value) return
-	if (!window.confirm(__("Approve all {0} pending sections? They will be sent to HR review.", [rows.length]))) return
+	if (!window.confirm(__("Approve all {0} and send to HR review?", [rows.length]))) return
 	approvingAll.value = true
 	try {
 		for (const row of rows) {
@@ -244,7 +244,7 @@ async function approveAll() {
 				approval_name: row.approval_name,
 			})
 		}
-		toastSaved(__("All pending sections approved — sent to HR review"))
+		toastSaved(__("Approved, sent to HR review"))
 		detail.value = null
 		await load()
 	} catch (error) {
@@ -266,7 +266,7 @@ function statusClass(status) {
 // Draft sections have no approval row yet: label them explicitly so they read
 // as read-only previews, not pending work.
 function projectStatusLabel(row) {
-	if (row.project_status === "Draft") return __("Draft — not submitted yet")
+	if (row.project_status === "Draft") return __("Not submitted yet")
 	return __(row.project_status)
 }
 
@@ -310,7 +310,7 @@ async function approveRow(row) {
 		await call("hrms.api.weekly_timesheet.approve_project_review", {
 			approval_name: row.approval_name,
 		})
-		toastSaved(__("Section approved — sent to HR review"))
+		toastSaved(__("Approved, sent to HR review"))
 		detail.value = null
 		await load()
 	} catch (error) {
