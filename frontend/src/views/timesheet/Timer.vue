@@ -226,6 +226,7 @@ import { IonPage, IonContent } from "@ionic/vue"
 import { FeatherIcon, Button, call, toast } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { TIMER_NOTIFIED_KEY } from "@/composables/useTimerReminder.js"
+import { TIMER_STORAGE_KEY as STORAGE_KEY } from "@/data/session.js"
 import { unreadNotificationsCount } from "@/data/notifications"
 
 const router = useRouter()
@@ -233,8 +234,11 @@ const __ = inject("$translate")
 const employee = inject("$employee")
 const dayjs = inject("$dayjs")
 
-const STORAGE_KEY = "hrms_active_timer"
 const FAVORITES_KEY = "hrms_favorite_projects"
+
+function stateOwner() {
+	return employee.data?.user_id || employee.data?.name || null
+}
 
 const isRunning = ref(false)
 const isPaused = ref(false)
@@ -331,7 +335,7 @@ const activeProjectLabel = computed(() => {
 function persistState() {
 	localStorage.setItem(
 		STORAGE_KEY,
-		JSON.stringify({ startTime: startTime.value, form: form.value, segments: segments.value, isPaused: isPaused.value, pausedSince: pausedSince.value })
+		JSON.stringify({ owner: stateOwner(), startTime: startTime.value, form: form.value, segments: segments.value, isPaused: isPaused.value, pausedSince: pausedSince.value })
 	)
 }
 
@@ -347,6 +351,13 @@ function loadPersistedState() {
 		const raw = localStorage.getItem(STORAGE_KEY)
 		if (!raw) return
 		const state = JSON.parse(raw)
+		// Never resurrect another account's timer on a shared browser: logout
+		// wipes this key, and any leftover stamped for someone else is dropped.
+		const owner = stateOwner()
+		if (state.owner && owner && state.owner !== owner) {
+			clearPersistedState()
+			return
+		}
 		segments.value = state.segments || []
 		if (!state.startTime && !segments.value.length) return
 		startTime.value = state.startTime || null
@@ -771,10 +782,13 @@ async function stop() {
 		// Navigate to the timesheet that was created/updated
 		router.push({ name: "TimesheetDetailView", params: { id: name } })
 	} catch (e) {
-		// Resume the ticker so the timer doesn't lose time
+		// Resume the ticker so the timer doesn't lose time. Surface the real
+		// server reason (e.g. week locked for review) instead of a dead end:
+		// segments are kept, so Stop retries once the week is editable again.
 		startTick()
 		toast({
 			title: __("Failed to save time log"),
+			text: e?.messages?.[0] || e?.message,
 			icon: "x",
 			iconClasses: "text-red-500",
 		})
