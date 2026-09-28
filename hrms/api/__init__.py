@@ -1488,8 +1488,13 @@ def get_schedule_timezones() -> dict:
 @frappe.whitelist()
 def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 	"""
-	Upsert a Draft Employee Schedule for the current employee.
+	Upsert an Employee Schedule for the current employee.
 	*days* is a JSON list of {day_of_week, day_type, start_time, end_time}.
+
+	Editable after first submit, with HR approval:
+	- Draft -> stays Draft (employee can keep editing)
+	- Rejected -> reopens as Draft (employee can fix and resubmit)
+	- Approved / Submitted -> becomes Submitted (change request pending HR approval)
 	"""
 	import json, datetime as _dt
 
@@ -1510,20 +1515,24 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 
 	existing_name = frappe.db.get_value(
 		"Employee Schedule",
-		{"employee": employee, "year": year, "status": "Draft"},
+		{"employee": employee, "year": year},
 		"name",
+		order_by="modified desc",
 	)
 
 	if existing_name:
 		doc = frappe.get_doc("Employee Schedule", existing_name)
-	else:
-		non_draft = frappe.db.get_value(
-			"Employee Schedule",
-			{"employee": employee, "year": year, "status": ["not in", ["Draft", "Rejected"]]},
-			"name",
-		)
-		if non_draft:
+		if doc.employee != employee and not _is_hr_or_admin():
+			frappe.throw(_("You can only edit your own schedule."))
+		# Any edit to an approved / pending schedule becomes a change
+		# request that needs HR approval again.
+		if doc.status in ("Approved", "Submitted"):
+			doc.status = "Submitted"
+		elif doc.status == "Rejected":
+			doc.status = "Draft"
+		elif doc.status != "Draft":
 			frappe.throw(_("A schedule for {0} already exists and cannot be modified.").format(year))
+	else:
 		doc = frappe.new_doc("Employee Schedule")
 		doc.employee = employee
 		doc.year = year
@@ -1548,12 +1557,14 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 
 @frappe.whitelist()
 def submit_employee_schedule(name: str) -> dict:
-	"""Submit a Draft schedule for HR approval."""
+	"""Submit a Draft/Rejected/Approved schedule for HR approval."""
 	doc = frappe.get_doc("Employee Schedule", name)
 	employee = _get_employee_for_user()
 	if doc.employee != employee and not _is_hr_or_admin():
 		frappe.throw(_("You can only submit your own schedule."))
-	if doc.status != "Draft":
+	if doc.status == "Submitted":
+		frappe.throw(_("This schedule is already awaiting HR approval."))
+	if doc.status not in ("Draft", "Rejected", "Approved"):
 		frappe.throw(_("Only Draft schedules can be submitted."))
 	doc.status = "Submitted"
 	doc.save(ignore_permissions=True)

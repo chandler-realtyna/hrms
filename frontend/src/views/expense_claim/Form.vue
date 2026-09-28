@@ -45,7 +45,7 @@
 					</details>
 				</template>
 
-				<template #advances="{ isFormReadOnly }">
+				<template #advances="{ isFormReadOnly }" v-if="expenseClaim.advances?.length">
 					<ExpenseAdvancesTable
 						v-model:expenseClaim="expenseClaim"
 						:isReadOnly="isReadOnly || isFormReadOnly"
@@ -247,6 +247,18 @@ watch(
 
 watch(companyCurrency, () => setExchangeRate())
 
+// Advance totals are only relevant when advances exist.
+watch(
+	() => expenseClaim.value.advances?.length,
+	(n) => {
+		const totalAdvance = formFields.data?.find(
+			(field) => field.fieldname === "total_advance_amount"
+		)
+		if (totalAdvance) totalAdvance.hidden = !n ? 1 : 0
+	},
+	{ immediate: true }
+)
+
 watch(
 	() => expenseClaim.value.name,
 	() => {
@@ -274,13 +286,42 @@ watch(
 
 // helper functions
 function getFilteredFields(fields) {
-	// reduce noise from the form view by excluding unnecessary fields
-	// eg: employee and other details can be fetched from the session user
+	// Minimal claim form: only what the employee must provide or review.
+	// Everything accounting-related is auto-set (cost center, payable
+	// account, posting date) or irrelevant day-to-day, so it stays hidden
+	// instead of overwhelming the page.
 	const excludeFields = [
 		"naming_series",
 		"task",
 		"taxes_and_charges_sb",
 		"advance_payments_sb",
+		// hidden sections + their fields
+		"currency_section",
+		"expense_details",
+		"transactions_section",
+		"gain_loss_section",
+		"accounting_details",
+		"accounting_dimensions_section",
+		"more_details",
+		"base_total_sanctioned_amount",
+		"base_total_advance_amount",
+		"base_grand_total",
+		"base_total_claimed_amount",
+		"base_total_taxes_and_charges",
+		"total_amount_reimbursed",
+		"total_exchange_gain_loss",
+		"gain_loss_account",
+		"posting_date",
+		"is_paid",
+		"mode_of_payment",
+		"bank_or_cash_account",
+		"payable_account",
+		"clearance_date",
+		"project",
+		"cost_center",
+		"status",
+		"delivery_trip",
+		"vehicle_log",
 	]
 	const extraFields = [
 		"employee",

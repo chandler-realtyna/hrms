@@ -76,8 +76,25 @@ class EmployeeSchedule(Document):
 		if self.status in ("Approved", "Rejected") and not _is_hr_or_admin():
 			frappe.throw(_("Only HR can approve or reject schedules."))
 		old_status = frappe.db.get_value("Employee Schedule", self.name, "status")
-		if old_status in ("Submitted", "Approved") and not _is_hr_or_admin():
-			frappe.throw(_("You cannot modify a {0} schedule.").format(old_status))
+		if not _is_hr_or_admin():
+			# Employees may keep editing Drafts, reopen Rejected as Draft,
+			# and turn Draft/Rejected/Approved into Submitted (including
+			# editing an Approved schedule or a pending request, which
+			# becomes a change request awaiting HR approval again).
+			# Anything else (e.g. moving Approved/Submitted back to Draft)
+			# would bypass HR review and is blocked.
+			if old_status == self.status and old_status in ("Draft", "Submitted"):
+				return
+			allowed = {
+				("Draft", "Draft"),
+				("Draft", "Submitted"),
+				("Rejected", "Draft"),
+				("Rejected", "Submitted"),
+				("Approved", "Submitted"),
+				("Submitted", "Submitted"),
+			}
+			if (old_status, self.status) not in allowed:
+				frappe.throw(_("You cannot modify a {0} schedule.").format(old_status))
 
 	# ── Hooks ───────────────────────────────────────────────────────────────
 
