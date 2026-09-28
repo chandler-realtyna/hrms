@@ -543,15 +543,18 @@ const docList = createListResource({
 				params: { id: data.name },
 			})
 		},
-		onError() {
+		onError(error) {
 			toast({
 				title: __("Error"),
-				text: __("Error creating {0}", [__(props.doctype)]),
+				text:
+					error?.messages?.[0] ||
+					error?.message ||
+					__("Error creating {0}", [__(props.doctype)]),
 				icon: "alert-circle",
 				position: "bottom-center",
 				iconClasses: "text-red-500",
 			})
-			console.log(`Error creating ${props.doctype}`)
+			console.log(`Error creating ${props.doctype}`, error)
 		},
 	},
 })
@@ -569,15 +572,18 @@ const documentResource = createDocumentResource({
 				iconClasses: "text-green-500",
 			})
 		},
-		onError() {
+		onError(error) {
 			toast({
 				title: __("Error"),
-				text: __("Error updating {0}", [__(props.doctype)]),
+				text:
+					error?.messages?.[0] ||
+					error?.message ||
+					__("Error updating {0}", [__(props.doctype)]),
 				icon: "alert-circle",
 				position: "bottom-center",
 				iconClasses: "text-red-500",
 			})
-			console.log(`Error updating ${props.doctype}`)
+			console.log(`Error updating ${props.doctype}`, error)
 		},
 	},
 	delete: {

@@ -8,8 +8,6 @@
 				:isSubmittable="true"
 				:fields="formFields.data"
 				:id="props.id"
-				:tabbedView="true"
-				:tabs="tabs"
 				:showAttachmentView="true"
 				@validateForm="validateForm"
 				:showDownloadPDFButton="true"
@@ -26,14 +24,25 @@
 					/>
 				</template>
 
+				<!-- Rarely needed: collapsed unless taxes already exist -->
 				<template #taxes="{ isFormReadOnly }">
-					<ExpenseTaxesTable
-						v-model:expenseClaim="expenseClaim"
-						:isReadOnly="isReadOnly || isFormReadOnly"
-						@addExpenseTax="addExpenseTax"
-						@updateExpenseTax="updateExpenseTax"
-						@deleteExpenseTax="deleteExpenseTax"
-					/>
+					<details :open="!!expenseClaim.taxes?.length" class="rounded-xl border bg-white">
+						<summary class="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-gray-700 flex items-center justify-between">
+							{{ __("Taxes & Charges (optional)") }}
+							<span class="text-xs font-normal text-gray-400">
+								{{ expenseClaim.taxes?.length ? __("Added") : __("Add if needed") }}
+							</span>
+						</summary>
+						<div class="px-4 pb-4">
+							<ExpenseTaxesTable
+								v-model:expenseClaim="expenseClaim"
+								:isReadOnly="isReadOnly || isFormReadOnly"
+								@addExpenseTax="addExpenseTax"
+								@updateExpenseTax="updateExpenseTax"
+								@deleteExpenseTax="deleteExpenseTax"
+							/>
+						</div>
+					</details>
 				</template>
 
 				<template #advances="{ isFormReadOnly }">
@@ -77,11 +86,9 @@ const props = defineProps({
 	},
 })
 
-const tabs = [
-	{ name: "Expenses", lastField: "taxes" },
-	{ name: "Advances", lastField: "advances" },
-	{ name: "Totals", lastField: "cost_center" },
-]
+// NOTE: no tab navigation — the form renders as one scrollable page
+// (main fields → expenses → optional taxes → advances → totals) since
+// advances/totals are auto-managed and don't need separate tabs.
 
 // object to store form data
 const expenseClaim = ref({
@@ -237,6 +244,8 @@ watch(
 	() => expenseClaim.value.currency,
 	() => setExchangeRate()
 )
+
+watch(companyCurrency, () => setExchangeRate())
 
 watch(
 	() => expenseClaim.value.name,
@@ -478,11 +487,19 @@ function setExchangeRate() {
 	const exchange_rate_field = formFields.data?.find(
 		(field) => field.fieldname === "exchange_rate"
 	)
+	if (!exchange_rate_field) return
+
+	// Same currency as the company: rate is trivially 1, no input needed.
+	if (companyCurrency.value && expenseClaim.value.currency === companyCurrency.value) {
+		expenseClaim.value.exchange_rate = 1
+		exchange_rate_field.hidden = 1
+		return
+	}
 
 	exchangeRate.fetch({
 		from_currency: expenseClaim.value.currency,
 		to_currency: companyCurrency.value,
 	})
-	if (exchange_rate_field) exchange_rate_field.hidden = 0
+	exchange_rate_field.hidden = 0
 }
 </script>
