@@ -171,7 +171,7 @@
 											class="flex items-center gap-2 mt-1 bg-gray-50 rounded-lg px-3 py-2"
 										>
 											<span class="text-xs text-gray-500 truncate flex-1"
-												>/hrms/book/{{ bookingSlug }}</span
+												>{{ bookingPublicUrl }}</span
 											>
 											<button
 												@click="copyBookingUrl"
@@ -181,8 +181,9 @@
 												<FeatherIcon name="copy" class="w-3.5 h-3.5" />
 											</button>
 											<a
-												:href="`/hrms/book/${bookingSlug}`"
+												:href="bookingPublicUrl"
 												target="_blank"
+												rel="noopener"
 												class="text-gray-400 hover:text-blue-600 shrink-0"
 												:title="__('Open booking page')"
 											>
@@ -272,7 +273,7 @@ const goToCalendarConnect = () => {
 }
 
 const copyBookingUrl = () => {
-	const url = `${window.location.origin}/hrms/book/${bookingSlug.value}`
+	const url = bookingPublicUrl.value
 	navigator.clipboard.writeText(url).then(() => {
 		toast({
 			title: __("Copied!"),
@@ -306,6 +307,13 @@ const bookingEnabled = ref(false)
 const minNoticeHours = ref(1)
 const slotDurationOptions = ref("30,60")
 const savingSettings = ref(false)
+
+// Public booking links always use the isolated gateway domain, never the
+// internal HRMS host (guests must not touch the main site).
+const BOOKING_PUBLIC_ORIGIN = "https://book.realtyna.com"
+const bookingPublicUrl = computed(
+	() => `${BOOKING_PUBLIC_ORIGIN}/hrms/book/${bookingSlug.value}`
+)
 
 async function saveSettings() {
 	savingSettings.value = true
