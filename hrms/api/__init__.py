@@ -1275,7 +1275,9 @@ def get_team_working_hours_summary(from_date: str, to_date: str) -> list[dict]:
 		SELECT
 			ts.employee,
 			MAX(e.employee_name) AS employee_name,
-			ROUND(SUM(tsd.hours), 1) AS total_hours
+			-- Two decimals: the UI renders H:MM, and 1-decimal rounding can
+			-- shift the displayed minutes by up to 3 (e.g. 0.25h -> "0:18").
+			ROUND(SUM(tsd.hours), 2) AS total_hours
 		FROM `tabTimesheet Detail` tsd
 		INNER JOIN `tabTimesheet`  ts ON tsd.parent = ts.name
 		INNER JOIN `tabEmployee`   e  ON e.name = ts.employee
