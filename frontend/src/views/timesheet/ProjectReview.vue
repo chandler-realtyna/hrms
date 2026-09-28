@@ -70,6 +70,9 @@
 									<div class="text-xs text-gray-500 mt-0.5">
 										{{ __("Hours on this project") }}: {{ formatHours(row.hours) }} · {{ row.log_count }} {{ __("entries") }}
 									</div>
+									<div v-if="row.modified" class="text-[11px] text-gray-400 mt-0.5">
+										{{ __("Updated") }} {{ updatedAgo(row.modified) }}
+									</div>
 								</div>
 								<div class="flex flex-col items-end gap-1.5 shrink-0">
 									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
@@ -165,14 +168,15 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, reactive, ref } from "vue"
+import { computed, inject, reactive, ref } from "vue"
 import {
 	IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons,
-	IonButton, IonBackButton,
+	IonButton, IonBackButton, onIonViewWillEnter,
 } from "@ionic/vue"
 import { FeatherIcon, Button, call, toast } from "frappe-ui"
 
 import { formatHours } from "@/utils/formatters.js"
+import { timeAgo as serverTimeAgo } from "@/utils/serverTime.js"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
 
 const __ = inject("$translate")
@@ -206,6 +210,12 @@ function formatDateFull(date) {
 function activityLabel(activityType) {
 	if (!activityType || activityType === "Unassigned") return __("Activity: Unassigned")
 	return activityType
+}
+
+// Server datetimes are EST wall times; the shared helper renders them
+// relative to the viewer correctly.
+function updatedAgo(value) {
+	return serverTimeAgo(dayjs, value)
 }
 
 // Actionable (Pending) sections first, then newest week first. Display order
@@ -365,5 +375,7 @@ async function returnDetail() {
 	}
 }
 
-onMounted(load)
+// Reload every time the page is shown (first mount included) so a lead
+// returning here always sees the latest employee activity.
+onIonViewWillEnter(load)
 </script>

@@ -7,22 +7,46 @@
 				<WorkingHoursDashboard />
 
 				<!-- Single review entry for project leads (replaces the hidden
-				     sidebar item): opens the per-section review flow. -->
+				     sidebar item): opens the per-section review flow. Shown
+				     whenever there is anything to see — pending items get the
+				     amber treatment, otherwise a neutral all-caught-up card so
+				     the page is never unreachable. -->
 				<router-link
 					v-if="showReviewCard"
 					:to="{ name: 'ProjectTimesheets' }"
-					class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-3"
+					class="rounded-xl p-4 flex items-center justify-between gap-3 border"
+					:class="
+						pendingReviewCount > 0
+							? 'bg-amber-50 border-amber-200'
+							: 'bg-white border-gray-200'
+					"
 				>
 					<div class="min-w-0">
-						<div class="font-semibold text-amber-900">{{ __("Team hours to review") }}</div>
-						<div class="text-sm text-amber-700 mt-1">
-							{{ __("Team members submitted hours on your projects") }}
+						<div
+							class="font-semibold"
+							:class="pendingReviewCount > 0 ? 'text-amber-900' : 'text-gray-800'"
+						>
+							{{ pendingReviewCount > 0 ? __("Team hours to review") : __("Team hours") }}
 						</div>
-						<div class="text-xs font-medium text-amber-600 mt-1">
+						<div
+							class="text-sm mt-1"
+							:class="pendingReviewCount > 0 ? 'text-amber-700' : 'text-gray-500'"
+						>
+							{{
+								pendingReviewCount > 0
+									? __("Team members submitted hours on your projects")
+									: __("Nothing waiting for review")
+							}}
+						</div>
+						<div v-if="pendingReviewCount > 0" class="text-xs font-medium text-amber-600 mt-1">
 							{{ __("{0} waiting", [pendingReviewCount]) }}
 						</div>
 					</div>
-					<FeatherIcon name="chevron-right" class="h-5 w-5 text-amber-700 shrink-0" />
+					<FeatherIcon
+						name="chevron-right"
+						class="h-5 w-5 shrink-0"
+						:class="pendingReviewCount > 0 ? 'text-amber-700' : 'text-gray-400'"
+					/>
 				</router-link>
 
 				<!-- Mobile: Meetings first, then Quick Links -->
@@ -83,7 +107,12 @@ const reviewQueue = createResource({
 const pendingReviewCount = computed(
 	() => (reviewQueue.data || []).filter((row) => row.actionable).length
 )
-const showReviewCard = computed(() => isProjectLead.value && pendingReviewCount.value > 0)
+// The page must stay reachable even with zero actionable items (returned /
+// draft sections still need to be visible) — otherwise leads lose the only
+// entry point exactly when everything was returned.
+const showReviewCard = computed(
+	() => isProjectLead.value && (reviewQueue.data || []).length > 0
+)
 
 watch(
 	() => userInfo.data?.is_project_lead,
