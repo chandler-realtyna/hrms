@@ -7,7 +7,7 @@
 			</div>
 		</div>
 		<Toasts />
-		<InstallPrompt v-if="showSidebar" />
+		<InstallPrompt v-if="showSidebar && !route.meta.isPublic" />
 	</ion-app>
 </template>
 
