@@ -178,14 +178,46 @@ Ionic Vue's `ion-router-outlet` maintains a navigation stack. Every sidebar link
 
 ### 14. CI/CD Pipeline
 
-A GitHub Actions workflow (`.github/workflows/deploy.yml`) automates production deployments:
+Production deploys run through the canonical script `deploy/deploy.sh` (see
+`deploy/README.md` and `AGENTS.md`):
 
-1. **Build** — checks out the HRMS repo, fetches `frappe/frappe_docker`, encodes `apps-production.json`, and builds a Docker image using the layered Containerfile. The image is pushed to GitHub Container Registry tagged `:production` and `:<git-sha>`.
-2. **Deploy** — SSHes into the production server, pulls the new image, recreates app containers (DB and Redis are left running for zero data-layer downtime), waits for the backend to start, runs `bench migrate`, and clears the cache.
+1. **Inspect** — Dirty tree or unpushed commits refuse to deploy; only pushed
+   commits on `realtyna-production` are eligible.
+2. **Plan** — `deploy/plan.py` diffs the deployed commit vs target and selects
+   `frontend` / `backend` / `schema` / `full` (unknown always escalates to full).
+3. **Activate** — App code activates via immutable release dirs
+   (`/srv/hrms-releases/<sha>`, exact SHA, read-only) bind-mounted into
+   containers. No full image rebuild for app changes.
+4. **Migrate only when needed** — Schema changes take a DB backup, then migrate.
+5. **Verify** — Health is polled (containers, HTTP, API, Redis, DB, assets).
+   `DEPLOY_STATE.json` advances only on success; failures roll back automatically.
 
-Triggers on every push to `version-16` and can also be run manually from the GitHub Actions UI.
+```sh
+deploy/deploy.sh                 # deploy origin/realtyna-production tip
+deploy/deploy.sh --target <sha>  # exact pushed commit
+deploy/deploy.sh --plan-only     # classify without touching production
+deploy/deploy.sh --rollback      # previous known-good release
+```
 
-Required secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_SSH_PORT`, `PROD_SITE_NAME`, `PROD_COMPOSE_PATH`, `GHCR_TOKEN`.
+Never `docker cp` code into live containers, never recreate app services or run
+`bench migrate` by hand. (The old GHCR/`deploy.yml` flow is retired.)
+
+---
+
+### 15. Project Timesheet Review
+
+Weekly timesheets are approved per project by the **Project Lead** (not the
+Project Manager) before HR's final review:
+
+- Employees submit weekly timesheets as before; the system groups sections by
+  project and routes each to its lead. Sections where the employee is their
+  own lead, or projects with no lead, go straight to HR (flagged in review).
+- **HRMS**: separate "Project Timesheets" page (sidebar, lead-gated) with
+  per employee/project/week rows, drill-down logs, approve and return-with-reason.
+  Leads see only their projects and cannot edit employee logs.
+- **Desk**: "Project Timesheet Review" report with project/lead/employee/week/
+  status filters, drill-down, and approve/return buttons.
+- Only HR-approved/closed weeks count toward invoice finalization.
 
 ---
 
