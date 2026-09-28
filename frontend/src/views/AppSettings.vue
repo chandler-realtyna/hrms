@@ -312,7 +312,7 @@ const savingSettings = ref(false)
 // internal HRMS host (guests must not touch the main site).
 const BOOKING_PUBLIC_ORIGIN = "https://book.realtyna.com"
 const bookingPublicUrl = computed(
-	() => `${BOOKING_PUBLIC_ORIGIN}/hrms/book/${bookingSlug.value}`
+	() => `${BOOKING_PUBLIC_ORIGIN}/${bookingSlug.value}`
 )
 
 async function saveSettings() {
