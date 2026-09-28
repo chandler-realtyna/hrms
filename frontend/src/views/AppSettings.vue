@@ -228,16 +228,19 @@
 								</div>
 							</template>
 						</div>
+
+						<!-- Log Out: inside the normal content flow so it is
+						     visible on desktop without scrolling past a full-height spacer -->
+						<div class="w-full pb-2">
+							<Button @click="logout" variant="outline" theme="red" class="w-full shadow py-4">
+								<template #prefix>
+									<FeatherIcon name="log-out" class="w-4" />
+								</template>
+								{{ __("Log Out") }}
+							</Button>
+						</div>
 					</div>
 				</div>
-			</div>
-			<div class="px-4 pb-8 w-full sm:w-96">
-				<Button @click="logout" variant="outline" theme="red" class="w-full shadow py-4">
-					<template #prefix>
-						<FeatherIcon name="log-out" class="w-4" />
-					</template>
-					{{ __("Log Out") }}
-				</Button>
 			</div>
 		</ion-content>
 	</ion-page>
