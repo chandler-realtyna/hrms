@@ -55,6 +55,9 @@ def _require_hr():
 
 
 def _project_manager_user(project: str) -> str | None:
+	"""Legacy approver lookup (Project Manager). Kept for backward
+	compatibility of old approval rows and the legacy manager report.
+	New timesheet approval logic uses _project_lead_user instead."""
 	manager = frappe.db.get_value("Project", project, "custom_project_manager")
 	if not manager:
 		return None
@@ -66,6 +69,38 @@ def _project_manager_user(project: str) -> str | None:
 			)
 		)
 	return user
+
+
+def _project_lead_user(project: str) -> str | None:
+	"""User id of the active Project Lead, or None when the project has no
+	usable lead (missing, inactive, or without a user account). Missing leads
+	route to HR review instead of blocking submission."""
+	lead = frappe.db.get_value("Project", project, "custom_project_lead")
+	if not lead:
+		return None
+	return frappe.db.get_value("Employee", {"name": lead, "status": "Active"}, "user_id") or None
+
+
+def _project_lead_employee(project: str) -> str | None:
+	"""Employee id of the active Project Lead, or None."""
+	lead = frappe.db.get_value("Project", project, "custom_project_lead")
+	if not lead:
+		return None
+	if not frappe.db.get_value("Employee", {"name": lead, "status": "Active"}, "name"):
+		return None
+	return lead
+
+
+def is_project_lead(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
+	if not employee:
+		return False
+	return bool(
+		frappe.db.exists(
+			"Project", {"custom_project_lead": employee, "status": "Open"}
+		)
+	)
 
 
 def is_project_manager(user: str | None = None) -> bool:
@@ -412,20 +447,29 @@ def save_weekly_timesheet(payload):
 def _set_project_approvals(doc):
 	projects = sorted({row.project for row in doc.time_logs})
 	existing = {row.project: row for row in doc.custom_project_approvals}
-	employee_user = _employee_user(doc.employee)
 
 	for row in list(doc.custom_project_approvals):
 		if row.project not in projects and row.status == APPROVAL_RETURNED:
 			doc.remove(row)
 
 	for project in projects:
-		manager = _project_manager_user(project)
-		status = APPROVAL_HR if not manager or manager == employee_user else APPROVAL_PENDING
+		controller = _project_lead_user(project)
+		lead_employee = _project_lead_employee(project)
+		if not controller:
+			# No usable Project Lead: route straight to HR review. The review
+			# UI flags these sections as "No Project Lead" from the project.
+			status = APPROVAL_HR
+		elif lead_employee == doc.employee:
+			# Self-approval is not allowed: the employee's own section skips
+			# project approval and moves directly to HR review.
+			status = APPROVAL_HR
+		else:
+			status = APPROVAL_PENDING
 		if project in existing:
 			approval = existing[project]
 			if approval.status == APPROVAL_APPROVED:
 				continue
-			approval.controller = manager
+			approval.controller = controller
 			approval.status = status
 			approval.reviewed_by = None
 			approval.reviewed_at = None
@@ -433,7 +477,7 @@ def _set_project_approvals(doc):
 		else:
 			doc.append(
 				"custom_project_approvals",
-				{"project": project, "controller": manager, "status": status},
+				{"project": project, "controller": controller, "status": status},
 			)
 
 
@@ -536,7 +580,7 @@ def get_project_approval_queue():
 
 def _review_project_approval_row(approval, action: str, reason: str | None = None):
 	if approval.controller != frappe.session.user:
-		frappe.throw(_("You are not the Project Manager for this project."), frappe.PermissionError)
+		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
 	if approval.status != APPROVAL_PENDING:
 		frappe.throw(_("This project review has already been completed."))
 
@@ -556,11 +600,11 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 			doc.custom_weekly_status = PENDING_HR
 			doc.custom_weekly_return_reason = None
 
-	doc.flags.weekly_action = "project_manager_review"
+	doc.flags.weekly_action = "project_lead_review"
 	doc.save(ignore_permissions=True)
 	doc.add_comment(
 		"Comment",
-		_("Project {0} was {1} by Project Manager {2}.").format(
+		_("Project {0} was {1} by Project Lead {2}.").format(
 			approval.project, _("approved") if action == "approve" else _("returned"), frappe.session.user
 		),
 	)
@@ -616,6 +660,171 @@ def review_project_approval(approval_name: str, action: str, reason: str | None 
 
 	doc = _review_project_approval_row(approval, action, reason)
 	return {"status": doc.custom_weekly_status}
+
+
+@frappe.whitelist()
+def approve_project_review(approval_name: str):
+	"""Approve a single project review section (Project Lead only)."""
+	approval = frappe.get_doc("Timesheet Project Approval", approval_name)
+	doc = _review_project_approval_row(approval, "approve")
+	return {"status": doc.custom_weekly_status}
+
+
+def _lead_scoped_projects(user: str | None = None) -> tuple[set, str | None]:
+	"""Open projects led by the user's employee. Returns (project names, employee)."""
+	employee = frappe.db.get_value(
+		"Employee", {"user_id": user or frappe.session.user, "status": "Active"}, "name"
+	)
+	if not employee:
+		return set(), None
+	rows = frappe.db.get_all(
+		"Project",
+		filters={"custom_project_lead": employee, "status": "Open"},
+		pluck="name",
+	)
+	return set(rows), employee
+
+
+@frappe.whitelist()
+def get_project_review_queue():
+	"""Review sections for the current Project Lead (all sections for HR).
+
+	One row per employee/project/week. Server-enforced scoping: Project Leads
+	see only projects they lead; everyone else sees an empty list.
+	"""
+	lead_projects, employee = _lead_scoped_projects()
+	hr = _is_hr()
+	if not hr and not lead_projects:
+		return []
+
+	approvals = frappe.get_all(
+		"Timesheet Project Approval",
+		filters={
+			"status": ("in", [APPROVAL_PENDING, APPROVAL_RETURNED, APPROVAL_APPROVED, APPROVAL_HR])
+		},
+		fields=[
+			"name",
+			"parent",
+			"project",
+			"status",
+			"controller",
+			"reviewed_by",
+			"reviewed_at",
+			"return_reason",
+		],
+		order_by="creation asc",
+		limit_page_length=2000,
+	)
+	parents = {a.parent for a in approvals}
+	docs = {}
+	for parent in parents:
+		try:
+			docs[parent] = frappe.get_doc("Timesheet", parent)
+		except frappe.DoesNotExistError:
+			continue
+
+	project_leads = {}
+	names = {a.project for a in approvals}
+	if names:
+		for row in frappe.db.get_all(
+			"Project", filters={"name": ("in", list(names))}, fields=["name", "project_name", "custom_project_lead"]
+		):
+			project_leads[row.name] = row
+
+	result = []
+	for approval in approvals:
+		doc = docs.get(approval.parent)
+		if doc is None or doc.docstatus != 0 or not doc.custom_weekly_submitted_at:
+			continue
+		if not hr and approval.project not in lead_projects:
+			continue
+		rows = [
+			row
+			for row in doc.time_logs
+			if row.project == approval.project and row.from_time
+		]
+		if not rows:
+			continue
+		hours = round(sum(flt(row.hours) for row in rows), 2)
+		lead_employee = (project_leads.get(approval.project) or {}).get("custom_project_lead")
+		if approval.status == APPROVAL_HR and lead_employee == doc.employee:
+			route_reason = "self"
+		elif approval.status == APPROVAL_HR and not lead_employee:
+			route_reason = "no_lead"
+		else:
+			route_reason = None
+		proj = project_leads.get(approval.project) or {}
+		result.append(
+			{
+				"approval_name": approval.name,
+				"project": approval.project,
+				"project_label": proj.get("project_name") or approval.project,
+				"week_start": str(doc.custom_week_start),
+				"week_end": str(doc.custom_week_end),
+				"employee": doc.employee,
+				"employee_name": doc.employee_name,
+				"hours": hours,
+				"log_count": len(rows),
+				"project_status": approval.status,
+				"hr_status": doc.custom_weekly_status,
+				"return_reason": approval.return_reason,
+				"reviewed_by": approval.reviewed_by,
+				"reviewed_at": str(approval.reviewed_at) if approval.reviewed_at else None,
+				"submitted_at": str(doc.custom_weekly_submitted_at),
+				"modified": str(doc.modified),
+				"actionable": approval.status == APPROVAL_PENDING,
+				"routed_to_hr_reason": route_reason,
+			}
+		)
+	result.sort(key=lambda r: (r["week_start"], r["project"], r["employee_name"]), reverse=True)
+	return result
+
+
+@frappe.whitelist()
+def get_project_review_detail(project: str, week_start: str, employee: str):
+	"""Time logs for one employee/project/week. Project Lead of the project
+	(or HR) only — enforced server-side."""
+	lead_projects, _ = _lead_scoped_projects()
+	if not _is_hr() and project not in lead_projects:
+		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
+	week_key = f"{employee}|{getdate(week_start)}"
+	name = frappe.db.get_value(
+		"Timesheet", {"custom_week_key": week_key, "docstatus": ("<", 2)}, "name"
+	)
+	if not name:
+		frappe.throw(_("Weekly timesheet not found."))
+	doc = frappe.get_doc("Timesheet", name)
+	approval = next(
+		(item for item in doc.custom_project_approvals if item.project == project), None
+	)
+	logs = []
+	for row in sorted(doc.time_logs, key=lambda r: str(r.from_time or "")):
+		if row.project != project or not row.from_time:
+			continue
+		logs.append(
+			{
+				"date": str(get_datetime(row.from_time).date()),
+				"from_time": str(row.from_time)[11:16],
+				"to_time": str(row.to_time)[11:16] if row.to_time else "",
+				"duration": round(flt(row.hours), 2),
+				"project": row.project,
+				"activity_type": row.activity_type,
+				"description": row.description,
+			}
+		)
+	return {
+		"project": project,
+		"week_start": str(doc.custom_week_start),
+		"week_end": str(doc.custom_week_end),
+		"employee": doc.employee,
+		"employee_name": doc.employee_name,
+		"hr_status": doc.custom_weekly_status,
+		"project_status": approval.status if approval else None,
+		"approval_name": approval.name if approval else None,
+		"return_reason": approval.return_reason if approval else None,
+		"actionable": bool(approval) and approval.status == APPROVAL_PENDING,
+		"logs": logs,
+	}
 
 
 @frappe.whitelist()

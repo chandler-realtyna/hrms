@@ -135,6 +135,7 @@ const isHR = computed(() => {
 })
 
 const isProjectManager = computed(() => Boolean(user.data?.is_project_manager))
+const isProjectLead = computed(() => Boolean(user.data?.is_project_lead))
 const mySchedule = createResource({
 	url: "hrms.api.get_my_schedule",
 	params: { year: String(new Date().getFullYear()) },
@@ -159,6 +160,16 @@ const navItems = computed(() => {
 			route: "TimesheetListView",
 			path: "/timesheets",
 		},
+		...(isProjectLead.value
+			? [
+					{
+						icon: markRaw(TimesheetIcon),
+						title: "Project Timesheets",
+						route: "ProjectTimesheets",
+						path: "/project-timesheets",
+					},
+			  ]
+			: []),
 		...(isProjectManager.value
 			? [
 					{

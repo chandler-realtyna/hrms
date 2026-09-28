@@ -5,6 +5,11 @@ const routes = [
 		component: () => import("@/views/timesheet/List.vue"),
 	},
 	{
+		name: "ProjectTimesheets",
+		path: "/project-timesheets",
+		component: () => import("@/views/timesheet/ProjectReview.vue"),
+	},
+	{
 		name: "TimesheetTimer",
 		path: "/timesheets/timer",
 		component: () => import("@/views/timesheet/Timer.vue"),
