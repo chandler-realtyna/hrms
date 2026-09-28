@@ -46,7 +46,7 @@ def _normalize_employee_schedule_timezone(timezone: str | None) -> str:
 
 @frappe.whitelist()
 def get_current_user_info() -> dict:
-	from hrms.api.weekly_timesheet import is_project_manager
+	from hrms.api.weekly_timesheet import is_project_lead, is_project_manager
 
 	current_user = frappe.session.user
 	user = frappe.db.get_value(
@@ -54,6 +54,7 @@ def get_current_user_info() -> dict:
 	)
 	user["roles"] = frappe.get_roles(current_user)
 	user["is_project_manager"] = is_project_manager(current_user)
+	user["is_project_lead"] = is_project_lead(current_user)
 
 	return user
 
