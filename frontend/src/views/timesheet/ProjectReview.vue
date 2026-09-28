@@ -6,7 +6,7 @@
 					<ion-button v-if="detail" @click="detail = null">{{ __("Back") }}</ion-button>
 					<ion-back-button v-else default-href="/home" />
 				</ion-buttons>
-				<ion-title>{{ __("Project Timesheets") }}</ion-title>
+				<ion-title>{{ __("Review team member hours") }}</ion-title>
 			</ion-toolbar>
 		</ion-header>
 
@@ -28,12 +28,16 @@
 					<div class="font-medium text-gray-800 mt-3">{{ __("Nothing waiting for review") }}</div>
 				</div>
 
-				<!-- List: one row per employee / project / week -->
+				<!-- List: one row per employee / project / week.
+				     Hours shown here are scoped to this project only, never the
+				     employee's full weekly total. Non-actionable rows (draft,
+				     returned, approved) are muted so the pending queue stands out. -->
 				<template v-if="!detail">
 					<article
 						v-for="row in sections"
-						:key="row.approval_name"
-						class="bg-white border rounded-xl overflow-hidden"
+						:key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`"
+						class="border rounded-xl overflow-hidden"
+						:class="row.actionable ? 'bg-white' : 'bg-gray-50'"
 					>
 						<button class="w-full text-left p-4" @click="openDetail(row)">
 							<div class="flex items-start justify-between gap-3">
@@ -45,14 +49,14 @@
 										{{ row.employee_name }} · {{ formatWeek(row.week_start, row.week_end) }}
 									</div>
 									<div class="text-xs text-gray-500 mt-0.5">
-										{{ formatHours(row.hours) }} · {{ row.log_count }} {{ __("entries") }}
+										{{ __("Hours on this project") }}: {{ formatHours(row.hours) }} · {{ row.log_count }} {{ __("entries") }}
 									</div>
 								</div>
 								<div class="flex flex-col items-end gap-1.5 shrink-0">
 									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
-										{{ __(row.project_status) }}
+										{{ __("Project review") }}: {{ projectStatusLabel(row) }}
 									</span>
-									<span class="text-[11px] text-gray-400">{{ __("HR") }}: {{ __(row.hr_status) }}</span>
+									<span class="text-[11px] text-gray-400">{{ __("HR review") }}: {{ __(row.hr_status) }}</span>
 								</div>
 							</div>
 							<p v-if="row.routed_to_hr_reason === 'no_lead'" class="mt-2 text-[11px] text-amber-600">
@@ -88,12 +92,15 @@
 						<div class="text-xs text-gray-500 mt-1">
 							{{ detail.employee_name }} · {{ formatWeek(detail.week_start, detail.week_end) }}
 						</div>
+						<div class="text-xs text-gray-500 mt-0.5">
+							{{ __("Hours on this project") }}: {{ formatHours(detailProjectTotal) }} · {{ detail.logs.length }} {{ __("entries") }}
+						</div>
 						<div class="mt-2 flex flex-wrap gap-1.5">
 							<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(detail.project_status)">
-								{{ __(detail.project_status) }}
+								{{ __("Project review") }}: {{ projectStatusLabel(detail) }}
 							</span>
 							<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-								{{ __("HR") }}: {{ __(detail.hr_status) }}
+								{{ __("HR review") }}: {{ __(detail.hr_status) }}
 							</span>
 						</div>
 						<p v-if="detail.return_reason" class="mt-2 text-xs text-red-600">
@@ -109,7 +116,7 @@
 								</span>
 							</div>
 							<div class="text-xs text-gray-500 mt-0.5">
-								{{ log.from_time }}–{{ log.to_time }} · {{ log.activity_type }}
+								{{ log.from_time }}–{{ log.to_time }} · {{ log.activity_type || __("Activity: Unassigned") }}
 							</div>
 							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
 								{{ log.description }}
@@ -139,7 +146,7 @@
 </template>
 
 <script setup>
-import { inject, onMounted, reactive, ref } from "vue"
+import { computed, inject, onMounted, reactive, ref } from "vue"
 import {
 	IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons,
 	IonButton, IonBackButton,
@@ -161,6 +168,11 @@ const reasons = reactive({})
 const detail = ref(null)
 const detailReason = ref("")
 
+// Project-scoped total for the open section (sum of its own logs only).
+const detailProjectTotal = computed(() =>
+	(detail.value?.logs || []).reduce((sum, log) => sum + (Number(log.duration) || 0), 0)
+)
+
 function formatWeek(start, end) {
 	return `${dayjs(start).format("D MMM")} – ${dayjs(end).format("D MMM YYYY")}`
 }
@@ -169,7 +181,15 @@ function statusClass(status) {
 	if (status === "Approved") return "bg-green-50 text-green-700"
 	if (status === "Returned") return "bg-red-50 text-red-700"
 	if (status === "HR Review") return "bg-purple-50 text-purple-700"
+	if (status === "Draft") return "bg-gray-100 text-gray-600"
 	return "bg-amber-50 text-amber-700"
+}
+
+// Draft sections have no approval row yet: label them explicitly so they read
+// as read-only previews, not pending work.
+function projectStatusLabel(row) {
+	if (row.project_status === "Draft") return __("Draft — not submitted yet")
+	return __(row.project_status)
 }
 
 async function load() {
