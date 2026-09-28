@@ -32,7 +32,26 @@
 				     Hours shown here are scoped to this project only, never the
 				     employee's full weekly total. Non-actionable rows (draft,
 				     returned, approved) are muted so the pending queue stands out. -->
+				<!-- Bulk action: approve every pending section at once. Per-record
+				     Approve/Return stays on each card below. -->
 				<template v-if="!detail">
+					<div
+						v-if="actionableSections.length > 1"
+						class="bg-white border rounded-xl p-4 flex items-center justify-between gap-3"
+					>
+						<div class="text-sm text-gray-700">
+							{{ __("{0} sections waiting", [actionableSections.length]) }}
+						</div>
+						<Button
+							variant="solid"
+							size="sm"
+							:disabled="approvingAll"
+							@click="approveAll"
+						>
+							{{ approvingAll ? __("Approving…") : __("Approve all") }}
+						</Button>
+					</div>
+
 					<article
 						v-for="row in orderedSections"
 						:key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`"
@@ -167,6 +186,7 @@ const sections = ref([])
 const reasons = reactive({})
 const detail = ref(null)
 const detailReason = ref("")
+const approvingAll = ref(false)
 
 // Project-scoped total for the open section (sum of its own logs only).
 const detailProjectTotal = computed(() =>
@@ -198,6 +218,32 @@ const orderedSections = computed(() =>
 		return (a.employee_name || "").localeCompare(b.employee_name || "")
 	})
 )
+
+const actionableSections = computed(() => orderedSections.value.filter((row) => row.actionable))
+
+// One-click approve for the whole pending queue. Reuses the same
+// single-section endpoint as the per-record button, one call per section.
+async function approveAll() {
+	const rows = actionableSections.value
+	if (!rows.length || approvingAll.value) return
+	if (!window.confirm(__("Approve all {0} pending sections? They will be sent to HR review.", [rows.length]))) return
+	approvingAll.value = true
+	try {
+		for (const row of rows) {
+			await call("hrms.api.weekly_timesheet.approve_project_review", {
+				approval_name: row.approval_name,
+			})
+		}
+		toastSaved(__("All pending sections approved — sent to HR review"))
+		detail.value = null
+		await load()
+	} catch (error) {
+		toastFailed(error)
+		await load()
+	} finally {
+		approvingAll.value = false
+	}
+}
 
 function statusClass(status) {
 	if (status === "Approved") return "bg-green-50 text-green-700"
