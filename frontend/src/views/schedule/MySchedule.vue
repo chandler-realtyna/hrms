@@ -149,20 +149,34 @@
 
 				<!-- Action buttons -->
 				<div v-if="isEditable" class="mx-4 mt-6 flex flex-col gap-3">
-					<button
-						:disabled="saveDraftResource.loading"
-						class="w-full py-3 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 disabled:opacity-50"
-						@click="saveDraft"
-					>
-						{{ saveDraftResource.loading ? __("Saving…") : __("Save Draft") }}
-					</button>
-					<button
-						:disabled="submitResource.loading"
-						class="w-full py-3 rounded-xl bg-blue-500 text-white font-medium text-sm hover:bg-blue-600 disabled:opacity-50"
-						@click="submitSchedule"
-					>
-						{{ submitResource.loading ? __("Submitting…") : __("Submit for Approval") }}
-					</button>
+					<template v-if="needsReapproval">
+						<button
+							:disabled="saveDraftResource.loading"
+							class="w-full py-3 rounded-xl bg-blue-500 text-white font-medium text-sm hover:bg-blue-600 disabled:opacity-50"
+							@click="saveDraft"
+						>
+							{{ saveDraftResource.loading ? __("Saving…") : __("Save & Request Approval") }}
+						</button>
+						<p class="text-xs text-gray-400 text-center">
+							{{ __("Changes to an approved or pending schedule need HR approval again.") }}
+						</p>
+					</template>
+					<template v-else>
+						<button
+							:disabled="saveDraftResource.loading"
+							class="w-full py-3 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 disabled:opacity-50"
+							@click="saveDraft"
+						>
+							{{ saveDraftResource.loading ? __("Saving…") : __("Save Draft") }}
+						</button>
+						<button
+							:disabled="submitResource.loading || saveDraftResource.loading"
+							class="w-full py-3 rounded-xl bg-blue-500 text-white font-medium text-sm hover:bg-blue-600 disabled:opacity-50"
+							@click="submitSchedule"
+						>
+							{{ submitResource.loading ? __("Submitting…") : __("Submit for Approval") }}
+						</button>
+					</template>
 				</div>
 			</div>
 		</ion-content>
@@ -237,14 +251,18 @@ function defaultScheduleDays() {
 const scheduleDays = ref(defaultScheduleDays())
 
 const isEditable = computed(() =>
-	initialized.value && (!submission.value || submission.value.status === "Draft")
+	initialized.value && (!submission.value || ["Draft", "Submitted", "Approved", "Rejected"].includes(submission.value.status))
+)
+
+const needsReapproval = computed(() =>
+	submission.value && ["Approved", "Submitted"].includes(submission.value.status)
 )
 
 const statusStyle = computed(() => {
 	const s = submission.value?.status
-	if (s === "Submitted") return { bg: "bg-yellow-50", text: "text-yellow-700", icon: "clock",        label: __("Pending Approval"), sub: __("HR will review your schedule shortly.") }
-	if (s === "Approved")  return { bg: "bg-green-50",  text: "text-green-700",  icon: "check-circle", label: __("Approved"),          sub: __("Your schedule has been approved.") }
-	if (s === "Rejected")  return { bg: "bg-red-50",    text: "text-red-700",    icon: "x-circle",     label: __("Rejected"),          sub: __("Your schedule was rejected. Please contact HR.") }
+	if (s === "Submitted") return { bg: "bg-yellow-50", text: "text-yellow-700", icon: "clock",        label: __("Pending Approval"), sub: __("HR will review your schedule shortly. You can keep editing below — changes stay pending approval.") }
+	if (s === "Approved")  return { bg: "bg-green-50",  text: "text-green-700",  icon: "check-circle", label: __("Approved"),          sub: __("Your schedule is approved. You can edit it below, but changes need HR approval again.") }
+	if (s === "Rejected")  return { bg: "bg-red-50",    text: "text-red-700",    icon: "x-circle",     label: __("Rejected"),          sub: __("Your schedule was rejected. Edit it below and resubmit for approval.") }
 	return {}
 })
 
@@ -335,7 +353,12 @@ const saveDraftResource = createResource({
 	url: "hrms.api.save_schedule_draft",
 	onSuccess(data) {
 		loadFromDoc(data)
-		showToast(__("Draft saved"), "success")
+		showToast(
+			data.status === "Submitted"
+				? __("Changes saved — pending HR approval")
+				: __("Draft saved"),
+			"success"
+		)
 	},
 	onError(err) { showToast(err.message || __("Failed to save"), "danger") },
 })
@@ -351,6 +374,10 @@ const submitResource = createResource({
 
 // ── Actions ────────────────────────────────────────────────────────────────────
 
+// When the user taps "Submit for Approval" we persist the on-screen edits
+// first (so nothing is lost), then submit if the saved doc is still a Draft.
+// Saves on Approved/Submitted docs already land as Submitted (change request),
+// so no second call is needed there.
 function saveDraft() {
 	saveDraftResource.submit({
 		year: String(currentYear),
@@ -360,22 +387,27 @@ function saveDraft() {
 }
 
 function submitSchedule() {
-	if (!submission.value?.name) {
-		createResource({
-			url: "hrms.api.save_schedule_draft",
-			onSuccess(data) {
-				loadFromDoc(data)
+	// Persist current edits, then submit from the save callback.
+	createResource({
+		url: "hrms.api.save_schedule_draft",
+		onSuccess(data) {
+			loadFromDoc(data)
+			if (data.status === "Draft") {
 				submitResource.submit({ name: data.name })
-			},
-			onError(err) { showToast(err.message || __("Failed to save"), "danger") },
-		}).submit({
-			year: String(currentYear),
-			timezone: selectedTimezone.value,
-			days: JSON.stringify(buildDaysPayload()),
-		})
-	} else {
-		submitResource.submit({ name: submission.value.name })
-	}
+			} else {
+				// Already Submitted (e.g. re-submitted Rejected, or change
+				// request on an Approved schedule) — nothing more to do.
+				showToast(__("Schedule submitted for approval!"), "success")
+			}
+		},
+		onError(err) {
+			showToast(err.message || __("Failed to save"), "danger")
+		},
+	}).submit({
+		year: String(currentYear),
+		timezone: selectedTimezone.value,
+		days: JSON.stringify(buildDaysPayload()),
+	})
 }
 
 async function showToast(message, color = "primary") {

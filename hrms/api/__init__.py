@@ -1549,12 +1549,14 @@ def save_schedule_draft(year: str, timezone: str, days: str) -> dict:
 	if not employee:
 		frappe.throw(_("No active employee record found for the current user."))
 
-	existing_name = frappe.db.get_value(
+	existing = frappe.get_list(
 		"Employee Schedule",
-		{"employee": employee, "year": year},
-		"name",
+		filters={"employee": employee, "year": year},
+		fields=["name"],
+		limit=1,
 		order_by="modified desc",
 	)
+	existing_name = existing[0]["name"] if existing else None
 
 	if existing_name:
 		doc = frappe.get_doc("Employee Schedule", existing_name)

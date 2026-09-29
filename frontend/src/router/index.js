@@ -106,10 +106,23 @@ const routes = [
 	...scheduleRoutes,
 	...docsRoutes,
 	...meetingRoutes,
+	// Public short links (book.realtyna.com/<slug>): the gateway serves the
+	// app shell transparently at /<slug>, so the router must resolve it here.
+	// Keep LAST: it only catches single-segment paths nothing else matched.
+	{
+		path: "/:slug",
+		name: "BookingShort",
+		component: () => import("@/views/booking/BookingPage.vue"),
+		meta: { isPublic: true },
+	},
 ]
 
 const router = createRouter({
-	history: createWebHistory("/hrms"),
+	// Main app is served under /hrms. The public booking host serves the
+	// same shell at /<slug>, so there the router works from root.
+	history: createWebHistory(
+		typeof window !== "undefined" && !window.location.pathname.startsWith("/hrms") ? "/" : "/hrms"
+	),
 	routes,
 })
 
