@@ -11,6 +11,12 @@ export default [
 		meta: { isPublic: true },
 	},
 	{
+		path: "/book/:slug/:token",
+		name: "BookingLinkPage",
+		component: () => import("@/views/booking/BookingPage.vue"),
+		meta: { isPublic: true },
+	},
+	{
 		path: "/calendar/connect",
 		name: "CalendarConnect",
 		component: () => import("@/views/calendar/CalendarConnect.vue"),

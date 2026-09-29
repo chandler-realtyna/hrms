@@ -108,7 +108,15 @@ const routes = [
 	...meetingRoutes,
 	// Public short links (book.realtyna.com/<slug>): the gateway serves the
 	// app shell transparently at /<slug>, so the router must resolve it here.
-	// Keep LAST: it only catches single-segment paths nothing else matched.
+	// Keep LAST: they only catch paths nothing else matched. Two-segment
+	// single-use links (/book.realtyna.com/<slug>/<token>) resolve the same
+	// BookingPage with a token param.
+	{
+		path: "/:slug/:token",
+		name: "BookingShortToken",
+		component: () => import("@/views/booking/BookingPage.vue"),
+		meta: { isPublic: true },
+	},
 	{
 		path: "/:slug",
 		name: "BookingShort",
