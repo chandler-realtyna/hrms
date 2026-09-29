@@ -8,6 +8,7 @@
   "project",
   "controller",
   "status",
+  "total_hours",
   "reviewed_by",
   "reviewed_at",
   "return_reason"
@@ -36,6 +37,14 @@
    "label": "Status",
    "options": "Pending\nApproved\nReturned\nHR Review",
    "reqd": 1
+  },
+  {
+   "fieldname": "total_hours",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Total Hours",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "reviewed_by",

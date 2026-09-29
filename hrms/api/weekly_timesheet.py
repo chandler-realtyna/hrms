@@ -444,9 +444,30 @@ def save_weekly_timesheet(payload):
 	return _serialize_weekly(doc)
 
 
+def _project_hours_map(doc) -> dict:
+	"""Summed time-log hours per project (rounded to 2), for approval rows."""
+	totals: dict = {}
+	for row in doc.time_logs:
+		if not row.project:
+			continue
+		totals[row.project] = totals.get(row.project, 0.0) + flt(row.hours)
+	return {project: round(hours, 2) for project, hours in totals.items()}
+
+
+def _refresh_approval_hours(doc) -> None:
+	"""Keep each approval row's Total Hours in sync with the time logs.
+
+	Status/workflow fields are untouched — display correctness only.
+	"""
+	hours_map = _project_hours_map(doc)
+	for approval in doc.custom_project_approvals:
+		approval.total_hours = hours_map.get(approval.project, 0.0)
+
+
 def _set_project_approvals(doc):
 	projects = sorted({row.project for row in doc.time_logs})
 	existing = {row.project: row for row in doc.custom_project_approvals}
+	hours_map = _project_hours_map(doc)
 
 	for row in list(doc.custom_project_approvals):
 		if row.project not in projects and row.status == APPROVAL_RETURNED:
@@ -467,6 +488,7 @@ def _set_project_approvals(doc):
 			status = APPROVAL_PENDING
 		if project in existing:
 			approval = existing[project]
+			approval.total_hours = hours_map.get(project, 0.0)
 			if approval.status == APPROVAL_APPROVED:
 				continue
 			approval.controller = controller
@@ -477,7 +499,12 @@ def _set_project_approvals(doc):
 		else:
 			doc.append(
 				"custom_project_approvals",
-				{"project": project, "controller": controller, "status": status},
+				{
+					"project": project,
+					"controller": controller,
+					"status": status,
+					"total_hours": hours_map.get(project, 0.0),
+				},
 			)
 
 
@@ -1044,6 +1071,7 @@ def validate_weekly_document(doc):
 		return
 	if not doc.custom_weekly_status:
 		doc.custom_weekly_status = WEEKLY_DRAFT
+	_refresh_approval_hours(doc)
 	start, end = _week_bounds(doc.custom_week_start or doc.start_date)
 	if getdate(doc.custom_week_start) != start or getdate(doc.custom_week_end) != end:
 		frappe.throw(_("Weekly timesheets must run from Sunday through Saturday."))
