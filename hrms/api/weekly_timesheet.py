@@ -1010,7 +1010,7 @@ def return_timesheet_entries(name: str, entries, reason: str, stage: str = "proj
 			frappe.throw(_("This weekly timesheet is not ready for HR review."))
 	elif stage == "project":
 		for project in {row.project for row in selected}:
-			if not _is_hr() and frappe.session.user not in {_project_lead_user(project), _project_manager_user(project)}:
+			if not _is_hr() and frappe.session.user != _project_lead_user(project) and frappe.session.user != _project_manager_user(project):
 				frappe.throw(_("You cannot review entries for this project."), frappe.PermissionError)
 			approval = next((row for row in doc.custom_project_approvals if row.project == project), None)
 			if not draft and (not approval or approval.status not in {APPROVAL_PENDING, APPROVAL_RETURNED} or doc.custom_weekly_status not in {PENDING_PROJECT, CORRECTION_REQUIRED}):

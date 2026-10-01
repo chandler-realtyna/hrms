@@ -112,8 +112,8 @@ class TestCorrectionScope(unittest.TestCase):
 
 
 class TestEntryReturn(unittest.TestCase):
-	def run_return(self, doc, entries, reason="Fix interval", roles=(), stage="project"):
-		with patch.object(workflow.frappe, "get_doc", return_value=doc), patch.object(workflow.frappe, "get_roles", return_value=list(roles)), patch.object(workflow.frappe, "session", SimpleNamespace(user="lead@example.test")), patch.object(workflow, "_project_lead_user", return_value="lead@example.test"), patch.object(workflow, "_project_manager_user", return_value=None), patch.object(workflow, "_notify"), patch.object(workflow, "_employee_user", return_value="employee@example.test"):
+	def run_return(self, doc, entries, reason="Fix interval", roles=(), stage="project", manager_error=None):
+		with patch.object(workflow.frappe, "get_doc", return_value=doc), patch.object(workflow.frappe, "get_roles", return_value=list(roles)), patch.object(workflow.frappe, "session", SimpleNamespace(user="lead@example.test")), patch.object(workflow, "_project_lead_user", return_value="lead@example.test"), patch.object(workflow, "_project_manager_user", return_value=None, side_effect=manager_error), patch.object(workflow, "_notify"), patch.object(workflow, "_employee_user", return_value="employee@example.test"):
 			return workflow.return_timesheet_entries(doc.name, entries, reason, stage)
 
 	def test_draft_can_be_returned_without_submitting_week(self):
@@ -131,6 +131,11 @@ class TestEntryReturn(unittest.TestCase):
 		self.run_return(doc, ["two"], roles=["HR Manager"], stage="hr")
 		self.assertEqual(json.loads(doc.custom_correction_scope)["entries"], ["two"])
 		self.assertIsNone(doc.time_logs[0].custom_return_reason)
+
+	def test_lead_return_does_not_depend_on_manager_account(self):
+		doc = document(workflow.WEEKLY_DRAFT)
+		self.run_return(doc, ["one"], manager_error=AssertionError("Manager lookup is not needed"))
+		self.assertEqual(doc.time_logs[0].custom_return_reason, "Fix interval")
 
 	def test_return_requires_reason_and_existing_record(self):
 		for entries, reason in [(["one"], " "), (["foreign"], "Reason"), ([], "Reason")]:
