@@ -48,7 +48,13 @@ def execute():
 		if not user_name:
 			continue
 		user = frappe.get_doc("User", user_name)
-		assigned_roles = {row.role for row in user.roles}
-		missing_roles = {"HR Manager", ROLE} - assigned_roles
-		if missing_roles:
-			user.add_roles(*sorted(missing_roles))
+		_attach_director_profile(user)
+
+
+def _attach_director_profile(user):
+	# Frappe rebuilds roles from all attached profiles on every User save.
+	# Keep existing profiles and add this one instead of assigning transient roles.
+	profiles = {row.role_profile for row in user.role_profiles}
+	if ROLE_PROFILE not in profiles:
+		user.append("role_profiles", {"role_profile": ROLE_PROFILE})
+		user.save(ignore_permissions=True)

@@ -55,3 +55,4 @@ hrms.patches.v16_0.setup_employee_invoices
 hrms.patches.v16_0.recalculate_timesheet_approval_controllers #2026-09-28
 hrms.patches.v16_0.create_company_director_access #2026-10-01
 hrms.patches.v16_0.setup_timesheet_entry_corrections #2026-10-01
+hrms.patches.v16_0.attach_company_director_profiles #2026-10-01
