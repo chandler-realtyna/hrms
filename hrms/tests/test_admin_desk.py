@@ -1,10 +1,24 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from hrms.api.admin_desk import _admin_desk_sections
+import frappe
+from hrms.api.admin_desk import _admin_desk_sections, set_admin_reviews_home
 
 
 class TestAdminDesk(unittest.TestCase):
+	def test_sidebar_sections_support_native_expand_events(self):
+		sections = [{"label": "Timesheet Reviews", "items": [{"label": "Project Timesheets", "route": "/desk/admin-reviews/project-timesheets"}]}]
+		boot = frappe._dict(docs=[], workspace_sidebar_item={})
+		page = frappe._dict(name="admin-reviews", doctype="Page")
+		with patch("hrms.api.admin_desk._admin_desk_sections", return_value=sections), patch("frappe.desk.desk_page.get", return_value=page), patch.object(frappe, "session", SimpleNamespace(user="manager@example.test")):
+			set_admin_reviews_home(boot)
+		items = boot.workspace_sidebar_item["admin reviews"]["items"]
+		self.assertTrue(all(item["collapsible"] for item in items if item["type"] == "Section Break"))
+		self.assertEqual(items[-1]["link_type"], "Page")
+		self.assertEqual(items[-1]["link_to"], "admin-reviews/project-timesheets")
+		self.assertEqual(boot.home_page, "admin-reviews")
+
 	@patch("hrms.api.admin_desk._is_approver", return_value=False)
 	@patch("hrms.api.weekly_timesheet.is_project_manager", return_value=False)
 	@patch("hrms.api.weekly_timesheet.is_project_lead", return_value=False)
