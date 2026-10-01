@@ -174,7 +174,10 @@ doc_events = {
 			"erpnext.setup.doctype.employee.employee.validate_employee_role",
 			"hrms.overrides.employee_master.update_approver_user_roles",
 		],
-		"on_update": "hrms.api.sync_user_image_to_employee",
+		"on_update": [
+			"hrms.api.sync_user_image_to_employee",
+			"hrms.utils.company_desk.sync_director_scope",
+		],
 	},
 	"Company": {
 		"validate": "hrms.overrides.company.validate_default_accounts",
@@ -219,6 +222,7 @@ doc_events = {
 			"hrms.overrides.employee_master.update_approver_role",
 			"hrms.overrides.employee_master.publish_update",
 			"hrms.hr.leave_policy_setup.ensure_employee_current_leave_allocations",
+			"hrms.utils.company_desk.sync_employee_director_scope",
 		],
 		"after_insert": "hrms.overrides.employee_master.update_job_applicant_and_offer",
 		"on_trash": "hrms.overrides.employee_master.update_employee_transfer",
