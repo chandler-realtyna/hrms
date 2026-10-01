@@ -7,6 +7,14 @@ from erpnext.projects.doctype.timesheet.timesheet import Timesheet
 
 
 class EmployeeTimesheet(Timesheet):
+	def on_update(self):
+		parent_update = getattr(super(), "on_update", None)
+		if parent_update:
+			parent_update()
+		from hrms.api.weekly_timesheet import notify_saved_team_entries
+
+		notify_saved_team_entries(self)
+
 	def validate(self):
 		from hrms.api.weekly_timesheet import prepare_weekly_document, validate_weekly_document
 

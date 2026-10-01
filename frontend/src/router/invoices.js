@@ -3,7 +3,7 @@ const routes = [
 		name: "EmployeeInvoiceListView",
 		path: "/invoices",
 		component: () => import("@/views/invoice/List.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 	{
 		name: "EmployeeInvoiceNewView",
@@ -15,7 +15,7 @@ const routes = [
 		path: "/invoices/:id",
 		props: true,
 		component: () => import("@/views/invoice/Form.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 	{
 		path: "/salary-slips/:id",

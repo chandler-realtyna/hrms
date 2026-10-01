@@ -236,6 +236,9 @@ def _serialize_weekly(doc):
 		"time_logs": [_serialize_row(row) for row in doc.time_logs],
 		"editable_projects": editable_projects,
 		"editable_entries": editable_entries,
+		"team_review_blockers": _team_review_blockers(doc) if doc.docstatus == 0 else [],
+		"ready_for_hr_close": doc.docstatus == 0 and doc.custom_weekly_status == PENDING_HR
+			and _project_reviews_ready(doc) and not _team_review_blockers(doc),
 		"project_approvals": [
 			{
 				"project": row.project,
@@ -542,7 +545,7 @@ def submit_weekly_timesheet(name: str):
 	for row in doc.time_logs:
 		row.custom_return_reason = None
 	statuses = {row.status for row in doc.custom_project_approvals}
-	doc.custom_weekly_status = PENDING_PROJECT if APPROVAL_PENDING in statuses else PENDING_HR
+	doc.custom_weekly_status = PENDING_PROJECT if APPROVAL_PENDING in statuses or _team_review_blockers(doc) else PENDING_HR
 	doc.custom_weekly_submitted_at = doc.custom_weekly_submitted_at or now_datetime()
 	doc.custom_weekly_return_reason = None
 	doc.flags.weekly_action = "employee_submit"
@@ -555,7 +558,7 @@ def submit_weekly_timesheet(name: str):
 	if pending_approvals:
 		for approval in pending_approvals:
 			_notify_project_report(approval.controller, approval.project, doc.custom_week_start)
-	else:
+	elif doc.custom_weekly_status == PENDING_HR:
 		_notify(
 			_hr_users(),
 			_("Weekly timesheet is ready for HR review"),
@@ -565,14 +568,82 @@ def submit_weekly_timesheet(name: str):
 	return _serialize_weekly(doc)
 
 
+def _team_review_blockers(doc):
+	projects = set(frappe.get_all("Project", filters={"custom_project_lead": doc.employee}, pluck="name"))
+	if not projects or not doc.custom_week_start:
+		return []
+	weeks = frappe.get_all("Timesheet", filters={
+		"custom_is_weekly": 1, "docstatus": 0,
+		"custom_week_start": doc.custom_week_start, "employee": ("!=", doc.employee),
+	}, fields=["name", "employee_name"], limit_page_length=0)
+	blockers = []
+	for week in weeks:
+		team = frappe.get_doc("Timesheet", week.name)
+		logged = {row.project for row in team.time_logs}.intersection(projects)
+		approvals = {row.project: row.status for row in team.custom_project_approvals}
+		for project in sorted(logged):
+			if not team.custom_weekly_submitted_at or approvals.get(project) != APPROVAL_APPROVED:
+				blockers.append({"employee_name": week.employee_name, "project": project,
+					"status": approvals.get(project) or WEEKLY_DRAFT})
+	return blockers
+
+
+def _refresh_ready_lead_weeks(week_start, exclude, lead_employee):
+	# Personal submission remains possible even when two leads work on each
+	# other's projects. Only the handoff to final HR review waits for the team.
+	if not lead_employee:
+		return
+	weeks = frappe.get_all("Timesheet", filters={
+		"custom_is_weekly": 1, "docstatus": 0, "custom_week_start": week_start,
+		"custom_weekly_status": PENDING_PROJECT, "name": ("!=", exclude),
+		"employee": lead_employee,
+	}, pluck="name", limit_page_length=0)
+	for name in weeks:
+		doc = frappe.get_doc("Timesheet", name)
+		if not _project_reviews_ready(doc) or _team_review_blockers(doc):
+			continue
+		doc.custom_weekly_status = PENDING_HR
+		doc.flags.weekly_action = "project_lead_review"
+		doc.save(ignore_permissions=True)
+		doc.add_comment("Comment", _("Project and team reviews completed; ready for final HR review."))
+		_notify(_hr_users(), _("Weekly timesheet is ready for HR review"),
+			_("{0}'s weekly timesheet is ready for final review.").format(doc.employee_name), doc.name)
+
+
+def _project_reviews_ready(doc):
+	projects = {row.project for row in doc.time_logs}
+	approvals = {}
+	for row in doc.custom_project_approvals:
+		if row.project in approvals:
+			return False
+		approvals[row.project] = row
+	if not projects or not projects.issubset(approvals):
+		return False
+	for project in projects:
+		row = approvals[project]
+		if row.status == APPROVAL_APPROVED:
+			continue
+		if row.status != APPROVAL_HR:
+			return False
+		# HR routing is an exception for unavailable leads or their own entries,
+		# not a replacement for an assigned lead's review.
+		if _project_lead_user(project) and _project_lead_employee(project) != doc.employee:
+			return False
+	return not any(row.status in {APPROVAL_PENDING, APPROVAL_RETURNED} for row in approvals.values())
+
+
 @frappe.whitelist()
 def get_project_approval_queue():
+	reviewer_employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
 	filters = {"status": ("in", [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_RETURNED, APPROVAL_HR])}
 	if not _is_hr():
 		employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
-		managed_projects = frappe.get_all("Project", filters={"custom_project_manager": employee, "status": "Open"}, pluck="name") if employee else []
-		if managed_projects:
-			filters["project"] = ("in", managed_projects)
+		projects = set()
+		if employee:
+			for field in ("custom_project_lead", "custom_project_manager"):
+				projects.update(frappe.get_all("Project", filters={field: employee, "status": "Open"}, pluck="name"))
+		if projects:
+			filters["project"] = ("in", sorted(projects))
 		else:
 			filters["controller"] = frappe.session.user
 	approvals = frappe.get_all(
@@ -591,12 +662,18 @@ def get_project_approval_queue():
 		doc = documents[approval.parent]
 		if doc.docstatus != 0 or not doc.custom_weekly_submitted_at:
 			continue
+		if reviewer_employee and doc.employee == reviewer_employee:
+			continue
 		key = (approval.project, str(doc.custom_week_start), str(doc.custom_week_end))
 		groups.setdefault(key, []).append((approval, doc))
 		if approval.status == APPROVAL_PENDING and doc.custom_weekly_status == PENDING_PROJECT:
 			pending_groups.add(key)
 
 	result = []
+	project_labels = {row.name: row.project_name for row in frappe.get_all(
+		"Project", filters={"name": ("in", list({key[0] for key in pending_groups}))},
+		fields=["name", "project_name"],
+	)} if pending_groups else {}
 	for key in sorted(pending_groups, key=lambda item: (item[1], item[0]), reverse=True):
 		project, week_start, week_end = key
 		dates = [add_days(getdate(week_start), offset) for offset in range(7)]
@@ -615,6 +692,7 @@ def get_project_approval_queue():
 					"employee_name": doc.employee_name,
 					"employee": doc.employee,
 					"status": approval.status,
+					"activity_types": sorted({row.activity_type or "Unassigned" for row in doc.time_logs if row.project == project}),
 					"daily_hours": [round(daily_hours[str(day)], 2) for day in dates],
 					"weekly_total": round(sum(daily_hours.values()), 2),
 				}
@@ -623,6 +701,7 @@ def get_project_approval_queue():
 			{
 				"name": f"{project}|{week_start}",
 				"project": project,
+				"project_label": project_labels.get(project) or project,
 				"week_start": week_start,
 				"week_end": week_end,
 				"days": [str(day) for day in dates],
@@ -636,6 +715,7 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 	if (
 		approval.controller != frappe.session.user
 		and not _is_hr()
+		and _project_lead_user(approval.project) != frappe.session.user
 		and _project_manager_user(approval.project) != frappe.session.user
 	):
 		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
@@ -643,6 +723,8 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 		frappe.throw(_("This project review has already been completed."))
 
 	doc = frappe.get_doc("Timesheet", approval.parent)
+	if not _is_hr() and _employee_user(doc.employee) == frappe.session.user:
+		frappe.throw(_("Your own project entries require HR review."), frappe.PermissionError)
 	if doc.docstatus != 0 or doc.custom_weekly_status not in {PENDING_PROJECT, CORRECTION_REQUIRED}:
 		frappe.throw(_("This project review is no longer open."))
 	row = next(item for item in doc.custom_project_approvals if item.name == approval.name)
@@ -655,12 +737,14 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 		_mark_correction(doc, [log for log in doc.time_logs if log.project == row.project], row.return_reason, [row.project])
 	else:
 		statuses = {item.status for item in doc.custom_project_approvals}
-		if not statuses.intersection({APPROVAL_PENDING, APPROVAL_RETURNED}):
+		if not statuses.intersection({APPROVAL_PENDING, APPROVAL_RETURNED}) and _project_reviews_ready(doc) and not _team_review_blockers(doc):
 			doc.custom_weekly_status = PENDING_HR
 			doc.custom_weekly_return_reason = None
 
 	doc.flags.weekly_action = "project_lead_review"
 	doc.save(ignore_permissions=True)
+	if action == "approve":
+		_refresh_ready_lead_weeks(doc.custom_week_start, doc.name, _project_lead_employee(approval.project))
 	doc.add_comment(
 		"Comment",
 		_("Project {0} was {1} by Project Lead {2}.").format(
@@ -688,7 +772,7 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 @frappe.whitelist()
 def approve_project_week(project: str, week_start: str):
 	filters = {"project": project, "status": APPROVAL_PENDING}
-	if not _is_hr() and _project_manager_user(project) != frappe.session.user:
+	if not _is_hr() and _project_lead_user(project) != frappe.session.user and _project_manager_user(project) != frappe.session.user:
 		filters["controller"] = frappe.session.user
 	pending = frappe.get_all(
 		"Timesheet Project Approval",
@@ -759,6 +843,9 @@ def get_project_review_queue():
 	"""
 	lead_projects, employee = _lead_scoped_projects()
 	hr = _is_hr()
+	if employee:
+		lead_projects.update(frappe.get_all("Project", filters={"custom_project_manager": employee, "status": "Open"}, pluck="name"))
+	reviewer_employee = employee or frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
 	if not hr and not lead_projects:
 		return []
 
@@ -801,6 +888,8 @@ def get_project_review_queue():
 		doc = docs.get(approval.parent)
 		if doc is None or doc.docstatus != 0 or not doc.custom_weekly_submitted_at:
 			continue
+		if reviewer_employee and doc.employee == reviewer_employee:
+			continue
 		if not hr and approval.project not in lead_projects:
 			continue
 		rows = [
@@ -829,7 +918,9 @@ def get_project_review_queue():
 				"employee": doc.employee,
 				"employee_name": doc.employee_name,
 				"hours": hours,
+				"is_own_section": doc.employee == reviewer_employee,
 				"log_count": len(rows),
+				"activity_types": sorted({row.activity_type or "Unassigned" for row in rows}),
 				"project_status": approval.status,
 				"hr_status": doc.custom_weekly_status,
 				"return_reason": approval.return_reason,
@@ -865,7 +956,7 @@ def get_project_review_queue():
 		order_by="modified desc",
 		limit_page_length=500,
 	)
-	draft_docs = [d for d in draft_docs if d.name not in parents_with_approvals]
+	draft_docs = [d for d in draft_docs if d.name not in parents_with_approvals and d.employee != reviewer_employee]
 	if draft_docs:
 		if hr:
 			scoped_projects = None
@@ -874,7 +965,7 @@ def get_project_review_queue():
 		detail_rows = frappe.db.get_all(
 			"Timesheet Detail",
 			filters={"parent": ("in", [d.name for d in draft_docs])},
-			fields=["parent", "project", "hours", "from_time"],
+			fields=["parent", "project", "hours", "from_time", "activity_type"],
 		)
 		docs_by_name = {d.name: d for d in draft_docs}
 		proj_names = {r.project for r in detail_rows if r.project}
@@ -894,9 +985,10 @@ def get_project_review_queue():
 			if doc is None:
 				continue
 			key = (row.project, str(doc.custom_week_start), doc.employee)
-			grouped.setdefault(key, {"doc": doc, "hours": 0.0, "count": 0})
+			grouped.setdefault(key, {"doc": doc, "hours": 0.0, "count": 0, "activities": set()})
 			grouped[key]["hours"] += flt(row.hours)
 			grouped[key]["count"] += 1
+			grouped[key]["activities"].add(row.activity_type or "Unassigned")
 		for (project, week_start, _employee), group in grouped.items():
 			doc = group["doc"]
 			result.append(
@@ -909,7 +1001,9 @@ def get_project_review_queue():
 					"employee": doc.employee,
 					"employee_name": doc.employee_name,
 					"hours": round(group["hours"], 2),
+					"is_own_section": doc.employee == reviewer_employee,
 					"log_count": group["count"],
+					"activity_types": sorted(group["activities"]),
 					"project_status": WEEKLY_DRAFT,
 					"hr_status": doc.custom_weekly_status,
 					"return_reason": None,
@@ -922,7 +1016,7 @@ def get_project_review_queue():
 					"routed_to_hr_reason": None,
 				}
 			)
-	result.sort(key=lambda r: (r["week_start"], r["project"], r["employee_name"]), reverse=True)
+	result.sort(key=lambda r: (r["modified"], r["week_start"], r["project"], r["employee_name"]), reverse=True)
 	return result
 
 
@@ -1074,6 +1168,11 @@ def hr_close_weekly_timesheet(name: str):
 	if not cint(doc.custom_is_weekly) or doc.custom_weekly_status != PENDING_HR:
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))
 
+	if not _project_reviews_ready(doc):
+		frappe.throw(_("All project sections must complete Project Lead review before HR can close the week."))
+	if _team_review_blockers(doc):
+		frappe.throw(_("This Project Lead must complete their team's reviews for the same week before final HR approval."))
+
 	for row in doc.custom_project_approvals:
 		if row.status == APPROVAL_HR:
 			row.status = APPROVAL_APPROVED
@@ -1125,6 +1224,7 @@ def get_hr_weekly_timesheet_queue() -> list[dict]:
 	result = []
 	for week in weeks:
 		doc = frappe.get_doc("Timesheet", week.name)
+		ready = _project_reviews_ready(doc) and not _team_review_blockers(doc)
 		projects = {}
 		for log in doc.time_logs:
 			if not log.from_time:
@@ -1145,6 +1245,7 @@ def get_hr_weekly_timesheet_queue() -> list[dict]:
 				"week_end": str(week.custom_week_end),
 				"total_hours": round(flt(week.total_hours), 2),
 				"modified": str(week.modified),
+				"ready_for_hr_close": ready,
 				"projects": [
 					{
 						"project": project["project"],
@@ -1233,6 +1334,20 @@ def prepare_weekly_document(doc):
 		row.activity_type = row.activity_type or "Unassigned"
 
 
+def notify_saved_team_entries(doc):
+	if not cint(getattr(doc, "custom_is_weekly", 0)) or doc.docstatus != 0:
+		return
+	old = doc.get_doc_before_save()
+	previous = {row.project for row in old.time_logs} if old else set()
+	for project in sorted({row.project for row in doc.time_logs if row.project} - previous):
+		lead = _project_lead_user(project)
+		if not lead or lead == _employee_user(doc.employee):
+			continue
+		label = frappe.db.get_value("Project", project, "project_name") or project
+		_notify([lead], _("New team time entry saved"),
+			_("{0} recorded time on {1}. The saved entries are available for review.").format(doc.employee_name, label), doc.name)
+
+
 def validate_weekly_document(doc):
 	if not cint(getattr(doc, "custom_is_weekly", 0)):
 		return
@@ -1288,6 +1403,10 @@ def before_weekly_submit(doc):
 		frappe.throw(_("Only HR can close a fully approved weekly timesheet."), frappe.PermissionError)
 	if doc.custom_weekly_status != CLOSED:
 		frappe.throw(_("Weekly timesheet must be in Closed status before final submission."))
+	if not _project_reviews_ready(doc):
+		frappe.throw(_("All project sections must be approved before final submission."))
+	if _team_review_blockers(doc):
+		frappe.throw(_("The Project Lead's team reviews must be completed before final submission."))
 
 
 def before_weekly_cancel(doc):

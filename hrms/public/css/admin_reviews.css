@@ -70,6 +70,23 @@
 .admin-reviews-table td { vertical-align: middle; max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
 .admin-reviews-table .btn { white-space: nowrap; }
 .admin-reviews-empty { padding: 40px 0; color: var(--text-muted); }
+.admin-reviews-search { flex: 1 1 240px; width: auto; }
+.admin-reviews-filter { width: auto; flex: 0 1 220px; }
+.admin-reviews-checkbox { display: flex; align-items: center; gap: 8px; margin: 0; }
+.admin-reviews-count { margin: 0 0 12px; font-size: 12px; }
+.admin-reviews-number { text-align: right; white-space: nowrap !important; font-variant-numeric: tabular-nums; }
+.admin-reviews-table .indicator-pill { white-space: nowrap; }
+.admin-history-filters .form-section { border: 0; padding: 0; }
+.admin-history-filters .section-body { display: block; }
+.admin-history-filters .form-column { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 16px; }
+.admin-history-metrics { display: flex; flex-wrap: wrap; gap: 20px 32px; padding: 18px 0; border-top: 1px solid var(--border-color); }
+.admin-history-metrics dt { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.admin-history-metrics dd { margin: 4px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.admin-history-breakdown { padding: 24px 0; max-width: 760px; }
+.admin-history-bar-row { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr 72px; align-items: center; gap: 12px; margin: 12px 0; font-size: 12px; }
+.admin-history-bar-row span { overflow-wrap: anywhere; }
+.admin-history-bar-row progress { width: 100%; height: 10px; accent-color: var(--primary); }
+.admin-history-bar-row strong { text-align: right; }
 
 @media (max-width: 600px) {
 	.admin-reviews-page {

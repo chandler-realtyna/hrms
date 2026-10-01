@@ -6,17 +6,22 @@
 					<ion-button v-if="detail" @click="detail = null">{{ __("Back") }}</ion-button>
 					<ion-back-button v-else default-href="/home" />
 				</ion-buttons>
-				<ion-title>{{ __("Review team member hours") }}</ion-title>
+				<ion-title>{{ __("Team Timesheets") }}</ion-title>
+				<ion-buttons slot="end">
+					<ion-button :aria-label="__('Refresh')" :title="__('Refresh')" :disabled="loading" @click="load">
+						<FeatherIcon name="refresh-cw" class="h-4 w-4" />
+					</ion-button>
+				</ion-buttons>
 			</ion-toolbar>
 		</ion-header>
 
 		<ion-content :fullscreen="true">
 			<div class="p-4 space-y-4 max-w-3xl mx-auto pb-24">
 				<div>
-					<h1 class="text-lg font-semibold text-gray-900">{{ __("Review team member hours") }}</h1>
-					<p class="text-xs text-gray-500 mt-0.5">
-						{{ __("Approve or return submitted hours before HR review") }}
-					</p>
+					<h1 class="text-lg font-semibold text-gray-900">{{ __("Team Timesheets") }}</h1>
+					<div v-if="!detail" class="flex flex-wrap items-center gap-3 mt-3">
+						<input v-model="search" type="search" :placeholder="__('Search employee, project or activity')" :aria-label="__('Search entries')" class="flex-1 min-w-0 border rounded px-3 py-2 text-sm" />
+					</div>
 				</div>
 
 				<div v-if="loading" class="bg-white border rounded-xl p-8 text-center text-sm text-gray-500">
@@ -62,7 +67,7 @@
 							<div class="flex items-start justify-between gap-3">
 								<div class="min-w-0">
 									<div class="font-semibold text-gray-900 truncate">
-										{{ projectLabel(row.project) }}
+										{{ row.project_label || projectLabel(row.project) }}
 									</div>
 									<div class="text-xs text-gray-500 mt-1">
 										{{ row.employee_name }} · {{ formatWeek(row.week_start, row.week_end) }}
@@ -73,12 +78,13 @@
 									<div v-if="row.modified" class="text-[11px] text-gray-400 mt-0.5">
 										{{ __("Updated") }} {{ updatedAgo(row.modified) }}
 									</div>
+									<div class="text-xs text-gray-500 mt-1">{{ (row.activity_types || []).join(", ") }}</div>
 								</div>
 								<div class="flex flex-col items-end gap-1.5 shrink-0">
 									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
 										{{ projectStatusLabel(row) }}
 									</span>
-									<span class="text-[11px] text-gray-400">{{ __("HR") }}: {{ __(row.hr_status) }}</span>
+									<span v-if="row.hr_status !== row.project_status" class="text-[11px] text-gray-400">{{ projectStatusLabel({ project_status: row.hr_status }) }}</span>
 								</div>
 							</div>
 							<p v-if="row.routed_to_hr_reason === 'no_lead'" class="mt-2 text-[11px] text-amber-600">
@@ -195,6 +201,7 @@ const reasons = reactive({})
 const detail = ref(null)
 const detailReason = ref("")
 const approvingAll = ref(false)
+const search = ref("")
 
 // Project-scoped total for the open section (sum of its own logs only).
 const detailProjectTotal = computed(() =>
@@ -222,15 +229,11 @@ function updatedAgo(value) {
 	return serverTimeAgo(dayjs, value)
 }
 
-// Actionable sections first, then newest week first. Display order only;
-// the queue itself and all workflow actions are untouched.
+// Recent changes first; personal entries belong in My Timesheets.
 const orderedSections = computed(() =>
-	[...(sections.value || [])].sort((a, b) => {
-		if (Boolean(a.actionable) !== Boolean(b.actionable)) return a.actionable ? -1 : 1
-		if (a.week_start !== b.week_start) return a.week_start < b.week_start ? 1 : -1
-		if (a.project !== b.project) return a.project < b.project ? 1 : -1
-		return (a.employee_name || "").localeCompare(b.employee_name || "")
-	})
+	(sections.value || []).filter(row => !row.is_own_section
+		&& [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(search.value.toLowerCase()))
+		.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)))
 )
 
 const actionableSections = computed(() => orderedSections.value.filter((row) => row.actionable))
@@ -240,7 +243,7 @@ const actionableSections = computed(() => orderedSections.value.filter((row) => 
 async function approveAll() {
 	const rows = actionableSections.value
 	if (!rows.length || approvingAll.value) return
-	if (!window.confirm(__("Approve all {0} and send to HR review?", [rows.length]))) return
+	if (!window.confirm(__("Approve all {0} project sections?", [rows.length]))) return
 	approvingAll.value = true
 	try {
 		for (const row of rows) {
@@ -248,7 +251,7 @@ async function approveAll() {
 				approval_name: row.approval_name,
 			})
 		}
-		toastSaved(__("Approved, sent to HR review"))
+		toastSaved(__("Project sections approved"))
 		detail.value = null
 		await load()
 	} catch (error) {
@@ -267,10 +270,15 @@ function statusClass(status) {
 	return "bg-amber-50 text-amber-700"
 }
 
-// Draft sections have no approval row yet: label them explicitly so they read
-// as read-only previews, not pending work.
+// Drafts can be returned for correction, but cannot yet be approved.
 function projectStatusLabel(row) {
 	if (row.project_status === "Draft") return __("Not submitted yet")
+	if (row.project_status === "Pending") return __("Awaiting project review")
+	if (row.project_status === "HR Review") return __("HR review required")
+	if (row.project_status === "Pending HR Review") return __("Awaiting final HR review")
+	if (row.project_status === "Closed") return __("Final approval completed")
+	if (row.project_status === "Pending Project Approval") return __("Awaiting project review")
+	if (row.project_status === "Returned" || row.project_status === "Correction Required") return __("Needs correction")
 	return __(row.project_status)
 }
 
@@ -314,7 +322,7 @@ async function approveRow(row) {
 		await call("hrms.api.weekly_timesheet.approve_project_review", {
 			approval_name: row.approval_name,
 		})
-		toastSaved(__("Approved, sent to HR review"))
+		toastSaved(__("Project section approved"))
 		detail.value = null
 		await load()
 	} catch (error) {

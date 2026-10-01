@@ -103,6 +103,11 @@ frappe.ui.form.on("Expense Claim", {
 	refresh: function (frm) {
 		frm.trigger("toggle_fields");
 		frm.trigger("add_ledger_buttons");
+		frm.set_df_property("employee", "read_only", !frm.is_new());
+		const has_taxes = Boolean(frm.doc.taxes?.length || flt(frm.doc.total_taxes_and_charges));
+		frm.toggle_display("taxes_and_charges_sb", has_taxes);
+		frm.toggle_display("taxes", has_taxes);
+		frm.toggle_display("total_taxes_and_charges", has_taxes);
 
 		if (
 			frm.doc.docstatus === 1 &&

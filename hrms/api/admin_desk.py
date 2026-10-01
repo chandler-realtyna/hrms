@@ -28,6 +28,7 @@ def _admin_desk_sections() -> list[dict]:
 	roles = set(frappe.get_roles())
 	is_company_director = COMPANY_DIRECTOR_ROLE in roles
 	is_hr = bool(roles & HR_ROLES) or is_company_director
+	can_review_projects = is_hr or is_project_lead() or is_project_manager()
 	sections = [
 		{"label": _("Timesheet Reviews"), "items": []},
 		{"label": _("Employee Requests"), "items": []},
@@ -35,13 +36,9 @@ def _admin_desk_sections() -> list[dict]:
 		{"label": _("People and Projects"), "items": []},
 	]
 
-	if is_project_lead() or is_company_director:
+	if can_review_projects:
 		sections[0]["items"].append(
-			{"label": _("Project Timesheets"), "route": "/desk/admin-reviews/project-timesheets"}
-		)
-	if is_project_manager() or is_company_director:
-		sections[0]["items"].append(
-			{"label": _("Project Weekly Reports"), "route": "/desk/admin-reviews/project-reports"}
+			{"label": _("Team Timesheets"), "route": "/desk/admin-reviews/project-timesheets"}
 		)
 	if roles & {"HR Manager", "HR User"} or is_company_director:
 		sections[0]["items"].append(
@@ -79,6 +76,10 @@ def _admin_desk_sections() -> list[dict]:
 	):
 		if _has_any_permission(doctype, "create", "write"):
 			sections[3]["items"].append({"label": label, "route": route, "doctype": doctype})
+	if can_review_projects:
+		sections.append({"label": _("Management Reports"), "items": [
+			{"label": _("Time History"), "route": "/desk/admin-reviews/time-history"}
+		]})
 
 	return [section for section in sections if section["items"]]
 
@@ -127,7 +128,7 @@ def set_admin_reviews_home(bootinfo: dict) -> None:
 		bootinfo.docs.append(page)
 	bootinfo.home_page = page.name
 	bootinfo.hrms_can_review_project_timesheets = any(
-		item["label"] in {_("Project Timesheets"), _("Project Weekly Reports")}
+		item["route"] == "/desk/admin-reviews/project-timesheets"
 		for section in sections for item in section["items"]
 	)
 	# Frappe v16 accepts session-specific sidebar definitions in boot data.

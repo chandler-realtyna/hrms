@@ -15,7 +15,7 @@
 			</router-link>
 			<div class="min-w-0 flex-1">
 				<p class="text-sm font-medium text-gray-900 truncate">{{ user.data.full_name }}</p>
-				<p v-if="employee.data.designation" class="text-xs text-gray-500 truncate">
+				<p v-if="employee.data?.designation" class="text-xs text-gray-500 truncate">
 					{{ employee.data.designation }}
 				</p>
 			</div>
@@ -158,7 +158,7 @@ const navItems = computed(() => {
 			? [
 					{
 						icon: markRaw(TimesheetIcon),
-						title: "Project Timesheets",
+						title: "Team Timesheets",
 						route: "ProjectTimesheets",
 						path: "/project-timesheets",
 					},
@@ -168,7 +168,7 @@ const navItems = computed(() => {
 			? [
 					{
 						icon: markRaw(TimesheetIcon),
-						title: "Project Weekly Reports",
+						title: "Weekly Review",
 						route: "TimesheetProjectApprovals",
 						path: "/timesheets/approvals",
 						exact: true,

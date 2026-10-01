@@ -154,12 +154,24 @@ http://ionicframework.com/docs/theming/ */
 .dark input[type="text"],
 .dark input[type="email"],
 .dark input[type="date"],
+.dark input[type="time"],
+.dark input[type="datetime-local"],
+.dark input[type="search"],
+.dark input:not([type]),
 .dark input[type="number"],
 .dark textarea,
 .dark select {
 	background-color: #27272a !important;
 	color: #f3f4f6 !important;
 	border-color: #3f3f46 !important;
+}
+.dark input[type="time"]::-webkit-datetime-edit,
+.dark input[type="datetime-local"]::-webkit-datetime-edit {
+	color: inherit;
+}
+.dark input[type="time"]:disabled,
+.dark input[type="datetime-local"]:disabled {
+	color: #9ca3af !important;
 }
 .dark input::placeholder,
 .dark textarea::placeholder { color: #6b7280 !important; }

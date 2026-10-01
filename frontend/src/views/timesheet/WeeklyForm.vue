@@ -46,6 +46,15 @@
 						</div>
 					</div>
 
+					<section v-if="timesheet.team_review_blockers?.length" class="border-b py-3">
+						<router-link :to="{ name: 'ProjectTimesheets' }" class="font-semibold text-blue-600">
+							{{ __("Team reviews outstanding") }} · {{ timesheet.team_review_blockers.length }}
+						</router-link>
+						<div v-for="item in timesheet.team_review_blockers" :key="`${item.employee_name}|${item.project}`" class="text-sm text-gray-600 mt-1">
+							{{ item.employee_name }} · {{ projectDisplayName(item.project) }}
+						</div>
+					</section>
+
 					<div
 						v-if="timesheet.custom_weekly_status === 'Correction Required'"
 						class="bg-red-50 border border-red-200 rounded-xl p-4"

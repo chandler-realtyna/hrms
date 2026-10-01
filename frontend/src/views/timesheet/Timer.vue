@@ -9,10 +9,10 @@
 
 				<!-- Timer display -->
 				<div
-					class="flex flex-col items-center justify-center py-10 bg-white mx-4 mt-4 rounded-xl shadow-sm border"
+					class="flex flex-col items-center justify-center py-6 mx-4 mt-4 border-b border-gray-200"
 				>
 					<div
-						class="text-6xl font-mono font-bold tracking-widest tabular-nums"
+						class="text-4xl font-mono font-bold tabular-nums"
 						:class="isRunning ? 'text-gray-900' : 'text-gray-400'"
 					>
 						{{ formattedTime }}
@@ -109,14 +109,16 @@
 					</div>
 				</div>
 
-				<div v-if="favoriteProjects.length" class="mx-4 mt-3">
-					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Favorite projects") }}</div>
+				<div class="mx-4 mt-4">
+					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Projects") }}</div>
 					<div class="flex flex-col gap-2">
-						<div v-for="project in favoriteProjects" :key="project.name" class="flex items-center gap-2 overflow-hidden rounded-xl border bg-white px-3 py-2 shadow-sm">
-							<button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="selectProject(project.name)">
-								<FeatherIcon name="heart" class="h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />
+						<div v-for="project in timerProjects" :key="project.name" class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-3">
+							<div class="flex min-w-0 flex-1 basis-full sm:basis-0 items-center gap-2">
+								<button type="button" class="h-8 w-8 shrink-0 flex items-center justify-center" :disabled="isSaving" :aria-label="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" :title="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" @click="toggleFavorite(project.name)">
+									<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
+								</button>
 								<span class="truncate text-sm font-medium text-gray-800" :title="projectDisplayLabel(project)">{{ projectDisplayLabel(project) }}</span>
-							</button>
+							</div>
 							<div class="shrink-0 text-right leading-tight">
 								<div class="font-mono text-xs font-semibold tabular-nums text-gray-700">
 									{{ projectFormattedTime(project.name) }}
@@ -125,95 +127,55 @@
 									{{ projectStatusLabel(project.name) }}
 								</div>
 							</div>
-							<button class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
+							<div class="flex items-center gap-2 shrink-0">
+							<button class="shrink-0 rounded px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" :disabled="isSaving" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
+								<FeatherIcon :name="projectStatus(project.name) === 'running' ? 'pause' : 'play'" class="h-3 w-3 inline mr-1" />
 								{{ projectButtonLabel(project.name) }}
 							</button>
+							<button class="rounded border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40" :disabled="isSaving || projectSeconds(project.name) <= 0" @click="saveProject(project.name)">
+								<FeatherIcon name="save" class="h-3 w-3 inline mr-1" />{{ __("Save") }}
+							</button>
+							<details v-if="projectSeconds(project.name) > 0" class="relative">
+								<summary class="list-none cursor-pointer p-2" :aria-label="__('More actions')" :title="__('More actions')"><FeatherIcon name="more-vertical" class="h-4 w-4 text-gray-500" /></summary>
+								<button class="absolute right-0 top-full z-20 border rounded bg-white px-3 py-2 text-xs text-red-600 whitespace-nowrap" :disabled="isSaving" @click="discardProject(project.name)">{{ __("Discard unsaved time") }}</button>
+							</details>
+							</div>
 						</div>
 					</div>
 				</div>
 
 				<!-- Form fields -->
-				<div class="flex flex-col gap-4 p-4 bg-white mx-4 mt-3 rounded-xl shadow-sm border">
+				<div class="flex flex-col gap-4 p-4 mx-4 mt-3 pb-10">
 					<FormField
 						fieldtype="Link"
 						fieldname="project"
-						:label="__('Project')"
+						:label="__('Add project')"
 						options="Project"
 						linkQuery="hrms.api.search_employee_projects"
-						v-model="form.project"
-						:reqd="true"
-						@change="persistState"
+						v-model="pickedProject"
 					/>
-					<div v-if="form.project" class="-mt-2 flex items-center gap-2">
-						<button
-							type="button"
-							class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
-							:class="isFavorite(form.project) ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-300'"
-							@click="toggleFavorite(form.project)"
-							:title="isFavorite(form.project) ? __('Remove favorite') : __('Add to favorites')"
-						>
-							<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(form.project) && 'fill-amber-400 text-amber-500'" />
-							{{ isFavorite(form.project) ? __("Favorited") : __("Favorite") }}
-						</button>
-					</div>
+					<div v-if="form.project" class="font-semibold text-sm text-gray-800">{{ activeProjectLabel }}</div>
 					<FormField
+						v-if="form.project"
 						fieldtype="Link"
 						fieldname="activity_type"
 						:label="__('Activity Type')"
 						options="Activity Type"
 						v-model="form.activity_type"
+						:read-only="isSaving"
 						@change="persistState"
 					/>
 					<FormField
 						fieldtype="Small Text"
+						v-if="form.project"
 						fieldname="description"
 						:label="__('Description')"
 						v-model="form.description"
+						:read-only="isSaving"
 						@change="persistState"
 					/>
-					<p class="-mt-2 text-xs text-gray-500">
-						{{ __("For Support projects, include the ticket ID or link.") }}
-					</p>
 				</div>
 
-				<!-- Action buttons -->
-				<div class="px-4 mt-4 pb-10 flex flex-col gap-3">
-					<!-- Start button (idle state) -->
-					<button
-						v-if="!isRunning && !isPaused"
-						@click="start"
-						class="w-full py-5 rounded-xl bg-green-500 active:bg-green-600 text-white font-semibold text-lg flex items-center justify-center gap-2 shadow-sm transition-colors"
-					>
-						<FeatherIcon name="play" class="h-5 w-5" />
-						{{ __("Start Timer") }}
-					</button>
-					<button v-if="isRunning" @click="pause" class="w-full rounded-xl bg-amber-500 py-4 text-white font-semibold">
-						{{ __("Pause") }}
-					</button>
-
-					<!-- Stop & Save button (running state) -->
-					<button
-						v-if="isRunning || isPaused"
-						@click="stop"
-						:disabled="isSaving"
-						class="w-full py-5 rounded-xl bg-red-500 active:bg-red-600 text-white font-semibold text-lg flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-60"
-					>
-						<FeatherIcon name="square" class="h-5 w-5" />
-						{{ isSaving ? __("Saving…") : __("Stop & Save") }}
-					</button>
-					<button v-if="isPaused" @click="resume" class="w-full rounded-xl bg-green-500 py-4 text-white font-semibold">
-						{{ __("Resume") }}
-					</button>
-
-					<!-- Discard (running state) -->
-					<button
-						v-if="isRunning || isPaused"
-						@click="discard"
-						class="w-full py-3 text-sm text-red-400 font-medium"
-					>
-						{{ __("Discard") }}
-					</button>
-				</div>
 			</div>
 		</ion-content>
 	</ion-page>
@@ -221,15 +183,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, inject } from "vue"
-import { useRouter } from "vue-router"
 import { IonPage, IonContent } from "@ionic/vue"
-import { FeatherIcon, Button, call, toast } from "frappe-ui"
+import { FeatherIcon, call, toast } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { TIMER_NOTIFIED_KEY } from "@/composables/useTimerReminder.js"
 import { TIMER_STORAGE_KEY as STORAGE_KEY } from "@/data/session.js"
 import { unreadNotificationsCount } from "@/data/notifications"
 
-const router = useRouter()
 const __ = inject("$translate")
 const employee = inject("$employee")
 const dayjs = inject("$dayjs")
@@ -250,6 +210,7 @@ const isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([])
 const availableProjects = ref([])
+const pickedProject = ref("")
 const longRunningNotified = ref(false)
 
 let ticker = null
@@ -318,6 +279,13 @@ function refreshTabIndicator() {
 const formattedTime = computed(() => {
 	// Depend on the ticker so the active project's display updates every second.
 	return formatSeconds(projectSeconds(form.value.project))
+})
+
+const timerProjects = computed(() => {
+	const names = new Set([...favoriteProjects.value.map(item => item.name),
+		...segments.value.map(item => item.project), form.value.project, pickedProject.value].filter(Boolean))
+	return [...names].map(name => availableProjects.value.find(item => item.name === name)
+		|| favoriteProjects.value.find(item => item.name === name) || { name })
 })
 
 const activeProjectLabel = computed(() => {
@@ -411,21 +379,20 @@ function toggleFavorite(project) {
 	else favoriteProjects.value = [availableProjects.value.find((item) => item.name === project) || { name: project, label: project }, ...favoriteProjects.value]
 	localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteProjects.value))
 }
-function selectProject(project) {
-	form.value.project = project
-	persistState()
-}
 function projectDisplayLabel(project) {
 	if (!project) return ""
 	const label = project.label || ""
 	const name = project.name || ""
 	if (!label) return name
-	if (!name || label === name || label.includes(name)) return label
-	return `${label} : ${name}`
+	return label || name
 }
 function startProject(project) {
+	if (!project || isSaving.value) return
 	if (isRunning.value && form.value.project !== project) pause()
-	form.value.project = project
+	if (form.value.project !== project) {
+		const previous = segments.value.filter(item => item.project === project).at(-1)
+		form.value = { project, activity_type: previous?.activity_type || "", description: previous?.description || "" }
+	}
 	if (!isRunning.value) resume()
 }
 function projectStatus(project) {
@@ -473,6 +440,7 @@ function projectButtonClass(project) {
 	return "bg-blue-500"
 }
 function toggleProjectTimer(project) {
+	if (isSaving.value) return
 	const status = projectStatus(project)
 	if (status === "running") return pause()
 	if (status === "paused") return resume()
@@ -586,6 +554,7 @@ function trimTime(totalSeconds) {
 }
 
 function applyAdjust() {
+	if (isSaving.value) return
 	const minutes = Math.max(1, Math.floor(Number(adjustMinutes.value) || 0))
 	adjustMinutes.value = minutes
 	if (adjustDir.value > 0) {
@@ -728,6 +697,7 @@ function resume() {
 	isRunning.value = true
 	isPaused.value = false
 	pausedSince.value = null
+	longRunningNotified.value = false
 	clearTimeout(pauseTimeout)
 	clearTimeout(longRunningTimeout)
 	startTick()
@@ -737,20 +707,26 @@ function resume() {
 }
 
 async function stop() {
-	if ((!startTime.value && !segments.value.length) || isSaving.value) return
-	if (startTime.value) pushCurrentSegment()
-	// Persist the pushed state BEFORE saving: if the save fails and the page
-	// is refreshed, the timer must resume exactly here (retryable), not revert
-	// to the pre-stop state (which would double-count on the next stop).
+	if (isSaving.value) return
+	if (isRunning.value) pause()
+	return saveSegments()
+}
+
+async function saveProject(project) {
+	if (isSaving.value) return
+	if (isRunning.value && form.value.project === project) pause()
+	return saveSegments(project)
+}
+
+async function saveSegments(project = null) {
+	const pending = segments.value.filter(segment => !project || segment.project === project)
+	if (!pending.length || isSaving.value) return
 	persistState()
-	clearInterval(ticker)
-	ticker = null
 	isSaving.value = true
 
 	try {
-		let name = null
-		for (const segment of segments.value) {
-			name = await call("hrms.api.save_timer_log", {
+		for (const segment of pending) {
+			await call("hrms.api.save_timer_log", {
 				employee: employee.data.name,
 				from_time: dayjs(segment.from).format("YYYY-MM-DD HH:mm:ss"),
 				to_time: dayjs(segment.to).format("YYYY-MM-DD HH:mm:ss"),
@@ -759,33 +735,26 @@ async function stop() {
 				project: segment.project || null,
 				description: segment.description || null,
 			})
+			// Acknowledged intervals must never be retried after a later failure.
+			segments.value = segments.value.filter(item => item !== segment)
+			persistState()
+			updateElapsed()
 		}
 
-		clearPersistedState()
-		isRunning.value = false
-		isPaused.value = false
-		adjustDir.value = 0
-		pausedSince.value = null
-		segments.value = []
-		startTime.value = null
-		elapsed.value = 0
-		form.value = { project: "", activity_type: "", description: "" }
-		clearTimeout(longRunningTimeout)
-		restoreTabIndicator()
-
+		if (!segments.value.length && !startTime.value) discard()
 		toast({
 			title: __("Time log saved!"),
 			icon: "check",
 			iconClasses: "text-green-500",
 		})
 
-		// Navigate to the timesheet that was created/updated
-		router.push({ name: "TimesheetDetailView", params: { id: name } })
 	} catch (e) {
-		// Resume the ticker so the timer doesn't lose time. Surface the real
-		// server reason (e.g. week locked for review) instead of a dead end:
-		// segments are kept, so Stop retries once the week is editable again.
-		startTick()
+		// Failed intervals remain available; an inactive project's save never
+		// pauses the currently running project.
+		if (isPaused.value) {
+			pausedSince.value = new Date().toISOString()
+			persistState()
+		}
 		toast({
 			title: __("Failed to save time log"),
 			text: e?.messages?.[0] || e?.message,
@@ -794,11 +763,37 @@ async function stop() {
 		})
 	} finally {
 		isSaving.value = false
+		updateElapsed()
+		if (isPaused.value) schedulePausedSave()
+	}
+}
+
+function discardProject(project) {
+	if (isSaving.value || !window.confirm(__("Discard unsaved time for {0}?", [projectNameLabel(project)]))) return
+	if (form.value.project === project) {
+		if (isRunning.value) pause()
+		isRunning.value = false
+		isPaused.value = false
+		pausedSince.value = null
+		form.value = { project: "", activity_type: "", description: "" }
+	}
+	segments.value = segments.value.filter(item => item.project !== project)
+	if (!segments.value.length && !startTime.value) discard()
+	else {
+		if (!isRunning.value) {
+			isPaused.value = true
+			pausedSince.value = new Date().toISOString()
+			schedulePausedSave()
+		}
+		updateElapsed()
+		persistState()
 	}
 }
 
 function discard() {
 	clearInterval(ticker)
+	clearTimeout(pauseTimeout)
+	clearTimeout(longRunningTimeout)
 	ticker = null
 	clearPersistedState()
 	isRunning.value = false

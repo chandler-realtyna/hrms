@@ -57,3 +57,4 @@ hrms.patches.v16_0.create_company_director_access #2026-10-01
 hrms.patches.v16_0.setup_timesheet_entry_corrections #2026-10-01
 hrms.patches.v16_0.attach_company_director_profiles #2026-10-01
 hrms.patches.v16_0.setup_company_director_scope #2026-10-01
+hrms.patches.v16_0.setup_company_director_scope #2026-10-01-refresh-metadata

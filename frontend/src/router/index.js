@@ -62,7 +62,7 @@ const routes = [
 		path: "/dashboard/invoices",
 		name: "InvoicesDashboard",
 		component: () => import("@/views/invoice/List.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 	{
 		path: "/admin-requests",

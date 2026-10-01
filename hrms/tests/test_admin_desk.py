@@ -60,9 +60,10 @@ class TestAdminDesk(unittest.TestCase):
 				{
 					"label": "Timesheet Reviews",
 					"items": [
-						{"label": "Project Timesheets", "route": "/desk/admin-reviews/project-timesheets"}
+						{"label": "Team Timesheets", "route": "/desk/admin-reviews/project-timesheets"}
 					],
-				}
+				},
+				{"label": "Management Reports", "items": [{"label": "Time History", "route": "/desk/admin-reviews/time-history"}]},
 			],
 		)
 
@@ -83,8 +84,8 @@ class TestAdminDesk(unittest.TestCase):
 		self.assertEqual(
 			labels,
 			{
-				"Project Timesheets",
-				"Project Weekly Reports",
+				"Team Timesheets",
+				"Time History",
 				"HR Weekly Timesheet Review",
 				"Leave Requests",
 				"Expense Requests",
