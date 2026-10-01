@@ -104,6 +104,9 @@ def _is_backend(path: str) -> bool:
 
 # Static frontend assets / Vite sources (built artifacts are committed).
 def _is_frontend(path: str) -> bool:
+    # This release-mounted proxy file is activated by a frontend restart.
+    if path == "deploy/nginx.conf":
+        return True
     return path.startswith(
         (
             "frontend/",
