@@ -118,8 +118,16 @@ fi
 # Target must exist on origin — the server clones from there.
 # (Capture first: piping a live command into `grep -q` races SIGPIPE.)
 LSR="$(git ls-remote origin 2>/dev/null)" || fail "cannot reach origin"
-printf '%s\n' "$LSR" | grep -q "^$TARGET" \
-	|| fail "target $TARGET is not on origin — push first (only pushed commits deploy)"
+TARGET_ON_ORIGIN=0
+while read -r REMOTE_SHA REMOTE_REF; do
+	if git cat-file -e "$REMOTE_SHA^{commit}" 2>/dev/null \
+		&& git merge-base --is-ancestor "$TARGET" "$REMOTE_SHA"; then
+		TARGET_ON_ORIGIN=1
+		break
+	fi
+done <<< "$LSR"
+[ "$TARGET_ON_ORIGIN" = "1" ] \
+	|| fail "target $TARGET is not reachable from origin — push first (only pushed commits deploy)"
 log "target commit: $TARGET"
 
 # ------------------------------------------------------- 2. remote state -----
