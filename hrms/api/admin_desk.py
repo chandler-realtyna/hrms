@@ -37,15 +37,15 @@ def _admin_desk_sections() -> list[dict]:
 
 	if is_project_lead() or is_company_director:
 		sections[0]["items"].append(
-			{"label": _("Project Timesheets"), "route": "/hrms/project-timesheets"}
+			{"label": _("Project Timesheets"), "route": "/desk/admin-reviews/project-timesheets"}
 		)
 	if is_project_manager() or is_company_director:
 		sections[0]["items"].append(
-			{"label": _("Project Weekly Reports"), "route": "/hrms/timesheets/approvals"}
+			{"label": _("Project Weekly Reports"), "route": "/desk/admin-reviews/project-reports"}
 		)
 	if roles & {"HR Manager", "HR User"} or is_company_director:
 		sections[0]["items"].append(
-			{"label": _("HR Weekly Timesheet Review"), "route": "/hrms/admin-timesheets"}
+			{"label": _("HR Weekly Timesheet Review"), "route": "/desk/admin-reviews/hr-timesheets"}
 		)
 
 	if is_hr or is_company_director or (
@@ -53,32 +53,32 @@ def _admin_desk_sections() -> list[dict]:
 		and frappe.has_permission("Leave Application", "write")
 	):
 		sections[1]["items"].append(
-			{"label": _("Leave Requests"), "route": "/hrms/admin-requests/leave"}
+			{"label": _("Leave Requests"), "route": "/desk/leave-application", "doctype": "Leave Application", "filters": {"status": "Open", "docstatus": 0}}
 		)
 	if is_hr or is_company_director or (
 		_is_approver("expense_approvers", "expense_approver")
 		and frappe.has_permission("Expense Claim", "write")
 	):
 		sections[1]["items"].append(
-			{"label": _("Expense Requests"), "route": "/hrms/admin-requests/expense"}
+			{"label": _("Expense Requests"), "route": "/desk/expense-claim", "doctype": "Expense Claim", "filters": {"approval_status": "Draft", "docstatus": 0}}
 		)
 
 	if is_hr:
 		sections[2]["items"].extend(
 			[
-				{"label": _("Holiday Approvals"), "route": "/hrms/holidays/approvals"},
-				{"label": _("Schedule Approvals"), "route": "/hrms/schedule/approvals"},
-				{"label": _("Employee Invoices"), "route": "/hrms/dashboard/invoices"},
+				{"label": _("Holiday Approvals"), "route": "/desk/employee-holiday", "doctype": "Employee Holiday", "filters": {"status": "Submitted"}},
+				{"label": _("Schedule Approvals"), "route": "/desk/employee-schedule", "doctype": "Employee Schedule", "filters": {"status": "Submitted"}},
+				{"label": _("Employee Invoices"), "route": "/desk/employee-invoice", "doctype": "Employee Invoice", "filters": {"status": ["not in", ["Draft", "Cancelled"]]}},
 			]
 		)
 
 	for doctype, label, route in (
-		("User", _("Users"), "/app/user"),
-		("Employee", _("Employees"), "/app/employee"),
-		("Project", _("Projects"), "/app/project"),
+		("User", _("Users"), "/desk/user"),
+		("Employee", _("Employees"), "/desk/employee"),
+		("Project", _("Projects"), "/desk/project"),
 	):
 		if _has_any_permission(doctype, "create", "write"):
-			sections[3]["items"].append({"label": label, "route": route})
+			sections[3]["items"].append({"label": label, "route": route, "doctype": doctype})
 
 	return [section for section in sections if section["items"]]
 
@@ -116,7 +116,8 @@ def get_admin_review_requests(limit: int = 200) -> list[dict]:
 
 
 def set_admin_reviews_home(bootinfo: dict) -> None:
-	if frappe.session.user == "Guest" or not _admin_desk_sections():
+	sections = _admin_desk_sections() if frappe.session.user != "Guest" else []
+	if not sections:
 		return
 
 	from frappe.desk.desk_page import get as get_desk_page
@@ -125,3 +126,23 @@ def set_admin_reviews_home(bootinfo: dict) -> None:
 	if not any(doc.get("name") == page.name and doc.get("doctype") == "Page" for doc in bootinfo.docs):
 		bootinfo.docs.append(page)
 	bootinfo.home_page = page.name
+	# Frappe v16 accepts session-specific sidebar definitions in boot data.
+	# Records and permissions are unchanged; only the managerial navigation changes.
+	if "workspace_sidebar_item" in bootinfo:
+		items = [{"type": "Link", "label": _("Admin Reviews"), "link_type": "Page", "link_to": "admin-reviews", "icon": "home"}]
+		for section in sections:
+			items.append({"type": "Section Break", "label": section["label"], "collapsible": 0})
+			for item in section["items"]:
+				link = {"type": "Link", "label": item["label"], "child": 1, "icon": "list"}
+				if item.get("doctype"):
+					link.update({"link_type": "DocType", "link_to": item["doctype"], "route_options": frappe.as_json(item.get("filters") or {})})
+				else:
+					link.update({"link_type": "URL", "url": item["route"]})
+				items.append(link)
+		bootinfo.workspace_sidebar_item = {
+			"admin reviews": {"name": "Admin Reviews", "label": "Admin Reviews", "app": "hrms", "module": "HR", "items": items, "module_onboarding": None}
+		}
+		bootinfo.hrms_admin_sidebar = True
+		for icon in bootinfo.get("desktop_icons", []):
+			if icon.get("app") == "erpnext" and icon.get("label") not in {"HR", "Projects"}:
+				icon["hidden"] = 1

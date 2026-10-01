@@ -143,6 +143,10 @@
 							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
 								{{ log.description }}
 							</div>
+							<p v-if="log.return_reason" class="mt-1 text-xs text-red-600">{{ log.return_reason }}</p>
+							<Button v-if="detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
+								{{ __("Return entry for correction") }}
+							</Button>
 						</div>
 						<div v-if="!detail.logs.length" class="px-4 py-6 text-center text-sm text-gray-400">
 							{{ __("No time logs in this section.") }}
@@ -373,6 +377,19 @@ async function returnDetail() {
 	} catch (error) {
 		toastFailed(error)
 	}
+}
+
+async function returnEntry(log) {
+	const reason = window.prompt(__("Correction reason for this time entry"))?.trim()
+	if (!reason) return
+	try {
+		await call("hrms.api.weekly_timesheet.return_timesheet_entries", {
+			name: detail.value.timesheet, entries: [log.name], reason, stage: "project",
+		})
+		toastSaved(__("Time entry returned for correction"))
+		await openDetail(detail.value)
+		await load()
+	} catch (error) { toastFailed(error) }
 }
 
 // Reload every time the page is shown (first mount included) so a lead

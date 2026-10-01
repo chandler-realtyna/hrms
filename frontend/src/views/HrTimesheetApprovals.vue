@@ -59,6 +59,15 @@
 						</section>
 					</div>
 
+					<div class="divide-y border-t">
+						<div v-for="log in week.time_logs" :key="log.name" class="flex flex-wrap items-center justify-between gap-2 p-4 text-sm">
+							<div class="min-w-0">
+								<div>{{ log.project }} · {{ log.from_time }} - {{ log.to_time }}</div>
+								<div class="text-gray-500">{{ log.description }}</div>
+							</div>
+							<Button variant="subtle" :disabled="Boolean(busy[week.name])" @click="returnEntry(week, log)">{{ __("Return entry") }}</Button>
+						</div>
+					</div>
 					<footer class="flex flex-col gap-3 border-t bg-gray-50 p-4 sm:flex-row">
 						<input
 							v-model="reasons[week.name]"
@@ -136,6 +145,19 @@ async function returnWeek(week) {
 	} finally {
 		delete busy.value[week.name]
 	}
+}
+
+async function returnEntry(week, log) {
+	const reason = window.prompt(__("Correction reason for this time entry"))?.trim()
+	if (!reason) return
+	busy.value[week.name] = "return"
+	try {
+		await call("hrms.api.weekly_timesheet.return_timesheet_entries", { name: week.name, entries: [log.name], reason, stage: "hr" })
+		toast({ title: __("Time entry returned for correction"), icon: "check" })
+		await load()
+	} catch (err) {
+		toast({ title: __("Action failed"), text: err?.messages?.[0] || err?.message, icon: "alert-circle" })
+	} finally { delete busy.value[week.name] }
 }
 
 async function approveWeek(week) {

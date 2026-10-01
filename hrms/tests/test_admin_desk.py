@@ -46,7 +46,7 @@ class TestAdminDesk(unittest.TestCase):
 				{
 					"label": "Timesheet Reviews",
 					"items": [
-						{"label": "Project Timesheets", "route": "/hrms/project-timesheets"}
+						{"label": "Project Timesheets", "route": "/desk/admin-reviews/project-timesheets"}
 					],
 				}
 			],
@@ -82,3 +82,4 @@ class TestAdminDesk(unittest.TestCase):
 				"Projects",
 			},
 		)
+		self.assertTrue(all(item["route"].startswith("/desk/") for section in sections for item in section["items"]))

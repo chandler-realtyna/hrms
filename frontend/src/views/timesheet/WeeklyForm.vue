@@ -53,7 +53,7 @@
 						<div class="font-semibold text-red-800">{{ __("Correction required") }}</div>
 						<p class="text-sm text-red-700 mt-1">{{ timesheet.custom_weekly_return_reason }}</p>
 						<p class="text-xs text-red-600 mt-2">
-							{{ __("Only returned project entries can be changed.") }}
+							{{ __("Only the entries returned for correction can be changed.") }}
 						</p>
 					</div>
 
@@ -82,6 +82,7 @@
 							:weekStart="timesheet.custom_week_start"
 							:weekEnd="timesheet.custom_week_end"
 							:editableProjects="timesheet.editable_projects || []"
+							:editableEntries="timesheet.editable_entries || []"
 							@addLog="addLog"
 							@updateLog="updateLog"
 							@deleteLog="deleteLog"

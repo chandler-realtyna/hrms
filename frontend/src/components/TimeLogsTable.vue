@@ -51,7 +51,10 @@
 						{{ log.description }}
 					</div>
 					<div v-if="!rowEditable(log) && !isReadOnly" class="text-[11px] text-amber-600">
-						{{ __("Approved project — locked") }}
+						{{ __("Entry locked for review") }}
+					</div>
+					<div v-if="log.return_reason" class="text-xs text-red-600">
+						{{ log.return_reason }}
 					</div>
 				</div>
 				<div v-if="rowEditable(log)" class="flex items-center gap-2 ml-3 pt-0.5">
@@ -70,7 +73,7 @@
 		</template>
 
 		<button
-			v-if="!isReadOnly"
+			v-if="!isReadOnly && (timesheet.custom_weekly_status !== 'Correction Required' || editableProjects.length)"
 			class="flex items-center gap-2 text-sm text-blue-600 font-medium py-2"
 			@click="openAdd"
 		>
@@ -182,6 +185,7 @@ const props = defineProps({
 	weekStart: { type: String, default: "" },
 	weekEnd: { type: String, default: "" },
 	editableProjects: { type: Array, default: () => [] },
+	editableEntries: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(["update:timesheet", "addLog", "updateLog", "deleteLog"])
@@ -272,6 +276,9 @@ function defaultDate() {
 
 function rowEditable(log) {
 	if (props.isReadOnly) return false
+	if (props.timesheet.custom_weekly_status === "Correction Required") {
+		return props.editableEntries.includes(log.name) || props.editableProjects.includes(log.project)
+	}
 	if (!props.editableProjects.length) return true
 	return props.editableProjects.includes(log.project)
 }
