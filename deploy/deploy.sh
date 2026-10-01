@@ -271,13 +271,13 @@ if [ "$CLASS" = "full" ]; then
 	BUST="deploy-$SHORT-$(date -u +%s)"
 	OPS="$OPS|image-build:$NEW_TAG"
 	log "building image $NEW_TAG (full path)"
+	if rssh_read "ps aux | grep -q '[d]ocker build .*--tag realtyna-erpnext-hrms:$NEW_TAG '"; then
+		fail "image build is still running; refusing to activate or start another build"
+	else
+		PROBE_STATUS=$?
+		[ "$PROBE_STATUS" = "1" ] || fail "cannot verify build process state"
+	fi
 	if [ "$RESUME_BUILD" = "1" ]; then
-		if rssh_read "ps aux | grep -q '[d]ocker build .*--tag realtyna-erpnext-hrms:$NEW_TAG '"; then
-			fail "image build is still running; refusing to activate or start another build"
-		else
-			PROBE_STATUS=$?
-			[ "$PROBE_STATUS" = "1" ] || fail "cannot verify build process state"
-		fi
 		log "resuming completed image build (digest and completion proof required)"
 	else
 		rssh "cd '$REMOTE_DIR' && setsid nohup sudo docker build --progress=plain --secret id=apps_json,src=/tmp/apps-timer.json --build-arg FRAPPE_PATH=https://github.com/frappe/frappe --build-arg FRAPPE_BRANCH=v16.18.3 --build-arg CACHE_BUST=$BUST --tag realtyna-erpnext-hrms:$NEW_TAG -f images/custom/Containerfile . > '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log' 2>&1 < /dev/null & echo started" \

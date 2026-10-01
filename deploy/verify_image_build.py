@@ -6,11 +6,15 @@ import sys
 
 
 def completed_image(log, image_id, tag):
-    digest = re.findall(r"^(#\d+)\s+writing image (sha256:[a-f0-9]{64}) done$", log, re.M)
+    digest = re.findall(
+        r"^(#\d+)\s+(?:writing image|exporting config|exporting manifest list) (sha256:[a-f0-9]{64})(?: [0-9.]+s)? done$",
+        log,
+        re.M,
+    )
     if not digest:
         return False
-    step, built_id = digest[-1]
-    if built_id != image_id:
+    step = digest[-1][0]
+    if image_id not in {built_id for export_step, built_id in digest if export_step == step}:
         return False
     name = re.escape(tag)
     named = re.search(rf"^{re.escape(step)}\s+naming to (?:docker\.io/(?:library/)?)?{name} done$", log, re.M)
