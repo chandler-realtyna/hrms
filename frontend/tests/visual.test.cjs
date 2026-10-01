@@ -45,6 +45,15 @@ Object.defineProperty(window,'localStorage',{value:{getItem:k=>storage.get(k),se
     const colors = await page.locator('input').evaluateAll(els => els.map(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color })));
     if (colors[0].background !== 'rgb(39, 39, 42)' || colors[0].color !== 'rgb(243, 244, 246)') throw Error(JSON.stringify(colors));
     await page.screenshot({ path: '/tmp/hrms-dark-time-inputs.png' });
+    const deskCss = fs.readFileSync(path.join(root, 'hrms/public/css/admin_reviews.css'), 'utf8');
+    await page.setContent(`<html><head><style>body{margin:0;padding:16px}.frappe-control{max-width:500px;margin-bottom:12px}input{box-sizing:border-box;width:100%}${deskCss}</style></head><body><div class="admin-history-filters"><div class="form-section"><div class="section-body"><div class="form-column col-sm-12"><form>${['From Date','To Date','Project','Employee','Activity Type','Week Status','Group By'].map(label=>`<div class="frappe-control input-max-width"><label>${label}<input></label></div>`).join('')}</form></div></div></div></div></body></html>`);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const layout = await page.locator('.frappe-control').evaluateAll(els => els.map(el => ({ x: el.getBoundingClientRect().x, y: el.getBoundingClientRect().y })));
+      if (width === 1280 && layout[0].y !== layout[1].y) throw Error('Desktop history filters must share a row');
+      if (width === 390 && layout[0].y === layout[1].y) throw Error('Mobile history filters must stack');
+      if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw Error(`History filters overflow at ${width}`);
+    }
     console.log('VISUAL_QA_OK', JSON.stringify({ viewports: [1280, 390], themes: ['light', 'dark'], nativeTimeColors: colors }));
   } finally {
     await browser.close();

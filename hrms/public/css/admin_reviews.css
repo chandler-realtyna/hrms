@@ -78,7 +78,9 @@
 .admin-reviews-table .indicator-pill { white-space: nowrap; }
 .admin-history-filters .form-section { border: 0; padding: 0; }
 .admin-history-filters .section-body { display: block; }
-.admin-history-filters .form-column { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 16px; }
+.admin-history-filters .form-column { display: block; width: 100%; }
+.admin-history-filters .form-column > form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 0 16px; }
+.admin-history-filters .form-column > form > .frappe-control { width: 100%; max-width: none; min-width: 0; }
 .admin-history-metrics { display: flex; flex-wrap: wrap; gap: 20px 32px; padding: 18px 0; border-top: 1px solid var(--border-color); }
 .admin-history-metrics dt { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 .admin-history-metrics dd { margin: 4px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
