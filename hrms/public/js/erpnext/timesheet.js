@@ -19,7 +19,7 @@ frappe.ui.form.on("Timesheet", {
 	setup_weekly_timesheet_actions(frm) {
 		const status = frm.doc.custom_weekly_status;
 		const is_hr = frappe.session.user === "Administrator" || frappe.user_roles.some((role) => ["HR Manager", "HR User", "System Manager", "Company Desk Administrator"].includes(role));
-		if (frm.doc.docstatus === 0 && ["Draft", "Pending Project Approval", "Pending HR Review"].includes(status)) {
+		if ((is_hr || frappe.boot.hrms_can_review_project_timesheets) && frm.doc.docstatus === 0 && ["Draft", "Pending Project Approval", "Pending HR Review"].includes(status)) {
 			frm.add_custom_button(__("Return Selected Time Entries"), () => {
 				const entries = frm.fields_dict.time_logs.grid.get_selected();
 				if (!entries.length) return frappe.msgprint(__("Select at least one time entry."));

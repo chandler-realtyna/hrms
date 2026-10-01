@@ -567,10 +567,14 @@ def submit_weekly_timesheet(name: str):
 
 @frappe.whitelist()
 def get_project_approval_queue():
-	company_director = COMPANY_DIRECTOR_ROLE in set(frappe.get_roles())
 	filters = {"status": ("in", [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_RETURNED, APPROVAL_HR])}
-	if not company_director:
-		filters["controller"] = frappe.session.user
+	if not _is_hr():
+		employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
+		managed_projects = frappe.get_all("Project", filters={"custom_project_manager": employee, "status": "Open"}, pluck="name") if employee else []
+		if managed_projects:
+			filters["project"] = ("in", managed_projects)
+		else:
+			filters["controller"] = frappe.session.user
 	approvals = frappe.get_all(
 		"Timesheet Project Approval",
 		filters=filters,
@@ -632,6 +636,7 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 	if (
 		approval.controller != frappe.session.user
 		and not _is_hr()
+		and _project_manager_user(approval.project) != frappe.session.user
 	):
 		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
 	if approval.status != APPROVAL_PENDING:
@@ -682,9 +687,8 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 
 @frappe.whitelist()
 def approve_project_week(project: str, week_start: str):
-	company_director = COMPANY_DIRECTOR_ROLE in set(frappe.get_roles())
 	filters = {"project": project, "status": APPROVAL_PENDING}
-	if not company_director:
+	if not _is_hr() and _project_manager_user(project) != frappe.session.user:
 		filters["controller"] = frappe.session.user
 	pending = frappe.get_all(
 		"Timesheet Project Approval",

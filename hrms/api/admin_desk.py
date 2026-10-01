@@ -126,6 +126,10 @@ def set_admin_reviews_home(bootinfo: dict) -> None:
 	if not any(doc.get("name") == page.name and doc.get("doctype") == "Page" for doc in bootinfo.docs):
 		bootinfo.docs.append(page)
 	bootinfo.home_page = page.name
+	bootinfo.hrms_can_review_project_timesheets = any(
+		item["label"] in {_("Project Timesheets"), _("Project Weekly Reports")}
+		for section in sections for item in section["items"]
+	)
 	# Frappe v16 accepts session-specific sidebar definitions in boot data.
 	# Records and permissions are unchanged; only the managerial navigation changes.
 	if "workspace_sidebar_item" in bootinfo:
