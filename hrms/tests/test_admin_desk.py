@@ -27,7 +27,8 @@ class TestAdminDesk(unittest.TestCase):
 		self.assertIn("Users", labels)
 		self.assertIn("Employees", labels)
 		self.assertIn("Projects", labels)
-		self.assertIn("Leave and Expense Requests", labels)
+		self.assertIn("Leave Requests", labels)
+		self.assertIn("Expense Requests", labels)
 
 	@patch("hrms.api.admin_desk._is_approver", return_value=False)
 	@patch("hrms.api.weekly_timesheet.is_project_manager", return_value=False)
@@ -71,7 +72,8 @@ class TestAdminDesk(unittest.TestCase):
 				"Project Timesheets",
 				"Project Weekly Reports",
 				"HR Weekly Timesheet Review",
-				"Leave and Expense Requests",
+				"Leave Requests",
+				"Expense Requests",
 				"Holiday Approvals",
 				"Schedule Approvals",
 				"Employee Invoices",

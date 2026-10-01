@@ -5,14 +5,14 @@
 				<ion-buttons slot="start">
 					<ion-back-button default-href="/desk" />
 				</ion-buttons>
-				<ion-title>{{ __("Employee Requests") }}</ion-title>
+				<ion-title>{{ title }}</ion-title>
 			</ion-toolbar>
 		</ion-header>
 
 		<ion-content :fullscreen="true">
 			<main class="mx-auto w-full max-w-4xl p-4 md:p-6">
 				<div class="mb-5">
-					<h1 class="text-lg font-semibold text-gray-900">{{ __("Leave and Expense Requests") }}</h1>
+					<h1 class="text-lg font-semibold text-gray-900">{{ title }}</h1>
 					<p class="mt-1 text-sm text-gray-500">{{ __("Requests assigned to you for review") }}</p>
 				</div>
 
@@ -38,13 +38,19 @@
 
 <script setup>
 import { computed, inject } from "vue"
+import { useRoute } from "vue-router"
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent, onIonViewWillEnter } from "@ionic/vue"
 
 import RequestList from "@/components/RequestList.vue"
 import { requests } from "@/data/adminRequests"
 
 const __ = inject("$translate")
-const items = computed(() => requests.data || [])
+const route = useRoute()
+const requestType = computed(() => route.meta.requestType)
+const title = computed(() =>
+	__(requestType.value === "Leave Application" ? "Leave Requests" : "Expense Requests")
+)
+const items = computed(() => (requests.data || []).filter((row) => row.doctype === requestType.value))
 
 onIonViewWillEnter(() => requests.reload())
 </script>

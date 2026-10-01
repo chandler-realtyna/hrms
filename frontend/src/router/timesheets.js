@@ -8,6 +8,7 @@ const routes = [
 		name: "ProjectTimesheets",
 		path: "/project-timesheets",
 		component: () => import("@/views/timesheet/ProjectReview.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
 	},
 	{
 		name: "TimesheetTimer",
@@ -18,6 +19,7 @@ const routes = [
 		name: "TimesheetProjectApprovals",
 		path: "/timesheets/approvals",
 		component: () => import("@/views/timesheet/Approvals.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
 	},
 	{
 		name: "TimesheetFormView",

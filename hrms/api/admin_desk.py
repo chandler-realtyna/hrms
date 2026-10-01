@@ -51,12 +51,16 @@ def _admin_desk_sections() -> list[dict]:
 	if is_hr or is_company_director or (
 		_is_approver("leave_approvers", "leave_approver")
 		and frappe.has_permission("Leave Application", "write")
-	) or (
+	):
+		sections[1]["items"].append(
+			{"label": _("Leave Requests"), "route": "/hrms/admin-requests/leave"}
+		)
+	if is_hr or is_company_director or (
 		_is_approver("expense_approvers", "expense_approver")
 		and frappe.has_permission("Expense Claim", "write")
 	):
 		sections[1]["items"].append(
-			{"label": _("Leave and Expense Requests"), "route": "/hrms/admin-requests"}
+			{"label": _("Expense Requests"), "route": "/hrms/admin-requests/expense"}
 		)
 
 	if is_hr:

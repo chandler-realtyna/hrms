@@ -66,9 +66,19 @@ const routes = [
 	},
 	{
 		path: "/admin-requests",
-		name: "AdminRequests",
+		redirect: "/admin-requests/leave",
+	},
+	{
+		path: "/admin-requests/leave",
+		name: "AdminLeaveRequests",
 		component: () => import("@/views/AdminRequests.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false, hideSidebar: true, requestType: "Leave Application" },
+	},
+	{
+		path: "/admin-requests/expense",
+		name: "AdminExpenseRequests",
+		component: () => import("@/views/AdminRequests.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true, requestType: "Expense Claim" },
 	},
 	{
 		path: "/admin-timesheets",
