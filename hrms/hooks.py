@@ -28,7 +28,7 @@ app_include_js = [
 	"hrms.bundle.js",
 	"/assets/hrms/js/avatar_settings.js",
 ]
-app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css"]
+app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css?v=20261001-review-v2"]
 
 page_js = {"admin-reviews": "public/js/admin_reviews.js"}
 boot_session = ["hrms.api.admin_desk.set_admin_reviews_home"]

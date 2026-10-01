@@ -152,6 +152,8 @@ Timesheet or acts as an approval.
 
 Canonical release procedure: `deploy/README.md`. Pushed clean commits only, backed
 up schema changes, exact release/mount/asset verification and recoverable rollback.
+The raw Desk stylesheet has a versioned URL. Increment its version when changing
+that file, so browser/CDN caches cannot retain old review/history layout rules.
 The versioned proxy rejects unmatched browser Origin/Host pairs before the
 realtime upstream. Only the valid production HTTPS origin is normalized to the
 private frontend endpoint, so Frappe's session/document checks do not encounter
