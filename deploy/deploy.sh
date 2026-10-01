@@ -47,7 +47,19 @@ fail() { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 # Run a command on the server. Never enable tracing: secrets may be in env.
 rssh() {
 	ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=20 \
+		-o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
 		-p "$SSH_PORT" "$SSH_USER@$SERVER" "$@"
+}
+
+# Retry only read-only probes; replaying migration or activation is unsafe.
+rssh_read() {
+	local attempt result
+	for attempt in 1 2 3; do
+		if rssh "$@"; then return 0; else result=$?; fi
+		[ "$result" = "255" ] || return "$result"
+		sleep 5
+	done
+	return "$result"
 }
 
 release_lock() {
@@ -70,6 +82,7 @@ PLAN_ONLY=0
 ROLLBACK=0
 BOOTSTRAP=""
 BREAK_LOCK=0
+RESUME_BUILD=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--target)    TARGET="${2:?}"; shift 2 ;;
@@ -77,6 +90,7 @@ while [ $# -gt 0 ]; do
 		--plan-only) PLAN_ONLY=1; shift ;;
 		--bootstrap) BOOTSTRAP="${2:?}"; shift 2 ;;
 		--break-lock) BREAK_LOCK=1; shift ;;
+		--resume-build) RESUME_BUILD=1; shift ;;
 		-h|--help) usage ;;
 		*) fail "unknown flag: $1 (see --help)" ;;
 	esac
@@ -257,16 +271,29 @@ if [ "$CLASS" = "full" ]; then
 	BUST="deploy-$SHORT-$(date -u +%s)"
 	OPS="$OPS|image-build:$NEW_TAG"
 	log "building image $NEW_TAG (full path)"
-	rssh "cd '$REMOTE_DIR' && setsid nohup sudo docker build --progress=plain --secret id=apps_json,src=/tmp/apps-timer.json --build-arg FRAPPE_PATH=https://github.com/frappe/frappe --build-arg FRAPPE_BRANCH=v16.18.3 --build-arg CACHE_BUST=$BUST --tag realtyna-erpnext-hrms:$NEW_TAG -f images/custom/Containerfile . > '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log' 2>&1 < /dev/null & echo started" \
-		|| fail "build launch failed"
-	# wait for completion (up to ~60 min)
-	for _ in $(seq 1 120); do
-		sleep 30
-		if ! rssh "ps aux | grep -q '[C]ACHE_BUST=$BUST'" 2>/dev/null; then break; fi
-	done
-	rssh "sudo docker images 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Repository}}'" > /tmp/deploy-img-check 2>/dev/null || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
-	grep -q realtyna /tmp/deploy-img-check || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
-	rm -f /tmp/deploy-img-check
+	if [ "$RESUME_BUILD" = "1" ]; then
+		if rssh_read "ps aux | grep -q '[d]ocker build .*--tag realtyna-erpnext-hrms:$NEW_TAG '"; then
+			fail "image build is still running; refusing to activate or start another build"
+		else
+			PROBE_STATUS=$?
+			[ "$PROBE_STATUS" = "1" ] || fail "cannot verify build process state"
+		fi
+		log "resuming completed image build (digest and completion proof required)"
+	else
+		rssh "cd '$REMOTE_DIR' && setsid nohup sudo docker build --progress=plain --secret id=apps_json,src=/tmp/apps-timer.json --build-arg FRAPPE_PATH=https://github.com/frappe/frappe --build-arg FRAPPE_BRANCH=v16.18.3 --build-arg CACHE_BUST=$BUST --tag realtyna-erpnext-hrms:$NEW_TAG -f images/custom/Containerfile . > '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log' 2>&1 < /dev/null & echo started" \
+			|| fail "build launch failed"
+		for _ in $(seq 1 120); do
+			sleep 30
+			if rssh_read "ps aux | grep -q '[C]ACHE_BUST=$BUST'" 2>/dev/null; then continue; else PROBE_STATUS=$?; fi
+			[ "$PROBE_STATUS" = "1" ] && break
+			log "build status unavailable; preserving the running build and retrying"
+		done
+	fi
+	IMAGE_ID="$(rssh_read "sudo docker image inspect 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Id}}'")" \
+		|| fail "image build incomplete — see $LOG_DIR/build-$NEW_TAG.log on server"
+	rssh_read "cat '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log'" \
+		| python3 "$SCRIPT_DIR/verify_image_build.py" --image-id "$IMAGE_ID" --tag "realtyna-erpnext-hrms:$NEW_TAG" \
+		|| fail "image build completion/digest proof failed — refusing activation"
 	log "image built: $NEW_TAG"
 	rssh "cp '$REMOTE_DIR/.env' '$REMOTE_DIR/.env.backup-deploy-$DEPLOY_ID' && sed -i 's/^CUSTOM_TAG=.*/CUSTOM_TAG=$NEW_TAG/' '$REMOTE_DIR/.env'"
 	OPS="$OPS|tag-flip:$SNAP_TAG->$NEW_TAG"

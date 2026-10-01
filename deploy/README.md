@@ -7,9 +7,19 @@ deploy/deploy.sh                 # deploy origin/realtyna-production tip
 deploy/deploy.sh --target <sha>  # deploy an exact pushed commit
 deploy/deploy.sh --plan-only     # classify only, touches nothing
 deploy/deploy.sh --rollback      # back to previous known-good release
+deploy/deploy.sh --target <sha> --resume-build # continue a completed full build after SSH interruption
 ```
 
 Only pushed commits deploy. Tracked tree must be clean.
+
+For an interrupted full build, first check its server build log and process.
+Do not start a second build while the original is running. After it finishes,
+`--resume-build` verifies the completed export log, exact tag, and stored image
+digest before normal backup, activation, migration, health checks, and state
+recording. An incomplete build or stale tag is rejected. The image tag includes
+the UTC date, so resume this way on the same UTC day as the original build.
+Read-only build probes retry SSH failures; mutating commands are never replayed
+automatically.
 
 ## How it works
 
