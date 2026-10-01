@@ -19,6 +19,7 @@ APPROVAL_RETURNED = "Returned"
 APPROVAL_HR = "HR Review"
 
 HR_ROLES = {"HR Manager", "HR User"}
+COMPANY_DIRECTOR_ROLE = "Company Desk Administrator"
 ALLOWED_EMPLOYEE_STATES = {WEEKLY_DRAFT, CORRECTION_REQUIRED}
 
 
@@ -93,6 +94,8 @@ def _project_lead_employee(project: str) -> str | None:
 
 def is_project_lead(user: str | None = None) -> bool:
 	user = user or frappe.session.user
+	if COMPANY_DIRECTOR_ROLE in set(frappe.get_roles(user)):
+		return True
 	employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
 	if not employee:
 		return False
@@ -105,6 +108,8 @@ def is_project_lead(user: str | None = None) -> bool:
 
 def is_project_manager(user: str | None = None) -> bool:
 	user = user or frappe.session.user
+	if COMPANY_DIRECTOR_ROLE in set(frappe.get_roles(user)):
+		return True
 	employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
 	if not employee:
 		return False
@@ -519,12 +524,13 @@ def submit_weekly_timesheet(name: str):
 
 @frappe.whitelist()
 def get_project_approval_queue():
+	company_director = COMPANY_DIRECTOR_ROLE in set(frappe.get_roles())
+	filters = {"status": ("in", [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_RETURNED, APPROVAL_HR])}
+	if not company_director:
+		filters["controller"] = frappe.session.user
 	approvals = frappe.get_all(
 		"Timesheet Project Approval",
-		filters={
-			"controller": frappe.session.user,
-			"status": ("in", [APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_RETURNED, APPROVAL_HR]),
-		},
+		filters=filters,
 		fields=["name", "parent", "project", "status"],
 		order_by="creation asc",
 		limit_page_length=1000,
@@ -579,7 +585,10 @@ def get_project_approval_queue():
 
 
 def _review_project_approval_row(approval, action: str, reason: str | None = None):
-	if approval.controller != frappe.session.user:
+	if (
+		approval.controller != frappe.session.user
+		and COMPANY_DIRECTOR_ROLE not in set(frappe.get_roles())
+	):
 		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
 	if approval.status != APPROVAL_PENDING:
 		frappe.throw(_("This project review has already been completed."))
@@ -628,9 +637,13 @@ def _review_project_approval_row(approval, action: str, reason: str | None = Non
 
 @frappe.whitelist()
 def approve_project_week(project: str, week_start: str):
+	company_director = COMPANY_DIRECTOR_ROLE in set(frappe.get_roles())
+	filters = {"project": project, "status": APPROVAL_PENDING}
+	if not company_director:
+		filters["controller"] = frappe.session.user
 	pending = frappe.get_all(
 		"Timesheet Project Approval",
-		filters={"controller": frappe.session.user, "project": project, "status": APPROVAL_PENDING},
+		filters=filters,
 		fields=["name", "parent", "project", "controller", "status"],
 		limit_page_length=1000,
 	)
@@ -672,8 +685,11 @@ def approve_project_review(approval_name: str):
 
 def _lead_scoped_projects(user: str | None = None) -> tuple[set, str | None]:
 	"""Open projects led by the user's employee. Returns (project names, employee)."""
+	user = user or frappe.session.user
+	if COMPANY_DIRECTOR_ROLE in set(frappe.get_roles(user)):
+		return set(frappe.get_all("Project", filters={"status": "Open"}, pluck="name")), None
 	employee = frappe.db.get_value(
-		"Employee", {"user_id": user or frappe.session.user, "status": "Active"}, "name"
+		"Employee", {"user_id": user, "status": "Active"}, "name"
 	)
 	if not employee:
 		return set(), None
@@ -963,6 +979,67 @@ def hr_close_weekly_timesheet(name: str):
 		doc.name,
 	)
 	return _serialize_weekly(doc)
+
+
+@frappe.whitelist()
+def get_hr_weekly_timesheet_queue() -> list[dict]:
+	"""Return employee-week summaries awaiting final HR review."""
+	_require_hr()
+
+	weeks = frappe.get_list(
+		"Timesheet",
+		filters={
+			"custom_is_weekly": 1,
+			"custom_weekly_status": PENDING_HR,
+			"docstatus": 0,
+		},
+		fields=[
+			"name",
+			"employee",
+			"employee_name",
+			"custom_week_start",
+			"custom_week_end",
+			"total_hours",
+			"modified",
+		],
+		order_by="custom_week_start desc, employee_name asc",
+		limit_page_length=500,
+	)
+
+	result = []
+	for week in weeks:
+		doc = frappe.get_doc("Timesheet", week.name)
+		projects = {}
+		for log in doc.time_logs:
+			if not log.from_time:
+				continue
+			day = str(get_datetime(log.from_time).date())
+			project_name = log.project or _("No Project")
+			project = projects.setdefault(
+				project_name, {"project": project_name, "daily_hours": {}}
+			)
+			project["daily_hours"][day] = project["daily_hours"].get(day, 0) + flt(log.hours)
+
+		result.append(
+			{
+				"name": week.name,
+				"employee": week.employee,
+				"employee_name": week.employee_name,
+				"week_start": str(week.custom_week_start),
+				"week_end": str(week.custom_week_end),
+				"total_hours": round(flt(week.total_hours), 2),
+				"modified": str(week.modified),
+				"projects": [
+					{
+						"project": project["project"],
+						"daily_hours": project["daily_hours"],
+						"total_hours": round(sum(project["daily_hours"].values()), 2),
+					}
+					for project in projects.values()
+				],
+			}
+		)
+	return result
 
 
 def _trunc_minute(value):

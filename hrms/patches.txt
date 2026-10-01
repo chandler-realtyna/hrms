@@ -53,3 +53,4 @@ hrms.patches.v16_0.setup_weekly_timesheet_workflow
 hrms.patches.v16_0.add_project_manager_field
 hrms.patches.v16_0.setup_employee_invoices
 hrms.patches.v16_0.recalculate_timesheet_approval_controllers #2026-09-28
+hrms.patches.v16_0.create_company_director_access #2026-10-01

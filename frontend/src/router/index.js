@@ -62,6 +62,19 @@ const routes = [
 		path: "/dashboard/invoices",
 		name: "InvoicesDashboard",
 		component: () => import("@/views/invoice/List.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
+	},
+	{
+		path: "/admin-requests",
+		name: "AdminRequests",
+		component: () => import("@/views/AdminRequests.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
+	},
+	{
+		path: "/admin-timesheets",
+		name: "AdminTimesheets",
+		component: () => import("@/views/HrTimesheetApprovals.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
 	},
 	{
 		path: "/login",

@@ -30,6 +30,10 @@ app_include_js = [
 ]
 app_include_css = "hrms.bundle.css"
 
+page_js = {"admin-reviews": "public/js/admin_reviews.js"}
+page_css = {"admin-reviews": "public/css/admin_reviews.css"}
+boot_session = ["hrms.api.admin_desk.set_admin_reviews_home"]
+
 # website
 
 # include js, css files in header of web template

@@ -30,7 +30,7 @@ useTimerReminder() // global 2h running-timer watchdog (works from any page)
 
 // Only show the sidebar on authenticated pages
 const GUEST_ROUTES = ["Login", "InvalidEmployee"]
-const showSidebar = computed(() => !GUEST_ROUTES.includes(route.name))
+const showSidebar = computed(() => !GUEST_ROUTES.includes(route.name) && !route.meta.hideSidebar)
 
 onMounted(() => {
 	window?.frappePushNotification?.onMessage((payload) => {

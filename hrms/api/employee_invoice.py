@@ -8,7 +8,7 @@ from frappe import _
 from frappe.utils import add_months, cint, flt, getdate, now_datetime, nowdate
 
 
-HR_ROLES = {"HR Manager", "HR User", "System Manager"}
+HR_ROLES = {"HR Manager", "HR User", "System Manager", "Administrator"}
 EMPLOYEE_EDITABLE_FIELDS = {
 	"due_date",
 	"period_start",

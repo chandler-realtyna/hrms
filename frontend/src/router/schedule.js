@@ -8,12 +8,14 @@ const routes = [
 		name: "ScheduleApprovals",
 		path: "/schedule/approvals",
 		component: () => import("@/views/schedule/ScheduleApprovals.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
 	},
 	{
 		name: "ScheduleApprovalDetail",
 		path: "/schedule/approvals/:id",
 		props: true,
 		component: () => import("@/views/schedule/ScheduleApprovalDetail.vue"),
+		meta: { requiresEmployee: false, hideSidebar: true },
 	},
 ]
 
