@@ -140,8 +140,13 @@ class TestExpenseClaimant(unittest.TestCase):
 				validate_claimant(self.claim("OTHER"))
 
 	def test_employee_can_create_own_claim(self):
-		with patch.object(frappe, "session", SimpleNamespace(user="self@example.test")), patch.object(frappe, "get_roles", return_value=["Employee"]), patch.object(frappe.db, "get_value", return_value="self@example.test"):
+		with patch.object(frappe, "session", SimpleNamespace(user="self@example.test")), patch.object(frappe, "get_roles", return_value=["Employee"]), patch.object(frappe.db, "get_value", side_effect=["self@example.test", "Company"]):
 			validate_claimant(self.claim())
+
+	def test_employee_cannot_choose_another_company_on_new_claim(self):
+		with patch.object(frappe, "session", SimpleNamespace(user="self@example.test")), patch.object(frappe, "get_roles", return_value=["Employee"]), patch.object(frappe.db, "get_value", side_effect=["self@example.test", "Other Company"]):
+			with self.assertRaises(frappe.PermissionError):
+				validate_claimant(self.claim())
 
 	def test_saved_claimant_cannot_be_changed_even_by_director(self):
 		old = SimpleNamespace(employee="SELF", company="Company")

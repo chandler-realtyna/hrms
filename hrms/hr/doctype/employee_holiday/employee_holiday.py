@@ -9,6 +9,8 @@ from frappe.utils import getdate
 
 class EmployeeHoliday(Document):
 	def validate(self):
+		from hrms.utils.personal_scope import validate_personal_request
+		validate_personal_request(self)
 		self.validate_dates()
 		self.validate_duplicate_submission()
 		self.validate_status_transition()

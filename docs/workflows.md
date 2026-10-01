@@ -19,6 +19,14 @@ receipt. Use the verification checklist below for each release.
 - Legacy Employee/Company/Project/Department user filters for directors are
   archived before removal; removing the director role restores existing valid
   filters. Ordinary employee filters are not changed.
+- Native personal-record lists and direct record access are also scoped by
+  employee identity. Employee masters, schedules, holidays and complete
+  timesheets are private to the employee or authorized HR/directors. Project
+  reviewers use the existing project-scoped review APIs, not unrestricted
+  access to another employee's whole timesheet. Assigned leave/expense
+  approvers retain their existing request access; role permissions still apply.
+- Team availability intentionally shows the existing approved schedule view.
+  It does not expose draft request forms or grant editing access to colleagues.
 
 ## Time Recording
 
@@ -94,6 +102,8 @@ An ordinary employee cannot create a claim for another employee. A saved claim's
 employee cannot be reassigned, including by HR. Authorized HR can create a new
 claim on behalf of an employee in Desk. Existing document permissions still
 govern viewing, editing and approval. Approval is distinct from payment.
+An ordinary employee must use the company on their employee profile for a new
+claim; changing a saved claim's company is also blocked.
 
 Empty tax/charge sections are hidden in Desk; existing tax data stays visible.
 No accounting rows, companies, categories or cost centers are deleted.
@@ -109,6 +119,9 @@ Employee Holiday and Employee Schedule use their native Desk review forms.
 Employee changes follow the existing approval rules. Approved/pending schedule
 changes request HR approval again. Timezone values use the server's supported
 schedule choices. Dark mode must preserve readable native time inputs.
+New personal schedule/holiday requests can only start as Draft or Submitted.
+Only authorized HR can create approved/rejected requests. Saved requests cannot
+be reassigned to a different employee, including during managerial review.
 
 ## Invoices and Master Records
 
@@ -139,6 +152,9 @@ Timesheet or acts as an approval.
 
 Canonical release procedure: `deploy/README.md`. Pushed clean commits only, backed
 up schema changes, exact release/mount/asset verification and recoverable rollback.
+The versioned proxy preserves the browser's Origin header for realtime
+authentication; it never rewrites an external origin into a trusted origin.
+Verify both a legitimate connection and rejection of an unrelated origin.
 
 - Run correction-scope, workflow readiness, director scope/profile, Desk and
   history tests under the installed Frappe runtime with synthetic documents.

@@ -10,6 +10,8 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 
 class EmployeeSchedule(Document):
 	def validate(self):
+		from hrms.utils.personal_scope import validate_personal_request
+		validate_personal_request(self)
 		self.validate_schedule_days()
 		self.validate_duplicate_submission()
 		self.validate_status_transition()

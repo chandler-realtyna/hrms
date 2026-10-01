@@ -217,6 +217,12 @@ log "release ready: $RELEASES_DIR/$TARGET (exact sha, immutable)"
 # ------------------------------------------------------- 7. compose override -
 # Dual mounts (app source + served assets) for every app service. Written but
 # inert until containers are recreated in step 8.
+FRONTEND_COMMAND=""
+FRONTEND_PROXY_MOUNT=""
+if git cat-file -e "$TARGET:deploy/nginx.conf" 2>/dev/null; then
+	FRONTEND_COMMAND='    command: ["nginx", "-g", "daemon off;"]'
+	FRONTEND_PROXY_MOUNT="      - $RELEASES_DIR/$TARGET/deploy/nginx.conf:/etc/nginx/conf.d/frappe.conf:ro"
+fi
 rssh "cat > '$REMOTE_DIR/$OVERRIDE_FILE' <<'OVERRIDEEOF'
 # Managed by deploy/deploy.sh — release mounts. DO NOT EDIT MANUALLY.
 # Release: $TARGET
@@ -228,9 +234,11 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: \"1\"
   frontend:
+$FRONTEND_COMMAND
     volumes:
       - $RELEASES_DIR/$TARGET:/home/frappe/frappe-bench/apps/hrms:ro
       - $RELEASES_DIR/$TARGET/hrms/public:/home/frappe/frappe-bench/assets/hrms:ro
+$FRONTEND_PROXY_MOUNT
   websocket:
     volumes:
       - $RELEASES_DIR/$TARGET:/home/frappe/frappe-bench/apps/hrms:ro

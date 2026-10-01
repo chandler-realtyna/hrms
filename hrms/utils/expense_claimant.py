@@ -14,5 +14,8 @@ def validate_claimant(doc):
 		user = frappe.db.get_value("Employee", doc.employee, "user_id")
 		if user != frappe.session.user:
 			frappe.throw(_("You can only create expense claims for yourself."), frappe.PermissionError)
+		company = frappe.db.get_value("Employee", doc.employee, "company")
+		if company != doc.company:
+			frappe.throw(_("Use the company assigned to your employee profile."), frappe.PermissionError)
 	if old and not privileged and old.company != doc.company:
 		frappe.throw(_("The company on a saved expense claim cannot be changed."), frappe.PermissionError)

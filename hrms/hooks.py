@@ -142,11 +142,23 @@ before_app_uninstall = "hrms.setup.before_app_uninstall"
 # Permissions evaluated in scripted ways
 
 permission_query_conditions = {
+	"Employee": "hrms.utils.personal_scope.employee_query",
+	"Employee Schedule": "hrms.utils.personal_scope.schedule_query",
+	"Employee Holiday": "hrms.utils.personal_scope.holiday_query",
+	"Timesheet": "hrms.utils.personal_scope.timesheet_query",
+	"Leave Application": "hrms.utils.personal_scope.leave_query",
+	"Expense Claim": "hrms.utils.personal_scope.expense_query",
 	"Employee Invoice": "hrms.api.employee_invoice.employee_invoice_query_conditions",
 	"PWA Notification": "hrms.hr.doctype.pwa_notification.pwa_notification.pwa_notification_query_conditions",
 }
 
 has_permission = {
+	"Employee": "hrms.utils.personal_scope.has_personal_permission",
+	"Employee Schedule": "hrms.utils.personal_scope.has_personal_permission",
+	"Employee Holiday": "hrms.utils.personal_scope.has_personal_permission",
+	"Timesheet": "hrms.utils.personal_scope.has_personal_permission",
+	"Leave Application": "hrms.utils.personal_scope.has_personal_permission",
+	"Expense Claim": "hrms.utils.personal_scope.has_personal_permission",
 	"Employee Invoice": "hrms.api.employee_invoice.employee_invoice_has_permission",
 	"PWA Notification": "hrms.hr.doctype.pwa_notification.pwa_notification.pwa_notification_has_permission",
 }

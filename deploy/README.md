@@ -30,6 +30,10 @@ automatically.
 2. App code activates via **immutable release dirs** (`/srv/hrms-releases/<sha>`,
    exact SHA, read-only) bind-mounted into containers
    (`apps/hrms` + served `assets/hrms`), never by copying files into containers.
+   Releases containing `deploy/nginx.conf` also mount the versioned proxy
+   configuration read-only and start nginx directly. This preserves browser
+   origins for realtime authentication; site selection remains `frontend`.
+   Older rollback targets retain their original compose proxy mount/startup.
 3. `schema` runs `bench backup` first, then `migrate`. Everything else skips both.
    App operations use `compose.yaml` only: `pwd.yml` redefines app services
    with a stale hardcoded image and must never be mixed into deploy commands.
