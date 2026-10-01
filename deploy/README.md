@@ -21,6 +21,14 @@ the UTC date, so resume this way on the same UTC day as the original build.
 Read-only build probes retry SSH failures; mutating commands are never replayed
 automatically.
 
+After a proxy/realtime change, run `check_realtime_origin.py` through Python on
+the production host (for example through SSH stdin). It uses only a Guest
+handshake and prints no session identifiers or employee data. The site HTTPS
+origin and Origin-less browser polling with same-origin Fetch Metadata must
+connect. Unrelated, insecure, mismatched-host and missing-origin requests without
+trusted browser metadata must receive 403. This does not bypass the external access gateway or verify
+delivery of a real employee notification.
+
 ## How it works
 
 1. `plan.py` diffs deployed commit → target and classifies:
@@ -31,9 +39,16 @@ automatically.
    exact SHA, read-only) bind-mounted into containers
    (`apps/hrms` + served `assets/hrms`), never by copying files into containers.
    Releases containing `deploy/nginx.conf` also mount the versioned proxy
-   configuration read-only and start nginx directly. This preserves browser
-   origins for realtime authentication; site selection remains `frontend`.
+   configuration read-only and start nginx directly. The proxy rejects any
+   browser Origin/Host pair other than the production site's HTTPS origin
+   (or Origin-less same-origin polling verified by browser Fetch Metadata),
+   then normalizes only the accepted realtime hop to `http://frontend:8080`.
+   Frappe's session and document authorization stay intact; authentication
+   requests remain internal rather than hitting the Cloudflare Access login.
+   Site selection remains `frontend`.
    Older rollback targets retain their original compose proxy mount/startup.
+   Origin behavior follows the [Fetch Standard](https://fetch.spec.whatwg.org/#origin-header)
+   and [Fetch Metadata](https://www.w3.org/TR/fetch-metadata/).
 3. `schema` runs `bench backup` first, then `migrate`. Everything else skips both.
    App operations use `compose.yaml` only: `pwd.yml` redefines app services
    with a stale hardcoded image and must never be mixed into deploy commands.
@@ -51,6 +66,8 @@ automatically.
   (`migrate` is idempotent, pending-only) → if data recovery is needed,
   verify the backup on a scratch site first, then restore over production
   in a maintenance window. Never auto-restore production data.
+  Failed migration recovery restores the complete prior compose override and
+  image tag, including proxy mounts/startup, not just the HRMS source mounts.
 
 ## Health, locking, retention
 

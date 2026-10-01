@@ -152,8 +152,12 @@ Timesheet or acts as an approval.
 
 Canonical release procedure: `deploy/README.md`. Pushed clean commits only, backed
 up schema changes, exact release/mount/asset verification and recoverable rollback.
-The versioned proxy preserves the browser's Origin header for realtime
-authentication; it never rewrites an external origin into a trusted origin.
+The versioned proxy rejects unmatched browser Origin/Host pairs before the
+realtime upstream. Only the valid production HTTPS origin is normalized to the
+private frontend endpoint, so Frappe's session/document checks do not encounter
+the external access-login page. It never normalizes an unvalidated origin.
+Origin-less polling is accepted only with same-origin browser Fetch Metadata
+and the production host. Unrelated or unverified missing origins are rejected.
 Verify both a legitimate connection and rejection of an unrelated origin.
 
 - Run correction-scope, workflow readiness, director scope/profile, Desk and

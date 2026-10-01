@@ -217,6 +217,9 @@ log "release ready: $RELEASES_DIR/$TARGET (exact sha, immutable)"
 # ------------------------------------------------------- 7. compose override -
 # Dual mounts (app source + served assets) for every app service. Written but
 # inert until containers are recreated in step 8.
+OVERRIDE_BACKUP="$REMOTE_DIR/$OVERRIDE_FILE.backup-deploy-$DEPLOY_ID"
+rssh "if [ -f '$REMOTE_DIR/$OVERRIDE_FILE' ]; then cp '$REMOTE_DIR/$OVERRIDE_FILE' '$OVERRIDE_BACKUP'; else printf 'services: {}\n' > '$OVERRIDE_BACKUP'; fi" \
+	|| fail "cannot snapshot the previous release mounts"
 FRONTEND_COMMAND=""
 FRONTEND_PROXY_MOUNT=""
 if git cat-file -e "$TARGET:deploy/nginx.conf" 2>/dev/null; then
@@ -338,7 +341,8 @@ if [ "$NEED_MIGRATE" = "1" ]; then
 	else
 		# Automatic recovery: code back to previous release, state untouched.
 		log "MIGRATE FAILED — recovering previous release $ACTIVE_SHA"
-		rssh "sed -i 's|^\(\s*-\s*\).*apps/hrms:ro$|\1$RELEASES_DIR/$ACTIVE_SHA:/home/frappe/frappe-bench/apps/hrms:ro|; s|^\(\s*-\s*\).*assets/hrms:ro$|\1$RELEASES_DIR/$ACTIVE_SHA/hrms/public:/home/frappe/frappe-bench/assets/hrms:ro|' '$REMOTE_DIR/$OVERRIDE_FILE'"
+		rssh "cp '$OVERRIDE_BACKUP' '$REMOTE_DIR/$OVERRIDE_FILE' && sed -i 's/^CUSTOM_TAG=.*/CUSTOM_TAG=$SNAP_TAG/' '$REMOTE_DIR/.env'" \
+			|| fail "migrate failed and previous release configuration could not be restored"
 		cx up -d --force-recreate --no-deps $SERVICES >/dev/null || true
 		printf '%s\n' "$MIGRATE_OUT" | tail -n 5 >&2
 		fail "migrate failed; code rolled back to $ACTIVE_SHA (DB may be partially migrated — backup $BACKUP_ID recorded; inspect tabPatch Log)"
