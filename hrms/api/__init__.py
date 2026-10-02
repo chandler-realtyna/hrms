@@ -1081,11 +1081,17 @@ def save_timer_log(
 	from hrms.api.weekly_timesheet import save_weekly_timer_log
 	from hrms.api.timer_state import reject_legacy_save
 	reject_legacy_save(frappe.session.user)
+	from zoneinfo import ZoneInfo
+	from frappe.utils import get_system_timezone
+	start, end = get_datetime(from_time), get_datetime(to_time)
+	if start.tzinfo is None or end.tzinfo is None:
+		frappe.throw(_("This old timer has no timezone. Reload the synchronized timer; your local draft is kept."))
+	zone = ZoneInfo(get_system_timezone())
 
 	return save_weekly_timer_log(
 		employee=employee,
-		from_time=from_time,
-		to_time=to_time,
+		from_time=start.astimezone(zone).replace(tzinfo=None),
+		to_time=end.astimezone(zone).replace(tzinfo=None),
 		project=project,
 		activity_type=activity_type,
 		description=description,

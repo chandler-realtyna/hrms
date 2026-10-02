@@ -1,12 +1,19 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
-from frappe.utils.data import flt
+from frappe.utils.data import cint, flt
 
 from erpnext.projects.doctype.timesheet.timesheet import Timesheet
 
 
 class EmployeeTimesheet(Timesheet):
+	def validate_overlap(self, data):
+		if not cint(self.get("custom_is_weekly")):
+			return super().validate_overlap(data)
+		from hrms.api.weekly_timesheet import validate_weekly_overlap
+
+		validate_weekly_overlap(self, data)
+
 	def on_update(self):
 		parent_update = getattr(super(), "on_update", None)
 		if parent_update:

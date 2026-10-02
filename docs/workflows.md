@@ -74,9 +74,19 @@ the original operation ID. Failed saves never clear recorded timer intervals.
 When recorded personal entries intersect pending timer time, the timer shows
 the existing project/time ranges in the server timezone and links to the original
 personal timesheet. It does not silently trim, move or duplicate those entries.
-The established minute-precision overlap rule ignores zero-extent sub-minute
-intervals, while detecting nested positive-minute overlaps as well as adjacent
-ones. A genuine overlap still needs an explicit correction decision.
+Weekly entries tolerate at most five minutes of total overlap per entry. The
+union of intersecting ranges is measured in seconds, counting any shared minute
+only once. Exact five-minute overlaps save with a warning; five minutes plus one
+second is rejected. The employee/user scope includes other non-cancelled
+timesheets, not only the current document. Nonweekly legacy Timesheets retain
+their original framework rules. Accepted intervals and recorded hours are not
+trimmed or rewritten. Larger overlaps need an explicit correction decision.
+
+Shared timer instants use UTC with an explicit offset, then convert once to the
+system timezone for storage. The old direct save endpoint rejects timezone-less
+timestamps rather than misinterpreting the browser's local time as system time.
+It retains the account's existing shared-timer bypass restriction. Old personal
+records without timezone provenance are never shifted automatically.
 
 ## Directory Photos
 

@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -32,8 +33,9 @@ try:
 		timer.apply_action("pause", 2, "fixture_pause", {})
 	start = now.astimezone(timer.ZoneInfo(timer.get_system_timezone())).replace(tzinfo=None)
 	data = week.get_weekly_timesheet(week_start="2026-09-27")
+	left, right = (5, 10) if "--short" in sys.argv else (2, 9)
 	data["time_logs"] = [dict(project=Fixture.projects[0], activity_type="Unassigned",
-		from_time=start+timedelta(minutes=3), to_time=start+timedelta(minutes=6), hours=0.05)]
+		from_time=start+timedelta(minutes=left), to_time=start+timedelta(minutes=right))]
 	week.save_weekly_timesheet(data)
 	frappe.set_user(Fixture.users[2])
 	out = io.BytesIO()

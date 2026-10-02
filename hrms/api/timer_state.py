@@ -78,11 +78,14 @@ def _timer(doc):
 
 
 def _response(doc, saved=None):
+	from hrms.api.weekly_timesheet import weekly_overlap_warnings
 	timer = _timer(doc)
 	timer["owner"] = doc.user
 	return dict(revision=cint(doc.revision), server_now=_iso(_now()), timer=timer,
 		favorites=frappe.parse_json(doc.favorites) or [], initialized=bool(doc.initialized),
-		last_error=doc.last_error, saved_timesheets=saved or [])
+		last_error=doc.last_error, saved_timesheets=saved or [],
+		overlap_warnings=[dict(timesheet=name, **warning) for name in saved or []
+			for warning in weekly_overlap_warnings(frappe.get_doc("Timesheet", name))])
 
 
 @frappe.whitelist(methods=["POST"])

@@ -233,6 +233,7 @@ def _serialize_weekly(doc):
 		if doc.custom_weekly_closed_at
 		else None,
 		"total_hours": flt(doc.total_hours, 2),
+		"overlap_warnings": weekly_overlap_warnings(doc),
 		"note": doc.note,
 		"time_logs": [_serialize_row(row) for row in doc.time_logs],
 		"editable_projects": editable_projects,
@@ -1272,19 +1273,36 @@ def get_hr_weekly_timesheet_queue() -> list[dict]:
 	return result
 
 
-def _trunc_minute(value):
-	"""Truncate a datetime to minute precision for overlap comparison.
+def _weekly_overlap_seconds(doc, row):
+	from hrms.utils.time_overlap import overlap_seconds
+	if not row.from_time or not row.to_time:
+		return 0
+	start, end = get_datetime(row.from_time), get_datetime(row.to_time)
+	intervals = [(get_datetime(other.from_time), get_datetime(other.to_time)) for other in doc.time_logs
+		if other.idx != row.idx and other.from_time and other.to_time]
+	# Retain the framework's employee/user scope, including other active documents.
+	external = frappe.db.sql("""SELECT detail.from_time, detail.to_time
+		FROM `tabTimesheet Detail` detail INNER JOIN `tabTimesheet` ts ON ts.name = detail.parent
+		WHERE ts.name != %s AND ts.docstatus < 2
+		AND ((%s != '' AND ts.employee = %s) OR (%s != '' AND ts.user = %s))
+		AND detail.from_time < %s AND detail.to_time > %s""",
+		(doc.name or "", doc.employee or "", doc.employee or "", doc.user or "", doc.user or "", end, start))
+	intervals.extend((get_datetime(left), get_datetime(right)) for left, right in external)
+	return overlap_seconds(start, end, intervals)
 
-	Best practice: entries are displayed and entered at HH:MM precision, so
-	second-level jitter (e.g. a timer stopping at 11:00:37 against a manual
-	11:00 start) must not count as an overlap. Back-to-back entries like
-	10:00–11:00 and 11:00–12:00 always pass; genuine minute-level overlaps
-	still fail.
-	"""
-	try:
-		return value.replace(second=0, microsecond=0)
-	except Exception:
-		return value
+
+def validate_weekly_overlap(doc, row):
+	from hrms.utils.time_overlap import MAX_OVERLAP_SECONDS
+	seconds = _weekly_overlap_seconds(doc, row)
+	if seconds > MAX_OVERLAP_SECONDS:
+		frappe.throw(_("Row {0}: Time overlaps existing entries by {1} minutes. The maximum is 5 minutes.").format(
+			row.idx, flt(seconds / 60, 2)))
+
+
+def weekly_overlap_warnings(doc):
+	from hrms.utils.time_overlap import MAX_OVERLAP_SECONDS
+	return [dict(row=row.idx, minutes=flt(seconds / 60, 2)) for row in doc.time_logs
+		if 0 < (seconds := _weekly_overlap_seconds(doc, row)) <= MAX_OVERLAP_SECONDS]
 
 
 def _validate_time_rows(doc):
@@ -1295,7 +1313,6 @@ def _validate_time_rows(doc):
 	week_start_dt = datetime.combine(week_start, time.min)
 	week_end_exclusive = datetime.combine(add_days(week_end, 1), time.min)
 
-	intervals = []
 	for row in doc.time_logs:
 		if not row.project:
 			frappe.throw(_("Row {0}: Project is required.").format(row.idx))
@@ -1313,36 +1330,7 @@ def _validate_time_rows(doc):
 			frappe.throw(_("Row {0}: End time must be after start time.").format(row.idx))
 		if to_time > week_end_exclusive:
 			frappe.throw(_("Row {0}: End time must be inside the selected week.").format(row.idx))
-		start_minute, end_minute = _trunc_minute(from_time), _trunc_minute(to_time)
-		# Sub-minute records have no extent under the established minute policy.
-		if end_minute > start_minute:
-			intervals.append((start_minute, end_minute, row.idx, row.project or ""))
-
-	conflicts = []
-	ordered = sorted(intervals)
-	previous = ordered[0] if ordered else None
-	for current in ordered[1:]:
-		if current[0] < previous[1]:
-			conflicts.append((previous, current))
-		if current[1] > previous[1]:
-			previous = current
-	if conflicts:
-		parts = []
-		for (from_1, to_1, idx_1, proj_1), (from_2, to_2, idx_2, proj_2) in conflicts[:3]:
-			parts.append(
-				_("{0} {1}–{2} with {3} {4}–{5} (rows {6} and {7})").format(
-					proj_1 or _("entry"),
-					from_1.strftime("%H:%M"),
-					to_1.strftime("%H:%M"),
-					proj_2 or _("entry"),
-					from_2.strftime("%H:%M"),
-					to_2.strftime("%H:%M"),
-					idx_1,
-					idx_2,
-				)
-			)
-		extra = "" if len(conflicts) <= 3 else _(" (and {0} more)").format(len(conflicts) - 3)
-		frappe.throw(_("Time entries cannot overlap: {0}.{1}").format("; ".join(parts), extra))
+		validate_weekly_overlap(doc, row)
 
 
 def prepare_weekly_document(doc):

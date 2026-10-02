@@ -227,6 +227,7 @@ const adjustDir = ref(0), adjustMinutes = ref(15)
 const metadataConflict = ref(false)
 const serverError = ref("")
 const actionError = ref(null), saveConflicts = ref(null)
+const saveWarnings = ref([])
 const controlsDisabled = computed(() => isSaving.value || !connected.value || revision.value < 0 || metadataConflict.value)
 let clockOffset = 0, ticker, poller, metadataTimer, metadataDirty = false, active = false, loading = false
 let pending = null
@@ -261,6 +262,7 @@ function hydrate(state, preserveMetadata = false) {
 	pausedSince.value = timer.pausedSince
 	favoriteProjects.value = (state.favorites || []).map(name => availableProjects.value.find(p => p.name === name) || { name })
 	serverError.value = state.last_error || ""
+	if (state.saved_timesheets?.length) saveWarnings.value = state.overlap_warnings || []
 	error.value = actionError.value?.message || serverError.value
 	updateElapsed()
 }
@@ -439,8 +441,11 @@ async function toggleProjectTimer(project) {
 }
 async function saveProject(project) {
 	clearTimeout(metadataTimer)
+	saveWarnings.value = []
 	if (await command("save", { ...form.value, project })) {
-		toast({ title: __("Time log saved!"), icon: "check" })
+		toast({ title: saveWarnings.value.length ? __("Saved with a short overlap") : __("Time log saved!"),
+			text: saveWarnings.value.length ? __("Overlaps of up to 5 minutes were kept without changing your time.") : undefined,
+			icon: saveWarnings.value.length ? "alert-circle" : "check" })
 	} else if (actionError.value?.action === "save") {
 		try { saveConflicts.value = await timedCall("hrms.api.timer_state.get_save_conflicts", { project }) }
 		catch { /* The save error and all timer intervals remain visible. */ }

@@ -43,6 +43,7 @@ function server() {
 }
 function client(backend, offset = 0) {
   const storage = new Map()
+  const toasts = []
   class Clock extends Date { static now() { return Date.parse(backend.state.server_now) + offset } }
   const navigator = { onLine: true }
   const context = {
@@ -53,14 +54,33 @@ function client(backend, offset = 0) {
     localStorage: { getItem: k => storage.get(k), setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) },
     setInterval: () => 1, clearInterval() {}, setTimeout: () => 1, clearTimeout() {},
     window: { confirm: () => true }, document: { title: "HRMS", querySelector: () => null, visibilityState: "visible" },
-    STORAGE_KEY: "legacy", toast() {}, call: backend.call,
+    STORAGE_KEY: "legacy", toast(message) { toasts.push(message) }, call: backend.call,
   }
   vm.createContext(context)
   vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,error,actionError,saveConflicts,activate:()=>{active=true},pending:()=>pending};", context)
   context.api.hydrate(JSON.parse(JSON.stringify(backend.state))); context.api.connected.value = true
   context.api.activate()
-  return { ...context.api, storage, navigator }
+  return { ...context.api, storage, navigator, toasts }
 }
+
+test("a tolerated overlap reports saved with a warning rather than failure", async () => {
+  const backend = server(), call = backend.call
+  backend.call = async (method, args) => {
+    const result = await call(method, args)
+    if (args?.action === 'save') {
+      result.saved_timesheets = ['SYNTHETIC']
+      result.overlap_warnings = [{ row: 1, minutes: 5 }]
+    }
+    return result
+  }
+  const c = client(backend)
+  await c.toggleProjectTimer('Alpha'); await c.toggleProjectTimer('Alpha')
+  await c.saveProject('Alpha')
+  assert.equal(backend.saved, 1)
+  assert.equal(c.error.value, '')
+  assert.equal(c.toasts.at(-1).title, 'Saved with a short overlap')
+  assert.match(c.toasts.at(-1).text, /without changing your time/)
+})
 
 test("a second browser sees the same timer and shared favorites", async () => {
   const backend = server(), a = client(backend), b = client(backend, 5 * 3600000)

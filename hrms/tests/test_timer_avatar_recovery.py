@@ -2,6 +2,7 @@
 import io
 import unittest
 from datetime import timedelta
+from uuid import uuid4
 
 import frappe
 from PIL import Image
@@ -59,13 +60,16 @@ class TestTimerAvatarRecovery(unittest.TestCase):
 				from_time="2026-09-28 " + start, to_time="2026-09-28 " + end))
 		with self.assertRaises(frappe.ValidationError) as error:
 			week._validate_time_rows(doc)
-		self.assertIn("rows 1 and 3", str(error.exception))
+		self.assertIn("maximum is 5 minutes", str(error.exception))
 
 	def photo(self):
 		frappe.set_user(self.users[2])
 		out = io.BytesIO()
-		Image.new("RGB", (300, 200), "green").save(out, format="PNG")
-		file = frappe.get_doc(dict(doctype="File", file_name="qa-directory-photo.png",
+		image = Image.new("RGB", (300, 200), "green")
+		# Isolate file deduplication from persistent browser fixtures on this QA site.
+		image.putpixel((0, 0), tuple(uuid4().bytes[:3]))
+		image.save(out, format="PNG")
+		file = frappe.get_doc(dict(doctype="File", file_name="qa-directory-photo-" + uuid4().hex + ".png",
 			is_private=1, content=out.getvalue(), attached_to_doctype="Employee",
 			attached_to_name=self.employees[1], attached_to_field="image")).insert(ignore_permissions=True)
 		frappe.db.set_value("Employee", self.employees[1], "image", file.file_url)

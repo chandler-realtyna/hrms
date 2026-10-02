@@ -176,6 +176,7 @@ import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton } from
 import { FeatherIcon, Button } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
+import { MAX_OVERLAP_MS, overlapMilliseconds } from "@/utils/timeOverlap.js"
 
 const __ = inject("$translate")
 const props = defineProps({
@@ -201,7 +202,7 @@ const sortedLogs = computed(() =>
 	)
 )
 
-// ── Overlap detection (same strict rule as the server: touching endpoints OK)
+// Weekly tolerance matches the server; legacy nonweekly rules are unchanged.
 function logKey(log) {
 	return `${log.from_time || ""}|${log.to_time || ""}|${log.project || ""}`
 }
@@ -217,6 +218,15 @@ function intervalsOverlap(aFrom, aTo, bFrom, bTo) {
 const overlapPairs = computed(() => {
 	const pairs = []
 	const logs = sortedLogs.value
+	if (isWeekly.value) {
+		const blocked = logs.map((log, index) => overlapMilliseconds(log, logs.filter((_, other) => other !== index)) > MAX_OVERLAP_MS)
+		for (let i = 0; i < logs.length; i++) {
+			for (let j = i + 1; j < logs.length; j++) {
+				if ((blocked[i] || blocked[j]) && overlapMilliseconds(logs[i], [logs[j]]) > 0) pairs.push([logs[i], logs[j]])
+			}
+		}
+		return pairs
+	}
 	for (let i = 0; i + 1 < logs.length; i++) {
 		const a = logs[i]
 		const b = logs[i + 1]
@@ -352,9 +362,14 @@ function saveLog() {
 		is_billable: currentLog.value.is_billable || 0,
 	}
 
-	// Block overlaps at creation time (same rule as the server) and name the
-	// conflicting entry so the user can fix it instead of failing the save.
-	const clash = (props.timesheet.time_logs || []).find(
+	const others = (props.timesheet.time_logs || []).filter((_, index) => index !== editIndex.value)
+	const prospective = [...others, log]
+	if (isWeekly.value && prospective.some((row, index) =>
+		overlapMilliseconds(row, prospective.filter((_, other) => other !== index)) > MAX_OVERLAP_MS)) {
+		formError.value = __("Overlaps exceed 5 minutes. Review the intersecting entries.")
+		return
+	}
+	const clash = !isWeekly.value && others.find(
 		(other) =>
 			(!currentLog.value.name || other.name !== currentLog.value.name) &&
 			intervalsOverlap(log.from_time, log.to_time, other.from_time, other.to_time)

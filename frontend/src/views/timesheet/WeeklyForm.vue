@@ -31,6 +31,9 @@
 						<Button v-if="conflict" class="mt-2 ml-2" @click="downloadDraft">{{ __("Download draft") }}</Button>
 						<Button v-else class="mt-2" @click="load">{{ __("Retry") }}</Button>
 					</div>
+					<p v-if="timesheet.overlap_warnings?.length" class="border-b py-3 text-sm text-amber-600" role="status">
+						{{ __("Saved with short overlaps of up to 5 minutes. Your time was not changed.") }}
+					</p>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="bg-white border rounded-xl p-4">
 							<div class="text-xs text-gray-500">{{ __("Total hours") }}</div>
