@@ -101,21 +101,41 @@ remain locked. A whole-section return permits changes only in that project.
 Resubmission requeues corrected source/destination projects while preserving
 unaffected approvals. Closed weeks cannot be edited/cancelled directly.
 
-Team queues exclude the current user's personal entries and sort by the most
-recent modification. Personal entries remain in My Timesheets. Project review
-and whole-week state are displayed separately; activity types remain visible.
+Team queues exclude the current user's personal entries. Personal entries remain
+in My Timesheets. Desk and HRMS show one Review Status for the project section;
+whole-week status appears only in section details, My Timesheets and HR review.
+Activity types remain visible. Project approval still does not finalize a week.
 
 Current includes authorized drafts and nonfinal contractor/project/week sections.
 History contains final Closed weeks in the same team area. Both read original
 Timesheet/Detail/Approval records, not copied reporting records. Server filters
 and access scope apply before counting and fifty-section keyset pagination.
-Order is modified descending, then Timesheet name and project descending. Counts
-describe matching sections, not every contractor in the organization. Archived
-projects remain readable in the authorized historical scope.
+Current order is: actionable pending approvals (oldest week, then oldest submitted
+time); drafts; returned sections; HR-routed/other waiting sections; approved
+projects. Each non-actionable group uses newest modification first. Legacy missing
+submission times fall back to modification time. History uses newest week, then
+newest modification. Equal keys use Timesheet name and project descending.
+The server orders before pagination; browsers preserve that order. Version-two
+cursors bind the ordering to the account, view and filters. An old or incompatible
+cursor shows a notice and replaces the list with its first page, never appending
+duplicate restart rows. Counts describe matching sections, not every contractor
+in the organization. Archived projects remain readable in historical scope.
 
 Project display labels: Draft, Pending, Returned, Approved, HR.
 Week display labels: Draft, Project review, Returned, HR review, Final.
 Underlying stored workflow values are unchanged. Project Approved is not Final.
+
+The employee sidebar, home team-hours card and home team-hours selector require
+an actual active project-lead assignment, not merely a director/HR role. Desk
+review permissions are unchanged. The Desk home shows HR weekly review first
+(left), then Team Timesheets for users authorized to see both.
+
+Timer Retry reconnects and replays any unresolved operation by its original ID.
+When the server reports a failed automatic save, Retry saves completed intervals
+with a new version-checked, idempotent operation; an active recording continues.
+Failures preserve time and normal weekly locks still apply. The scheduler checks
+the latest locked state before saving; obsolete due markers are repaired instead
+of showing a false save-failure warning.
 Selection is enabled only for Pending sections in a submitted project-review
 week. Disabled choices explain whether submission, correction, existing approval,
 HR routing or a final closed week prevents approval.

@@ -357,16 +357,10 @@ const __ = inject("$translate")
 const dayjs = inject("$dayjs")
 const employee = inject("$employee")
 
-// Team hours are restricted: project leads see hours on projects they lead,
-// HR/admins see all. Everyone else gets the Me view only (the API also
-// enforces this server-side and returns [] for anyone without access).
+// The employee home shows team controls only for an actual project lead.
+// Managerial permissions and the Desk queues remain unchanged.
 const userInfo = createResource({ url: "hrms.api.get_current_user_info", auto: true })
-const canViewTeam = computed(() => {
-	const roles = userInfo.data?.roles || []
-	if (roles.some((r) => ["HR Manager", "HR User", "System Manager", "Administrator"].includes(r)))
-		return true
-	return Boolean(userInfo.data?.is_project_lead)
-})
+const canViewTeam = computed(() => Boolean(userInfo.data?.has_led_projects))
 
 // ── Viewer timezone ────────────────────────────────────────────────────────────
 const viewerTz      = getViewerTimezone()

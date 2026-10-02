@@ -174,6 +174,46 @@ class TestSharedWorkState(unittest.TestCase):
 		self.assertFalse(result["timer"]["segments"])
 		self.assertTrue(result["saved_timesheets"])
 
+	def test_retry_save_preserves_recording_and_is_idempotent(self):
+		self.act("start", {"project": self.projects[0]})
+		self.now += timedelta(minutes=5)
+		self.act("switch", {"project": self.projects[1]})
+		before = timer.get_state()
+		result = self.act("retry_save", operation="retry_save_operation")
+		self.assertTrue(result["saved_timesheets"])
+		self.assertEqual(result["timer"]["startTime"], before["timer"]["startTime"])
+		self.assertEqual(result["timer"]["form"]["project"], self.projects[1])
+		name = result["saved_timesheets"][0]
+		count = frappe.db.count("Timesheet Detail", {"parent": name})
+		timer.apply_action("retry_save", before["revision"], "retry_save_operation", {})
+		self.assertEqual(frappe.db.count("Timesheet Detail", {"parent": name}), count)
+
+	def test_scheduler_repairs_stale_deadline_without_false_error(self):
+		self.act("start", {"project": self.projects[0]})
+		self.now += timedelta(minutes=5)
+		self.act("pause")
+		frappe.db.set_value(timer.STATE, self.users[0], "paused_due", (self.now - timedelta(minutes=1)).replace(tzinfo=None))
+		# Scheduler commits, so mock only commit/rollback to retain the test savepoint.
+		with patch.object(frappe.db, "commit"), patch.object(frappe.db, "rollback"):
+			timer.save_paused_timers()
+		self.assertFalse(timer.get_state()["last_error"])
+		self.assertTrue(timer.get_state()["timer"]["segments"])
+		self.assertEqual(frappe.db.get_value(timer.STATE, self.users[0], "paused_due"), (self.now + timedelta(hours=2)).replace(tzinfo=None))
+
+	def test_actual_lead_visibility_is_not_inherited_from_director_role(self):
+		from hrms.api import get_current_user_info
+		self.assertFalse(get_current_user_info()["has_led_projects"])
+		frappe.set_user(self.users[1])
+		self.assertTrue(get_current_user_info()["has_led_projects"])
+		frappe.set_user(self.users[2])
+		user = frappe.get_doc("User", self.users[2])
+		user.append("role_profiles", {"role_profile": "Company Directors"})
+		user.save(ignore_permissions=True)
+		frappe.clear_cache(user=self.users[2])
+		info = get_current_user_info()
+		self.assertTrue(info["is_project_lead"])
+		self.assertFalse(info["has_led_projects"])
+
 	def test_personal_leave_destination_fixed_but_submitted_unchanged(self):
 		doc = frappe.get_doc(dict(doctype="Leave Application", employee=self.employees[0], leave_approver=self.users[1]))
 		route_personal_leave(doc)

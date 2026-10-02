@@ -41,7 +41,7 @@ def _admin_desk_sections() -> list[dict]:
 			{"label": _("Team Timesheets"), "route": "/desk/admin-reviews/project-timesheets"}
 		)
 	if roles & {"HR Manager", "HR User"} or is_company_director:
-		sections[0]["items"].append(
+		sections[0]["items"].insert(0,
 			{"label": _("HR Weekly Timesheet Review"), "route": "/desk/admin-reviews/hr-timesheets"}
 		)
 

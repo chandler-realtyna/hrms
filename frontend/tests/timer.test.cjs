@@ -32,6 +32,8 @@ function server() {
         if (t.form.project === payload.project) t.startTime = null
       } else if (action === "favorite") {
         state.favorites = state.favorites.includes(payload.project) ? state.favorites.filter(p => p !== payload.project) : [...state.favorites, payload.project]
+      } else if (action === "retry_save") {
+        t.segments = []; state.last_error = ''; saved++
       }
       state.revision++; state.initialized = true; receipts.add(args.operation_id)
       if (lose) { lose = false; throw new Error("Network response lost") }
@@ -54,7 +56,7 @@ function client(backend, offset = 0) {
     STORAGE_KEY: "legacy", toast() {}, call: backend.call,
   }
   vm.createContext(context)
-  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,migrateLegacy,legacyConflict,metadataConflict,persistState,activate:()=>{active=true},pending:()=>pending};", context)
+  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,activate:()=>{active=true},pending:()=>pending};", context)
   context.api.hydrate(JSON.parse(JSON.stringify(backend.state))); context.api.connected.value = true
   context.api.activate()
   return { ...context.api, storage, navigator }
@@ -128,4 +130,14 @@ test("remote changes never silently overwrite an unsaved timer description", asy
   assert.equal(b.form.value.project, "Beta")
   assert.equal(await b.command("pause"), false)
   assert.equal(JSON.parse(b.storage.get("hrms_timer_recovery:worker@qa.invalid")).metadataDraft.form.description, "Unsent draft")
+})
+test("Retry performs failed automatic saving rather than just rereading its error", async () => {
+  const backend = server(), c = client(backend)
+  await c.toggleProjectTimer("Alpha"); await c.toggleProjectTimer("Beta")
+  const start = c.startTime.value
+  backend.state.last_error = "Automatic saving failed"
+  await c.refresh(); await c.retry()
+  assert.equal(backend.saved, 1); assert.equal(backend.calls.at(-1).action, "retry_save")
+  assert.equal(c.startTime.value, start); assert.equal(c.isRunning.value, true)
+  await c.retry(); assert.equal(backend.saved, 1)
 })

@@ -295,6 +295,11 @@ def apply_action(action, expected_revision, operation_id, payload=None):
 			frappe.throw(_("The paused timer is not due for automatic saving."))
 		saved = _save_project(doc, timer, None)
 		timer = _empty_timer()
+	elif action == "retry_save":
+		# Retry completed intervals only; recording on another project continues.
+		saved = _save_project(doc, timer, None)
+		if not timer["startTime"]:
+			timer = _empty_timer()
 	else:
 		frappe.throw(_("Unknown timer action."))
 	_validate_timer(timer, now)
@@ -324,6 +329,17 @@ def save_paused_timers():
 		for row in frappe.get_all(STATE, filters={"paused_due": ("<=", _now().replace(tzinfo=None))}, fields=["user", "revision"]):
 			try:
 				frappe.set_user(row.user)
+				current = _locked_state()
+				if cint(current.revision) != cint(row.revision):
+					frappe.db.rollback()
+					continue
+				timer = _timer(current)
+				due = (_date(timer["pausedSince"]) + timedelta(hours=2)) if timer["isPaused"] and timer["pausedSince"] else None
+				if not due or due > _now():
+					# A stale scheduling marker is not a failed interval save.
+					frappe.db.set_value(STATE, current.name, "paused_due", due.replace(tzinfo=None) if due else None, update_modified=False)
+					frappe.db.commit()
+					continue
 				apply_action("autosave", row.revision, f"autosave_{row.revision}", {})
 				frappe.db.commit()
 			except Exception:

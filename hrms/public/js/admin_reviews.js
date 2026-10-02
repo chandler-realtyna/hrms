@@ -7,6 +7,10 @@ frappe.pages["admin-reviews"].on_page_show = function (wrapper) {
 
 class HRMSAdminReviews {
 	constructor(wrapper) {
+		if (!document.getElementById("hrms-admin-reviews-style")) {
+			$('<link id="hrms-admin-reviews-style" rel="stylesheet">')
+				.attr("href", "/assets/hrms/css/admin_reviews.css?v=team-queue-20261002").appendTo(document.head);
+		}
 		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Admin Reviews"), single_column: true });
 		this.content = $('<div class="admin-reviews-page"></div>').appendTo(this.page.main);
 		this.page.set_secondary_action(__("Admin Reviews"), () => frappe.set_route("admin-reviews"), "home");
@@ -119,14 +123,14 @@ class HRMSAdminReviews {
 		}, true);
 		if (approve) approve.prop("disabled", true);
 		const counter = $('<div class="admin-reviews-count text-muted"></div>').appendTo(this.content);
-		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Status", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Review", "Week status", "Updated", "Action"]);
+		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Status", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Review Status", "Updated", "Action"]);
 		const render = () => {
 			selected.clear(); if (approve) approve.prop("disabled", true); body.empty();
 			const query = search.val().toLowerCase();
 			const visible = rows.filter(row => (hr || !row.is_own_section)
 				&& (!status.val() || row.project_status === status.val())
-				&& (paging || [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(query)))
-				.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)));
+				&& (paging || [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(query)));
+			if (!paging) visible.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)));
 			counter.text(paging ? __("{0} of {1} sections", [visible.length, total]) : __("{0} sections", [visible.length]));
 		visible.forEach(row => {
 			const tr = $("<tr></tr>").appendTo(body);
@@ -140,7 +144,7 @@ class HRMSAdminReviews {
 			const cells = hr ? [row.employee_name, this.week(row.week_start, row.week_end), this.hours(row.total_hours)] : [row.employee_name, row.project_label || row.project, this.week(row.week_start, row.week_end), this.hours(row.hours), (row.activity_types || []).join(", ")];
 			cells.forEach(value => $("<td></td>").text(value).appendTo(tr));
 			if (!hr) this.statusCell($("<td></td>").appendTo(tr), row.project_status, row.routed_to_hr_reason);
-			this.statusCell($("<td></td>").appendTo(tr), hr ? row.ready_for_hr_close ? "Pending HR Review" : "Pending Project Approval" : row.hr_status);
+			if (hr) this.statusCell($("<td></td>").appendTo(tr), row.ready_for_hr_close ? "Pending HR Review" : "Pending Project Approval");
 			if (!hr) $("<td></td>").text(row.modified ? moment(row.modified).format("D MMM HH:mm") : "").appendTo(tr);
 			this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail(row, hr));
 		});
@@ -160,7 +164,15 @@ class HRMSAdminReviews {
 					rows = reset ? page.rows : [...rows, ...page.rows];
 					total = page.total; cursor = page.next_cursor;
 					more.toggle(Boolean(cursor)); render();
-				} catch (error) { frappe.msgprint(error.message || __("Could not load this page.")); }
+				} catch (error) {
+					if (version !== request) return;
+					if (!reset && (error.exc_type || error.responseJSON?.exc_type) === "TeamCursorResetRequired") {
+						cursor = null;
+						frappe.show_alert({ message: __("List updated. Showing the first page."), indicator: "blue" });
+						return reload(true);
+					}
+					frappe.msgprint(error.message || __("Could not load this page."));
+				}
 			};
 			search.on("input", () => { clearTimeout(debounce); debounce = setTimeout(reload, 300); });
 			status.on("change", () => reload());
@@ -197,6 +209,14 @@ class HRMSAdminReviews {
 		const canReturn = hr ? data.docstatus === 0 && ["Draft", "Pending HR Review"].includes(data.custom_weekly_status) : data.can_return_entries;
 		const dialog = new frappe.ui.Dialog({ title: `${data.employee_name} / ${hr ? data.custom_week_start : data.week_start}`, size: "extra-large", fields: [{ fieldname: "entries", fieldtype: "HTML" }] });
 		const root = $('<div class="admin-reviews-detail"></div>').appendTo(dialog.fields_dict.entries.$wrapper);
+		if (!hr) {
+			const summary = $('<div class="admin-reviews-toolbar"></div>').appendTo(root);
+			for (const [label, value] of [["Review Status", data.project_status], ["Week Status", data.hr_status]]) {
+				const item = $('<div></div>').appendTo(summary);
+				$('<span></span>').text(__(label) + ": ").appendTo(item);
+				this.statusCell(item, value);
+			}
+		}
 		const selected = new Set();
 		const body = this.table(root, ["", "Project", "Date", "Start", "End", "Hours", "Activity Type", "Description", "Correction Reason", "Action"]);
 		logs.forEach(log => {
@@ -289,7 +309,7 @@ class HRMSAdminReviews {
 		const chart = $('<div class="admin-history-breakdown"></div>').appendTo(output);
 		data.rows.forEach(row => {
 			const tr = $('<tr></tr>').appendTo(body);
-			this.button($('<td></td>').appendTo(tr), row.label, () => this.historyDetail(data, row));
+			this.button($('<td></td>').appendTo(tr), row.label, () => this.historyDetail(data, row)).removeClass("btn-default").addClass("admin-history-group");
 			[row.entries, row.hours, ...states.map(state => row.status_hours[state] || 0)].forEach((value, index) => $('<td class="admin-reviews-number"></td>').toggleClass("text-muted", !value).text(index === 0 ? value : value ? this.hours(value) : "-").appendTo(tr));
 		});
 		const top = [...data.rows].sort((a, b) => b.hours - a.hours).slice(0, 10);

@@ -117,7 +117,7 @@
 					</div>
 					<div v-if="error || !connected" class="mb-3 flex items-center justify-between gap-2 text-sm text-amber-600" role="status">
 						<span>{{ error || __("Connecting…") }}</span>
-						<button type="button" class="shrink-0 underline" :disabled="isSaving" @click="refresh">{{ __("Retry") }}</button>
+						<button type="button" class="shrink-0 underline" :disabled="isSaving" @click="retry">{{ __("Retry") }}</button>
 					</div>
 					<div v-if="legacyConflict" class="mb-3 flex items-center justify-between gap-2 text-sm text-amber-600">
 						<span>{{ __("A local timer was kept separately; the shared timer was not replaced.") }}</span>
@@ -215,6 +215,7 @@ const favoriteProjects = ref([]), availableProjects = ref([]), pickedProject = r
 const connected = ref(false), error = ref(""), initialized = ref(false), revision = ref(-1), browserFavorites = ref(false)
 const adjustDir = ref(0), adjustMinutes = ref(15)
 const metadataConflict = ref(false)
+const serverError = ref("")
 const controlsDisabled = computed(() => isSaving.value || !connected.value || revision.value < 0 || metadataConflict.value)
 let clockOffset = 0, ticker, poller, metadataTimer, metadataDirty = false, active = false, loading = false
 let pending = null
@@ -248,7 +249,8 @@ function hydrate(state, preserveMetadata = false) {
 	isPaused.value = Boolean(timer.isPaused)
 	pausedSince.value = timer.pausedSince
 	favoriteProjects.value = (state.favorites || []).map(name => availableProjects.value.find(p => p.name === name) || { name })
-	error.value = state.last_error || ""
+	serverError.value = state.last_error || ""
+	error.value = serverError.value
 	updateElapsed()
 }
 
@@ -314,6 +316,12 @@ async function command(action, payload = {}) {
 	} finally {
 		isSaving.value = false
 		if (!connected.value && navigator.onLine) void refresh()
+	}
+}
+async function retry() {
+	await refresh()
+	if (connected.value && serverError.value && !controlsDisabled.value) {
+		await command("retry_save")
 	}
 }
 const legacyConflict = ref(false)

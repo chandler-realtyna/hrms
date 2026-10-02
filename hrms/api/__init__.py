@@ -55,6 +55,8 @@ def get_current_user_info() -> dict:
 	user["roles"] = frappe.get_roles(current_user)
 	user["is_project_manager"] = is_project_manager(current_user)
 	user["is_project_lead"] = is_project_lead(current_user)
+	employee = frappe.db.get_value("Employee", {"user_id": current_user, "status": "Active"}, "name")
+	user["has_led_projects"] = bool(employee and frappe.db.exists("Project", {"custom_project_lead": employee, "status": "Open"}))
 
 	return user
 

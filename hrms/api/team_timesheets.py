@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 
 import frappe
@@ -8,6 +9,39 @@ from frappe import _
 from frappe.utils import getdate
 
 from hrms.api.weekly_timesheet import _is_hr
+
+
+class TeamCursorResetRequired(frappe.ValidationError):
+	pass
+
+
+def _cursor_context(view, filters):
+	effective = {key: filters[key] for key in ("employee", "project", "status", "search", "from_date", "to_date") if filters.get(key)}
+	return hashlib.sha256(json.dumps([frappe.session.user, view, effective], sort_keys=True).encode()).hexdigest()
+
+
+def _page_condition(cursor, view, context, ordering, args):
+	if not cursor:
+		return ""
+	try:
+		decoded = json.loads(base64.urlsafe_b64decode(str(cursor)).decode())
+		if (not isinstance(decoded, dict) or decoded.get("v") != 2
+			or decoded.get("view") != view or decoded.get("context") != context):
+			raise ValueError()
+		keys = decoded["keys"]
+		if not isinstance(keys, list) or len(keys) != len(ordering) or any(not isinstance(v, str) for v in keys):
+			raise ValueError()
+	except (ValueError, TypeError, UnicodeError, KeyError):
+		frappe.throw(_("This list order changed. Reload from the first page."), TeamCursorResetRequired)
+	# Mixed ascending and descending keys need a lexicographic keyset predicate.
+	terms, equal = [], []
+	for index, (field, direction) in enumerate(ordering):
+		key = f"page_{index}"
+		args[key] = keys[index]
+		operator = ">" if direction == "ASC" else "<"
+		terms.append("(" + " AND ".join(equal + [f"{field} {operator} %({key})s"]) + ")")
+		equal.append(f"{field} = %({key})s")
+	return " WHERE " + " OR ".join(terms)
 
 
 def get_sections(view="current", cursor=None, filters=None):
@@ -48,16 +82,7 @@ def get_sections(view="current", cursor=None, filters=None):
 	group = " GROUP BY t.name, d.project"
 	# Scope and filters are identical for count and page; no pre-scope row cap.
 	total = frappe.db.sql("SELECT COUNT(*) FROM (SELECT t.name " + base + group + ") scoped", args)[0][0]
-	if cursor:
-		try:
-			decoded = json.loads(base64.urlsafe_b64decode(str(cursor)).decode())
-			if not isinstance(decoded, list) or len(decoded) != 3 or any(not isinstance(v, str) for v in decoded):
-				raise ValueError()
-		except (ValueError, TypeError, UnicodeError):
-			frappe.throw(_("Invalid page cursor."))
-		args.update(modified=decoded[0], name=decoded[1], project=decoded[2])
-		base += " AND (t.modified, t.name, d.project) < (%(modified)s, %(name)s, %(project)s)"
-	rows = frappe.db.sql("""SELECT t.name AS timesheet, t.employee, t.employee_name,
+	section_query = """SELECT t.name AS timesheet, t.employee, t.employee_name,
 		t.custom_week_start AS week_start, t.custom_week_end AS week_end,
 		t.custom_weekly_status AS hr_status, t.modified, t.docstatus,
 		t.custom_weekly_submitted_at AS submitted_at, d.project,
@@ -65,9 +90,32 @@ def get_sections(view="current", cursor=None, filters=None):
 		a.name AS approval_name, COALESCE(a.status, 'Draft') AS project_status,
 		a.return_reason, a.reviewed_by, a.reviewed_at,
 		SUM(d.hours) AS hours, COUNT(d.name) AS log_count
-		""" + base + group + " ORDER BY t.modified DESC, t.name DESC, d.project DESC LIMIT 51", args, as_dict=True)
+		""" + base + group
+	actionable = "docstatus=0 AND hr_status='Pending Project Approval' AND project_status='Pending'"
+	if view == "current":
+		sort_fields = f"""
+			CASE WHEN {actionable} THEN 0 WHEN project_status='Draft' THEN 1
+				WHEN project_status='Returned' THEN 2 WHEN project_status='Approved' THEN 4 ELSE 3 END AS _priority,
+			CASE WHEN {actionable} THEN COALESCE(week_start, '9999-12-31') ELSE '1000-01-01' END AS _sort_week,
+			CASE WHEN {actionable} THEN COALESCE(submitted_at, modified) ELSE '1000-01-01 00:00:00' END AS _sort_submitted,
+			CASE WHEN {actionable} THEN '1000-01-01 00:00:00' ELSE modified END AS _sort_modified
+		"""
+		ordering = [("_priority", "ASC"), ("_sort_week", "ASC"), ("_sort_submitted", "ASC"), ("_sort_modified", "DESC")]
+	else:
+		sort_fields = "COALESCE(week_start, '1000-01-01') AS _sort_week, modified AS _sort_modified"
+		ordering = [("_sort_week", "DESC"), ("_sort_modified", "DESC")]
+	ordering += [("timesheet", "DESC"), ("project", "DESC")]
+	context = _cursor_context(view, filters)
+	condition = _page_condition(cursor, view, context, ordering, args)
+	query = f"SELECT * FROM (SELECT sections.*, {sort_fields} FROM ({section_query}) sections) ranked"
+	query += condition + " ORDER BY " + ", ".join(f"{field} {direction}" for field, direction in ordering) + " LIMIT 51"
+	rows = frappe.db.sql(query, args, as_dict=True)
 	has_more = len(rows) > 50
 	rows = rows[:50]
+	next_cursor = None
+	if has_more:
+		next_cursor = base64.urlsafe_b64encode(json.dumps(dict(v=2, view=view, context=context,
+			keys=[str(rows[-1][field]) for field, _direction in ordering])).encode()).decode()
 	for row in rows:
 		row.activity_types = sorted(set(frappe.db.get_all("Timesheet Detail", filters={"parent": row.timesheet, "project": row.project}, pluck="activity_type")) - {None, ""})
 		row.is_own_section = False
@@ -84,5 +132,7 @@ def get_sections(view="current", cursor=None, filters=None):
 		for field in ("modified", "week_start", "week_end", "submitted_at", "reviewed_at"):
 			row[field] = str(row[field]) if row[field] else None
 		row.pop("project_lead", None)
-	next_cursor = base64.urlsafe_b64encode(json.dumps([rows[-1].modified, rows[-1].timesheet, rows[-1].project]).encode()).decode() if has_more else None
+		for field, _direction in ordering:
+			if field.startswith("_"):
+				row.pop(field, None)
 	return dict(rows=rows, total=total, next_cursor=next_cursor)

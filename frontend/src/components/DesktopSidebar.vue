@@ -135,7 +135,7 @@ const isHR = computed(() => {
 })
 
 const isProjectManager = computed(() => Boolean(user.data?.is_project_manager))
-const isProjectLead = computed(() => Boolean(user.data?.is_project_lead))
+const isProjectLead = computed(() => Boolean(user.data?.has_led_projects))
 
 const navItems = computed(() => {
 	const raw = [

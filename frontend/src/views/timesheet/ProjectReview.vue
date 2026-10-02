@@ -86,10 +86,9 @@
 									<div class="text-xs text-gray-500 mt-1">{{ (row.activity_types || []).join(", ") }}</div>
 								</div>
 								<div class="flex flex-col items-end gap-1.5 shrink-0">
-									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
+									<span :aria-label="__('Review Status')" class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
 										{{ projectStatusLabel(row) }}
 									</span>
-									<span v-if="row.hr_status !== row.project_status" class="text-[11px] text-gray-400">{{ __("Week") }}: {{ projectStatusLabel({ project_status: row.hr_status }) }}</span>
 								</div>
 							</div>
 							<p v-if="row.routed_to_hr_reason === 'no_lead'" class="mt-2 text-[11px] text-amber-600">
@@ -131,10 +130,10 @@
 						</div>
 						<div class="mt-2 flex flex-wrap gap-1.5">
 							<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(detail.project_status)">
-								{{ projectStatusLabel(detail) }}
+								{{ __("Review Status") }}: {{ projectStatusLabel(detail) }}
 							</span>
 							<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-								{{ __("HR") }}: {{ __(detail.hr_status) }}
+								{{ __("Week Status") }}: {{ projectStatusLabel({ project_status: detail.hr_status }) }}
 							</span>
 						</div>
 						<p v-if="detail.return_reason" class="mt-2 text-xs text-red-600">
@@ -236,10 +235,9 @@ function updatedAgo(value) {
 	return serverTimeAgo(dayjs, value)
 }
 
-// Recent changes first; personal entries belong in My Timesheets.
+// Preserve the server's queue priority across pages; personal entries stay separate.
 const orderedSections = computed(() =>
 	(sections.value || []).filter(row => !row.is_own_section)
-		.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)))
 )
 
 const actionableSections = computed(() => orderedSections.value.filter((row) => row.actionable))
@@ -283,7 +281,7 @@ function projectStatusLabel(row) {
 	if (row.project_status === "HR Review") return __("HR")
 	if (row.project_status === "Pending HR Review") return __("HR review")
 	if (row.project_status === "Closed") return __("Final")
-	if (row.project_status === "Pending Project Approval") return __("Awaiting project review")
+	if (row.project_status === "Pending Project Approval") return __("Project review")
 	if (row.project_status === "Returned" || row.project_status === "Correction Required") return __("Returned")
 	return __(row.project_status)
 }
@@ -298,7 +296,15 @@ async function load(more = false) {
 		if (version !== requestVersion) return
 		sections.value = more === true ? [...sections.value, ...data.rows] : data.rows
 		total.value = data.total; cursor.value = data.next_cursor; loadError.value = ""
-	} catch (err) { loadError.value = err?.messages?.[0] || err?.message }
+	} catch (err) {
+		if (version !== requestVersion) return
+		if (more === true && err?.exc_type === "TeamCursorResetRequired") {
+			cursor.value = null
+			toast({ title: __("List updated. Showing the first page."), icon: "refresh-cw" })
+			return await load()
+		}
+		loadError.value = err?.messages?.[0] || err?.message || __("Could not load this page.")
+	}
 	finally { if (version === requestVersion) loading.value = false }
 }
 function loadMore() { return load(true) }

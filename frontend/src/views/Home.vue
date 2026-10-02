@@ -96,7 +96,7 @@ const isHR = computed(() => {
 	)
 })
 
-const isProjectLead = computed(() => Boolean(userInfo.data?.is_project_lead))
+const isProjectLead = computed(() => Boolean(userInfo.data?.has_led_projects))
 
 // Single review entry: leads with pending team hours get one card that opens
 // the per-section review flow (ProjectTimesheets). Hidden otherwise.
@@ -115,7 +115,7 @@ const showReviewCard = computed(
 )
 
 watch(
-	() => userInfo.data?.is_project_lead,
+	() => userInfo.data?.has_led_projects,
 	(isLead) => {
 		if (isLead) reviewQueue.fetch()
 	},
