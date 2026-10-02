@@ -18,6 +18,11 @@ try:
 		frappe.db.commit()
 	finally:
 		fixture.clock.stop()
+	# Browser HR acceptance needs organization-wide review, not an own-employee filter.
+	frappe.set_user("Administrator")
+	frappe.db.delete("User Permission", {"user": fixture.users[2], "allow": ("in", ["Employee", "Company"])})
+	frappe.clear_cache(user=fixture.users[2])
+	frappe.db.commit()
 	from hrms.api import timer_state as timer
 	frappe.set_user(fixture.users[1])
 	now = timer._now()

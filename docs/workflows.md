@@ -125,6 +125,21 @@ Project display labels: Draft, Pending, Returned, Approved, HR.
 Week display labels: Draft, Project review, Returned, HR review, Final.
 Underlying stored workflow values are unchanged. Project Approved is not Final.
 
+Desk HR review uses a `Final approval` column: `Awaiting project review` means
+project/team blockers remain; `Ready to finalize` means HR can make the final
+decision, not that it has already approved the week. Review details distinguish
+project approval from whole-week approval. `Finalize week` asks for explicit
+confirmation that the entire week will be locked, moved to history and the
+contractor notified. Success is displayed only after the server accepts closure.
+
+Desk whole-week details, Time History headings/filter/detail and CSV use:
+`Not submitted`, `Awaiting project review`, `Awaiting HR approval`,
+`Needs correction`, `Finalized`, `Legacy submitted`. The report explicitly
+groups **hours by whole-week status**, not by a project's approval. Only Closed
+contributes to Finalized hours; Submitted denotes records submitted outside the
+weekly HR workflow and is not reclassified as Closed. These are display-only
+changes; aggregation, access, stored statuses and approval gates are unchanged.
+
 The employee sidebar, home team-hours card and home team-hours selector require
 an actual active project-lead assignment, not merely a director/HR role. Desk
 review permissions are unchanged. The Desk home shows HR weekly review first

@@ -110,9 +110,12 @@ class HRMSAdminReviews {
 				this.button(toolbar, label, () => { this.teamView = view; return this.show(); }, (this.teamView || "current") === view);
 		}
 		const search = $('<input type="search" class="form-control admin-reviews-search">').attr({ placeholder: __("Search employee, project or activity"), "aria-label": __("Search entries") }).appendTo(toolbar);
-		const status = $('<select class="form-control admin-reviews-filter"></select>').attr("aria-label", __("Status")).appendTo(toolbar);
+		const status = $('<select class="form-control admin-reviews-filter"></select>').attr("aria-label", __(hr ? "Final approval" : "Status")).appendTo(toolbar);
 		$('<option value=""></option>').text(__("All statuses")).appendTo(status);
-		(paging ? ["Draft", "Pending", "Returned", "Approved", "HR Review"] : [...new Set(rows.map(row => row.project_status).filter(Boolean))]).forEach(value => $('<option></option>').val(value).text(this.statusLabel(value)).appendTo(status));
+		if (hr) {
+			for (const [value, label] of [["waiting", "Awaiting project review"], ["ready", "Ready to finalize"]])
+				$('<option></option>').val(value).text(__(label)).appendTo(status);
+		} else (paging ? ["Draft", "Pending", "Returned", "Approved", "HR Review"] : [...new Set(rows.map(row => row.project_status).filter(Boolean))]).forEach(value => $('<option></option>').val(value).text(this.statusLabel(value)).appendTo(status));
 		let approve;
 		if (!hr && this.teamView !== "history") approve = this.button(toolbar, "Approve selected sections", async () => {
 			if (!selected.size) return frappe.msgprint(__("Select pending sections first."));
@@ -123,12 +126,12 @@ class HRMSAdminReviews {
 		}, true);
 		if (approve) approve.prop("disabled", true);
 		const counter = $('<div class="admin-reviews-count text-muted"></div>').appendTo(this.content);
-		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Status", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Review Status", "Updated", "Action"]);
+		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Final approval", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Review Status", "Updated", "Action"]);
 		const render = () => {
 			selected.clear(); if (approve) approve.prop("disabled", true); body.empty();
 			const query = search.val().toLowerCase();
 			const visible = rows.filter(row => (hr || !row.is_own_section)
-				&& (!status.val() || row.project_status === status.val())
+				&& (!status.val() || (hr ? (row.ready_for_hr_close ? "ready" : "waiting") === status.val() : row.project_status === status.val()))
 				&& (paging || [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(query)));
 			if (!paging) visible.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)));
 			counter.text(paging ? __("{0} of {1} sections", [visible.length, total]) : __("{0} sections", [visible.length]));
@@ -144,7 +147,7 @@ class HRMSAdminReviews {
 			const cells = hr ? [row.employee_name, this.week(row.week_start, row.week_end), this.hours(row.total_hours)] : [row.employee_name, row.project_label || row.project, this.week(row.week_start, row.week_end), this.hours(row.hours), (row.activity_types || []).join(", ")];
 			cells.forEach(value => $("<td></td>").text(value).appendTo(tr));
 			if (!hr) this.statusCell($("<td></td>").appendTo(tr), row.project_status, row.routed_to_hr_reason);
-			if (hr) this.statusCell($("<td></td>").appendTo(tr), row.ready_for_hr_close ? "Pending HR Review" : "Pending Project Approval");
+			if (hr) $('<span class="indicator-pill blue"></span>').text(__(row.ready_for_hr_close ? "Ready to finalize" : "Awaiting project review")).appendTo($("<td></td>").appendTo(tr));
 			if (!hr) $("<td></td>").text(row.modified ? moment(row.modified).format("D MMM HH:mm") : "").appendTo(tr);
 			this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail(row, hr));
 		});
@@ -214,9 +217,20 @@ class HRMSAdminReviews {
 			for (const [label, value] of [["Review Status", data.project_status], ["Week Status", data.hr_status]]) {
 				const item = $('<div></div>').appendTo(summary);
 				$('<span></span>').text(__(label) + ": ").appendTo(item);
-				this.statusCell(item, value);
+				this.statusCell(item, value, null, label === "Week Status");
 			}
 		}
+		if (hr) {
+			const summary = $('<div class="admin-reviews-toolbar"></div>').appendTo(root);
+			$('<strong></strong>').text(__("Week Status") + ": " + this.weekStatusLabel(data.custom_weekly_status)).appendTo(summary);
+		}
+		const approvalNote = data.custom_weekly_status === "Closed" || data.hr_status === "Closed"
+			? "Finalized by HR. This week is locked."
+			: hr ? data.ready_for_hr_close
+				? "Project reviews complete. HR approval is still required."
+				: "Project and team reviews must be complete before HR can finalize this week."
+			: "Project approval does not finalize the week. Final approval is by HR.";
+		$('<p class="text-muted small"></p>').text(__(approvalNote)).appendTo(root);
 		const selected = new Set();
 		const body = this.table(root, ["", "Project", "Date", "Start", "End", "Hours", "Activity Type", "Description", "Correction Reason", "Action"]);
 		logs.forEach(log => {
@@ -236,8 +250,9 @@ class HRMSAdminReviews {
 				await this.call("weekly_timesheet.hr_return_weekly_timesheet", { name, reason });
 				dialog.hide(); await this.show();
 			}));
-			if (data.ready_for_hr_close) this.button(toolbar, "Approve and close week", () => frappe.confirm(__("Approve and close this employee week?"), async () => {
+			if (data.ready_for_hr_close) this.button(toolbar, "Finalize week", () => frappe.confirm(__("Give final HR approval? This locks the entire week and moves it to history. The contractor will be notified."), async () => {
 				await this.call("weekly_timesheet.hr_close_weekly_timesheet", { name });
+				frappe.show_alert({ message: __("Week finalized. Locked and moved to history."), indicator: "green" });
 				dialog.hide(); await this.show();
 			}), true);
 		} else if (!hr && data.actionable) {
@@ -264,6 +279,9 @@ class HRMSAdminReviews {
 			{ fieldname: "group_by", fieldtype: "Select", label: __("Group By"), options: ["Project", "Employee", "Activity Type", "Month"], default: "Project" },
 		] });
 		fields.make();
+		fields.fields_dict.status.$input.find("option").each((index, option) => {
+			if (option.value) $(option).text(this.weekStatusLabel(option.value));
+		});
 		const toolbar = $('<div class="admin-reviews-toolbar"></div>').appendTo(this.content);
 		const output = $('<div></div>').appendTo(this.content);
 		let data;
@@ -291,7 +309,7 @@ class HRMSAdminReviews {
 			if (!data) return;
 			const columns = ["Employee", "Project", "Activity Type", "Date", "Hours", "Week Status", "Timesheet"].map(label => __(label));
 			const escape = value => `"${String(value ?? "").replace(/^(\s*[=+@\-]|[\t\r\n])/, "'$&").replace(/"/g, '""')}"`;
-			const csv = [columns, ...data.entries.map(row => [row.employee_name, row.project_label, row.activity_type, String(row.from_time).slice(0, 10), row.hours, row.status, row.timesheet])].map(row => row.map(escape).join(",")).join("\r\n");
+			const csv = [columns, ...data.entries.map(row => [row.employee_name, row.project_label, row.activity_type, String(row.from_time).slice(0, 10), row.hours, this.weekStatusLabel(row.status), row.timesheet])].map(row => row.map(escape).join(",")).join("\r\n");
 			const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
 			const anchor = document.createElement("a"); anchor.href = url; anchor.download = `time-history-${data.from_date}-${data.to_date}.csv`;
 			anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -300,12 +318,15 @@ class HRMSAdminReviews {
 	}
 	historyResults(output, data) {
 		const metrics = $('<dl class="admin-history-metrics"></dl>').appendTo(output);
-		for (const [label, value] of [["Recorded hours", this.hours(data.totals.hours)], ["Closed hours", this.hours(data.totals.status_hours.Closed)], ["Time entries", data.totals.entries], ["Employees", data.totals.employees], ["Projects", data.totals.projects]]) {
+		for (const [label, value] of [["Recorded hours", this.hours(data.totals.hours)], ["Finalized hours", this.hours(data.totals.status_hours.Closed)], ["Time entries", data.totals.entries], ["Employees", data.totals.employees], ["Projects", data.totals.projects]]) {
 			const metric = $('<div></div>').appendTo(metrics); $('<dt></dt>').text(__(label)).appendTo(metric); $('<dd></dd>').text(value).appendTo(metric);
 		}
 		if (!data.rows.length) { output.append($('<div class="admin-reviews-empty"></div>').text(__("No time entries in this period"))); return; }
 		const states = ["Draft", "Pending Project Approval", "Pending HR Review", "Correction Required", "Closed", "Submitted"];
-		const body = this.table(output, [__(data.group_by === "activity_type" ? "Activity Type" : data.group_by === "month" ? "Month" : data.group_by === "employee" ? "Employee" : "Project"), "Entries", "Recorded hours", ...states.map(status => this.statusLabel(status))]);
+		$('<h3 class="admin-reviews-heading"></h3>').text(__("Hours by week status")).appendTo(output);
+		$('<p class="text-muted small"></p>').text(__("These are whole-week stages, not individual project approvals. Only Finalized means final HR approval.")).appendTo(output);
+		if (data.totals.status_hours.Submitted) $('<p class="text-muted small"></p>').text(__("Legacy submitted: submitted outside the weekly HR approval workflow.")).appendTo(output);
+		const body = this.table(output, [__(data.group_by === "activity_type" ? "Activity Type" : data.group_by === "month" ? "Month" : data.group_by === "employee" ? "Employee" : "Project"), "Entries", "Recorded hours", ...states.map(status => this.weekStatusLabel(status))]);
 		const chart = $('<div class="admin-history-breakdown"></div>').appendTo(output);
 		data.rows.forEach(row => {
 			const tr = $('<tr></tr>').appendTo(body);
@@ -331,7 +352,7 @@ class HRMSAdminReviews {
 			entries.slice(0, limit).forEach(row => {
 				const tr = $('<tr></tr>').appendTo(body);
 				[row.employee_name, row.project_label, row.activity_type, this.date(String(row.from_time).slice(0, 10)), this.hours(row.hours)].forEach(value => $('<td></td>').text(value).appendTo(tr));
-				this.statusCell($('<td></td>').appendTo(tr), row.status);
+				this.statusCell($('<td></td>').appendTo(tr), row.status, null, true);
 				$('<a></a>').attr('href', `/desk/timesheet/${encodeURIComponent(row.timesheet)}`).text(row.timesheet).appendTo($('<td></td>').appendTo(tr));
 			});
 			more.toggle(limit < entries.length);
@@ -354,9 +375,12 @@ class HRMSAdminReviews {
 	statusLabel(status) {
 		return __({ Draft: "Draft", Pending: "Pending", Returned: "Returned", Approved: "Approved", "HR Review": "HR", "Pending HR Review": "HR review", "Pending Project Approval": "Project review", "Correction Required": "Returned", Closed: "Final", Submitted: "Submitted" }[status] || status || "");
 	}
-	statusCell(cell, status, reason) {
+	weekStatusLabel(status) {
+		return __({ Draft: "Not submitted", "Pending Project Approval": "Awaiting project review", "Pending HR Review": "Awaiting HR approval", "Correction Required": "Needs correction", Closed: "Finalized", Submitted: "Legacy submitted" }[status] || status || "");
+	}
+	statusCell(cell, status, reason, week = false) {
 		const color = ["Returned", "Correction Required"].includes(status) ? "orange" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";
-		$('<span class="indicator-pill"></span>').addClass(color).text(this.statusLabel(status)).appendTo(cell);
+		$('<span class="indicator-pill"></span>').addClass(color).text(week ? this.weekStatusLabel(status) : this.statusLabel(status)).appendTo(cell);
 		if (reason) $('<div class="text-muted small"></div>').text(__(reason === "self" ? "Own entries: final review by HR" : "No project lead: final review by HR")).appendTo(cell);
 	}
 	date(value) { return value ? moment(value).format("D MMM YYYY") : ""; }
