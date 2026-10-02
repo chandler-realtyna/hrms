@@ -89,7 +89,28 @@ records are not automatically closed or rewritten.
 
 ## Production activation
 
-Not complete. The canonical attempt for
+Published successfully through the canonical schema path:
+
+- Active application: `12aae44fd52e4cf73276617c56a3f93bc08ad039`.
+- Previous known-good application: `a80677b83f18f2626fb7b502fb7d9023c6a6c06c`.
+- Release ID: `deploy-20261002-114148`; state recorded at 11:44:04 UTC.
+- Migration and health: passed; no image rebuild ran.
+- Retry backup: `20261002_064225-frontend-database.sql.gz`. The first backup
+  before the shared-state migration is `20261002_063429-frontend-database.sql.gz`.
+- All six source/asset mounts matched the exact target before migration.
+- The actually served main bundle matched its release SHA-256:
+  `feccc1e3bf91a4ebec112b1a3e6faa31c5f3c8a1b0ad43c34a401be7b5c6912c`.
+- Read-only live checks verified Invoice/Contractor labels, issue date and
+  fifteen-day due date, read-only payment fields, standard print source,
+  shared-state schema and an enabled configured HR leave destination.
+- Guest realtime origin checks passed: HTTPS/same-origin polling connected,
+  and five invalid origin/host cases returned 403. This is not proof of private
+  notification delivery to a real contractor browser.
+- The deployment lock is absent and all temporary QA containers are stopped.
+
+### Interrupted attempts and recovery
+
+The original canonical attempt for
 `6aec02d176ae62d4779c9bb1d7f2a1968df082b8` started at 10:06:58 UTC. It staged
 the immutable release and compose override, then launched the full image build
 at 10:07:30 UTC. No successful build, activation, migration, health gate or
@@ -136,13 +157,12 @@ automatically replayed. The app payload is unchanged from invoice QA.
 The planner incorrectly treated three raw Desk assets as bundled inputs. Their
 direct hook delivery was checked in source and in the isolated native Desk
 browser. The narrow classifier repair selects schema for this candidate while
-retaining the required backup/migration. Production completion still requires
-staged-configuration recovery and an exact-commit canonical deployment with
-fresh read-only health verification.
+retaining the required backup/migration. The final successful release used that
+narrow classification and the verified original rollback snapshot.
 
 ## Invoice and Contractor terminology
 
-The additional invoice changes are not yet published. English display labels
+The additional invoice changes are included in the published application. English display labels
 use Invoice/Invoices and Contractor/Contractors, including Desk, self-service,
 invoice printing and report export. Internal DocType/role/field/status names
 remain unchanged. No historical record renaming or bulk financial update ran.
