@@ -116,6 +116,15 @@ pre-attempt backup, the cancelled configuration was preserved, and only that
 attempt's lock was released. No service restart or migration occurred during
 recovery. The recovery receipt is stored in the server deployment history.
 
+An attempt to activate `c5322ea7b7e1f7c6726db46177d7e421b2937b13` then failed
+because the recovery's atomic file replacement inherited root ownership. The
+old script did not fail on the override redirection error: it backed up and
+recreated the old mounts and migrated the unchanged old code. The new-asset
+health check failed and state did not advance. Ownership was restored from the
+original backup. The canonical writer now fails immediately on write errors
+and checks the exact marker; a separate six-service source/asset mount proof
+must pass before migration. Six additional mount-proof tests passed.
+
 The planner incorrectly treated three raw Desk assets as bundled inputs. Their
 direct hook delivery was checked in source and in the isolated native Desk
 browser. The narrow classifier repair selects schema for this candidate while

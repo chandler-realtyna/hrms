@@ -59,6 +59,9 @@ delivery of a real employee notification.
    with a stale hardcoded image and must never be mixed into deploy commands.
 4. Health is polled (containers, HTTP, API, Redis, DB, served assets).
    `DEPLOY_STATE.json` advances **only** on success.
+   Writing the override is fail-fast and its exact release marker is checked.
+   All six running app services must mount both the exact source and assets
+   release before migration; stale or incomplete mounts refuse state advancement.
 5. `flock`-style lock dir prevents overlapping deploys.
 
 ## Rollback

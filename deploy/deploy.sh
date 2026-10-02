@@ -226,7 +226,8 @@ if git cat-file -e "$TARGET:deploy/nginx.conf" 2>/dev/null; then
 	FRONTEND_COMMAND='    command: ["nginx", "-g", "daemon off;"]'
 	FRONTEND_PROXY_MOUNT="      - $RELEASES_DIR/$TARGET/deploy/nginx.conf:/etc/nginx/conf.d/frappe.conf:ro"
 fi
-rssh "cat > '$REMOTE_DIR/$OVERRIDE_FILE' <<'OVERRIDEEOF'
+rssh "set -e
+cat > '$REMOTE_DIR/$OVERRIDE_FILE' <<'OVERRIDEEOF'
 # Managed by deploy/deploy.sh — release mounts. DO NOT EDIT MANUALLY.
 # Release: $TARGET
 services:
@@ -265,8 +266,9 @@ $FRONTEND_PROXY_MOUNT
     environment:
       PYTHONDONTWRITEBYTECODE: \"1\"
 OVERRIDEEOF
+grep -qx '# Release: $TARGET' '$REMOTE_DIR/$OVERRIDE_FILE'
 cd '$REMOTE_DIR' && sudo docker compose -f compose.yaml -f '$OVERRIDE_FILE' config -q" \
-	|| fail "override compose config invalid"
+	|| fail "cannot write or validate the exact release override"
 # NOTE: pwd.yml is deliberately NOT included. It redefines the app services
 # with a stale hardcoded image (realtyna-erpnext-hrms:16, which does not
 # exist). App operations use compose.yaml only (image via $CUSTOM_TAG);
@@ -334,6 +336,9 @@ log "activating release (recreate: $SERVICES)"
 cx up -d --force-recreate --no-deps $SERVICES >/dev/null \
 	|| fail "container recreate failed"
 OPS="$OPS|recreate:$SERVICES"
+rssh "cd '$REMOTE_DIR' && IDS=\$(sudo docker compose $CFILES ps -q $SERVICES) && test -n \"\$IDS\" && sudo docker inspect \$IDS" \
+	| python3 "$SCRIPT_DIR/verify_release_mounts.py" --release "$RELEASES_DIR/$TARGET" \
+	|| fail "active release mounts do not match the exact target — refusing migration/state advance"
 
 if [ "$NEED_MIGRATE" = "1" ]; then
 	if MIGRATE_OUT="$(cx exec -T backend bench --site $SITE migrate 2>&1)"; then
