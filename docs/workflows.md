@@ -233,6 +233,38 @@ utilities only. Workflow links remain on the managerial workspace; the top
 Admin Reviews return action stays available. This presentation change removes no
 modules, records or underlying permissions.
 
+## Review Badges and New-Request Email
+
+Every managerial home card has a native framework icon. Numeric badges appear
+on HR Weekly Timesheet Review, Leave Requests, Expense Requests, Holiday
+Approvals, Schedule Approvals and Invoices only. Counts use the current account's
+document and row permissions; hidden queues disclose no count. They count the
+full matching set, not just the first page.
+
+The HR badge counts weekly drafts in Pending HR Review only when every required
+project/team check allows final approval. Leave counts Open drafts; expenses
+count Draft approval-status drafts; holidays/schedules count Submitted requests;
+invoices count Pending HR Review, not payment or contractor confirmation.
+Non-manager designated approvers count only their assigned leave/expense requests.
+Counts refresh every thirty seconds while the home page is visible and on entry
+or explicit refresh. Zero means an empty queue; a dash means unavailable, never
+an assumed empty queue. Counts do not grant permission or approve anything.
+
+New Open leave requests, holidays entering Submitted and invoices entering
+Pending HR Review queue an email only to `hr@realtyna.com`. The approved message
+contains request type and an authenticated Desk review link only: no contractor
+name, amount, leave dates, description or attachment. Existing open-request
+edits do not resend; a new submission cycle can notify again. Existing approval,
+rejection and paid-invoice messages remain separate and unchanged. No historical
+requests are automatically mailed.
+
+The background notification is registered after the request transaction commits.
+The reference lock and deterministic mail identifier prevent duplicate queue
+creation on replay; SMTP retries use the same framework Email Queue. Background
+job failures remain visible to administrators; retry the failed job, not the
+business request. The standard configured outgoing account/scheduler delivers
+queued mail. Queue creation and enabled configuration do not prove inbox delivery.
+
 ## History, Not Another Approval Queue
 
 Time History reads original non-cancelled entries, grouped by project, contractor,

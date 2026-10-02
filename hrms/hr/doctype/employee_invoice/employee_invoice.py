@@ -12,6 +12,12 @@ FINAL_STATES = {"Approved for Payment", "Paid", "Cancelled"}
 
 
 class EmployeeInvoice(Document):
+	def on_update(self):
+		previous = self.get_doc_before_save()
+		if self.status == "Pending HR Review" and (not previous or previous.status != self.status):
+			from hrms.utils.review_notifications import queue_review_email
+			queue_review_email(self)
+
 	def before_insert(self):
 		if not self.flags.invoice_api_action:
 			frappe.throw(_("Invoices must be created through the HRMS invoice workflow."), frappe.PermissionError)

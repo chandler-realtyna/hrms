@@ -92,10 +92,10 @@ class LeaveApplication(Document, PWANotificationsMixin):
 		self.validate_for_self_approval()
 
 	def on_update(self):
-		if self.status == "Open" and self.docstatus < 1:
-			# notify leave approver about creation
-			if frappe.db.get_single_value("HR Settings", "send_leave_notification"):
-				self.notify_leave_approver()
+		previous = self.get_doc_before_save()
+		if self.status == "Open" and self.docstatus < 1 and (not previous or previous.status != "Open"):
+			from hrms.utils.review_notifications import queue_review_email
+			queue_review_email(self)
 
 		share_doc_with_approver(self, self.leave_approver)
 		self.publish_update()

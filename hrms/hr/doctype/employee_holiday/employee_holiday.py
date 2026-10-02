@@ -178,26 +178,9 @@ class EmployeeHoliday(Document):
 
 
 def _notify_hr_holiday_submission(doc):
-	"""Email all HR Managers when an employee submits their holiday selection."""
-	hr_emails = _get_hr_emails()
-	if not hr_emails:
-		return
-
-	desk_url = frappe.utils.get_url(f"/app/employee-holiday/{doc.name}")
-	subject = f"[HRMS] Holiday Request Submitted – {doc.employee_name} ({doc.year})"
-	message = f"""
-	<p>Hello,</p>
-	<p><b>{doc.employee_name}</b> has submitted their personal holiday selection for <b>{doc.year}</b>
-	and is awaiting your approval.</p>
-	<p>
-		<a href="{desk_url}" style="background:#3b82f6;color:#fff;padding:8px 18px;
-		border-radius:6px;text-decoration:none;font-weight:600;">Review Request</a>
-	</p>
-	<p style="color:#6b7280;font-size:13px;">
-		Record: {doc.name} &nbsp;·&nbsp; Employee: {doc.employee}
-	</p>
-	"""
-	frappe.sendmail(recipients=hr_emails, subject=subject, message=message)
+	"""Send the approved minimal submission alert only to the HR inbox."""
+	from hrms.utils.review_notifications import queue_review_email
+	queue_review_email(doc)
 
 
 def _notify_employee_holiday_approved(doc):

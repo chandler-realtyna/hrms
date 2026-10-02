@@ -9,7 +9,7 @@ class HRMSAdminReviews {
 	constructor(wrapper) {
 		if (!document.getElementById("hrms-admin-reviews-style")) {
 			$('<link id="hrms-admin-reviews-style" rel="stylesheet">')
-				.attr("href", "/assets/hrms/css/admin_reviews.css?v=team-queue-20261002").appendTo(document.head);
+				.attr("href", "/assets/hrms/css/admin_reviews.css?v=review-badges-20261002").appendTo(document.head);
 		}
 		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Admin Reviews"), single_column: true });
 		this.content = $('<div class="admin-reviews-page"></div>').appendTo(this.page.main);
@@ -21,6 +21,7 @@ class HRMSAdminReviews {
 		return response.message;
 	}
 	async show() {
+		clearInterval(this.countsTimer);
 		if (frappe.boot.hrms_admin_sidebar && frappe.app.sidebar?.sidebar_title !== "Admin Reviews") {
 			frappe.app.sidebar.setup("Admin Reviews");
 		}
@@ -68,14 +69,23 @@ class HRMSAdminReviews {
 		}
 	}
 	home(sections) {
+		this.homeBadges = new Map();
 		sections.forEach(section => {
 			const band = $('<section class="admin-reviews-section"></section>').appendTo(this.content);
 			$("<h3 class='admin-reviews-heading'></h3>").text(__(section.label)).appendTo(band);
 			const grid = $("<div class='admin-reviews-grid'></div>").appendTo(band);
 			section.items.forEach(item => {
-				const link = $("<a class='admin-reviews-link'></a>").attr("href", item.route).appendTo(grid);
+				const link = $("<a class='admin-reviews-link'></a>").attr({ href: item.route, "aria-label": __(item.label) }).appendTo(grid);
+				$("<span class='admin-reviews-card-icon' aria-hidden='true'></span>").html(frappe.utils.icon(item.icon, "lg")).appendTo(link);
 				$("<span class='admin-reviews-link-label'></span>").text(__(item.label)).appendTo(link);
-				$("<span class='admin-reviews-link-icon'></span>").html(frappe.utils.icon("right", "sm")).appendTo(link);
+				if (item.count_key) {
+					const id = "hrms-review-count-" + item.count_key.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+					const badge = $("<span class='admin-reviews-count-badge'></span>").text("...")
+						.attr({ id, title: __("Loading review count"), "aria-label": __("Loading review count") }).appendTo(link);
+					link.attr("aria-describedby", id);
+					this.homeBadges.set(item.count_key, { badge, label: item.label });
+				}
+				$("<span class='admin-reviews-link-icon' aria-hidden='true'></span>").html(frappe.utils.icon("right", "sm")).appendTo(link);
 				link.on("click", event => {
 					if (event.ctrlKey || event.metaKey || event.shiftKey) return;
 					event.preventDefault();
@@ -86,6 +96,24 @@ class HRMSAdminReviews {
 				});
 			});
 		});
+		this.updateHomeCounts(this.version);
+		this.countsTimer = setInterval(() => {
+			if (!document.hidden && frappe.get_route()[0] === "admin-reviews" && (frappe.get_route()[1] || "home") === "home") this.updateHomeCounts(this.version);
+		}, 30000);
+	}
+	async updateHomeCounts(version) {
+		const request = this.countRequest = (this.countRequest || 0) + 1;
+		const badges = this.homeBadges;
+		let counts;
+		try { counts = await this.call("admin_desk.get_admin_desk_counts"); } catch { counts = {}; }
+		if (version !== this.version || request !== this.countRequest) return;
+		for (const [key, { badge, label }] of badges) {
+			const count = counts[key], known = Number.isInteger(count) && count >= 0;
+			const description = key === "hr-timesheets" ? __("Ready for final HR approval") : __("Awaiting review");
+			badge.text(known ? String(count) : "-").toggleClass("is-empty", known && count === 0)
+				.attr({ title: known ? description : __("Review count unavailable"),
+					"aria-label": known ? __("{0}: {1} items awaiting review", [label, count]) : __("Review count unavailable") });
+		}
 	}
 	table(parent, headings) {
 		const table = $('<table class="table admin-reviews-table"></table>').appendTo($('<div class="admin-reviews-table-scroll"></div>').appendTo(parent));

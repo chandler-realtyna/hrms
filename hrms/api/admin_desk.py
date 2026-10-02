@@ -4,6 +4,20 @@ from frappe import _
 
 HR_ROLES = {"HR Manager", "HR User", "System Manager", "Administrator"}
 COMPANY_DIRECTOR_ROLE = "Company Desk Administrator"
+REVIEW_COUNTS = {
+	"hr-timesheets": None,
+	"Leave Application": {"status": "Open", "docstatus": 0},
+	"Expense Claim": {"approval_status": "Draft", "docstatus": 0},
+	"Employee Holiday": {"status": "Submitted"},
+	"Employee Schedule": {"status": "Submitted"},
+	"Employee Invoice": {"status": "Pending HR Review"},
+}
+CARD_ICONS = {
+	"hr-timesheets": "list-alt", "project-timesheets": "hr", "time-history": "chart",
+	"Leave Application": "today", "Expense Claim": "expenses",
+	"Employee Holiday": "today", "Employee Schedule": "gantt",
+	"Employee Invoice": "small-file", "User": "permission", "Employee": "customer", "Project": "projects",
+}
 
 
 def _has_any_permission(doctype: str, *permissions: str) -> bool:
@@ -81,12 +95,50 @@ def _admin_desk_sections() -> list[dict]:
 			{"label": _("Time History"), "route": "/desk/admin-reviews/time-history"}
 		]})
 
+	for section in sections:
+		for item in section["items"]:
+			key = item.get("doctype") or item["route"].rsplit("/", 1)[-1]
+			item["icon"] = CARD_ICONS[key]
+			if key in REVIEW_COUNTS:
+				item["count_key"] = key
 	return [section for section in sections if section["items"]]
 
 
 @frappe.whitelist()
 def get_admin_desk_sections() -> list[dict]:
 	return _admin_desk_sections()
+
+
+@frappe.whitelist()
+def get_admin_desk_counts() -> dict:
+	"""Count only visible review queues, under the caller's row permissions."""
+	from hrms.api.weekly_timesheet import _project_reviews_ready, _team_review_blockers, PENDING_HR
+	from hrms.utils.personal_scope import _is_manager, APPROVER_FIELDS
+
+	counts = {}
+	for section in _admin_desk_sections():
+		for item in section["items"]:
+			key = item.get("count_key")
+			if not key:
+				continue
+			doctype = "Timesheet" if key == "hr-timesheets" else key
+			if not frappe.has_permission(doctype, "read"):
+				counts[key] = None
+				continue
+			if key == "hr-timesheets":
+				names = frappe.get_list("Timesheet", filters={"custom_is_weekly": 1,
+					"custom_weekly_status": PENDING_HR, "docstatus": 0}, pluck="name", limit_page_length=0)
+				counts[key] = 0
+				for name in names:
+					doc = frappe.get_doc("Timesheet", name)
+					counts[key] += int(_project_reviews_ready(doc) and not _team_review_blockers(doc))
+			else:
+				filters = dict(REVIEW_COUNTS[key])
+				if key in APPROVER_FIELDS and not _is_manager(frappe.session.user):
+					filters[APPROVER_FIELDS[key]] = frappe.session.user
+				rows = frappe.get_list(doctype, filters=filters, fields=[{"COUNT": "name", "as": "total"}], limit_page_length=1)
+				counts[key] = int(rows[0].total or 0) if rows else 0
+	return counts
 
 
 @frappe.whitelist()

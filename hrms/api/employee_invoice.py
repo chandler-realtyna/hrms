@@ -539,8 +539,8 @@ def _queue_email(doc, kind):
 def send_invoice_email(invoice, kind):
 	doc = frappe.get_doc("Employee Invoice", invoice)
 	if kind == "review":
-		recipients = _hr_users(doc.company)
-		subject = _("Invoice {0} is ready for HR review").format(doc.name)
+		from hrms.utils.review_notifications import review_payload, send_review_email
+		return send_review_email(review_payload(doc))
 	else:
 		recipients = list(set(_hr_users(doc.company) + [doc.employee_user]))
 		subject = _("Invoice {0} has been paid").format(doc.name)
@@ -660,7 +660,6 @@ def confirm_employee_invoice(name):
 	doc.employee_confirmation_hash = _hash(_material_payload(doc))
 	_persist(doc)
 	_notify(_hr_users(doc.company), doc, _("Invoice {0} is ready for HR review.").format(frappe.bold(doc.name)))
-	_queue_email(doc, "review")
 	return _serialize(doc)
 
 
