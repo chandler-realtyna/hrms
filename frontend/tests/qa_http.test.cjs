@@ -19,6 +19,9 @@ async function main() {
       const data = await response.json()
       assert.equal(response.status(), 200, JSON.stringify(data)); return data.message
     }
+    const unsafe = await contexts[0].request.get(origin+'/api/method/hrms.api.timer_state.apply_action', {
+      params: { action: 'favorite', expected_revision: 0, operation_id: 'unsafe_get_qa_0001', payload: '{}' } })
+    assert.equal(unsafe.status(), 403, 'Timer actions must not accept an unprotected GET request')
     const projects = await rpc(contexts[0], 'hrms.api.search_employee_projects', { doctype: 'Project', txt: '', searchfield: 'name', start: 0, page_len: 50, filters: {} })
     const alpha = projects.find(row => row[1] === 'QA Alpha')[0], beta = projects.find(row => row[1] === 'QA Beta')[0]
     for (const project of [alpha, beta]) {

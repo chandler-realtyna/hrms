@@ -46,6 +46,9 @@ one running. Timer state and favorites live in one private HRMS Work State per
 authenticated account, shared by browsers and mobile devices. The API never
 accepts another account as the target. Start/stop timestamps come from the server;
 the displayed counter accounts for device-clock offset.
+Timer RPCs accept authenticated POST requests only, retaining the framework's
+normal request/CSRF protections. Invalid legacy timers without a project are
+rejected and kept locally rather than becoming unusable shared state.
 
 Every action locks the account row and requires a revision and operation ID.
 An acknowledged operation has a durable receipt; replay returns current state

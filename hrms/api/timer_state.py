@@ -85,7 +85,7 @@ def _response(doc, saved=None):
 		last_error=doc.last_error, saved_timesheets=saved or [])
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def get_state():
 	return _response(_locked_state())
 
@@ -206,6 +206,8 @@ def _import_legacy(doc, payload, now):
 	if timer["form"]["project"]:
 		_project(timer["form"]["project"])
 	timer["startTime"] = legacy.get("startTime")
+	if timer["startTime"] and not timer["form"]["project"]:
+		frappe.throw(_("The local timer has no project. Your draft was kept for recovery."))
 	timer["isPaused"] = bool(legacy.get("isPaused")) and not timer["startTime"]
 	timer["pausedSince"] = legacy.get("pausedSince") if timer["isPaused"] else None
 	for row in legacy.get("segments") or []:
@@ -219,7 +221,7 @@ def _import_legacy(doc, payload, now):
 	return timer
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def apply_action(action, expected_revision, operation_id, payload=None):
 	payload = frappe.parse_json(payload) or {}
 	if not isinstance(payload, dict) or not re.fullmatch(r"\d+", str(expected_revision)):

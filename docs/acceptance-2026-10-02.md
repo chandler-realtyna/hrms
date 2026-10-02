@@ -21,13 +21,13 @@ sessions, documents or credentials were copied. The QA image uses the same
 installed Frappe/ERPNext runtime as the production base. Synthetic account names
 end in `@qa.invalid`. Mail and background scheduling are paused for QA.
 
-- 14 real framework/database acceptance tests passed: actual own/foreign
+- 15 real framework/database acceptance tests passed: actual own/foreign
   permissions, original Timesheet writes, locked sibling correction, project
   review then final HR closure, optimistic save conflict, account-private state,
   timer replay/failure preservation, legacy migration/guard, fixed leave routing,
   two-hour autosave and 505 source-record pagination fixtures.
 - 67 existing focused regressions passed in that runtime, for a combined
-  81-test run. These include mock-based tests and are not all end-to-end tests.
+  82-test run. These include mock-based tests and are not all end-to-end tests.
 - Four independent-connection/Redis checks passed: conflicting devices,
   simultaneous identical operation replay, private after-commit notification,
   and simultaneous weekly saves with one explicit version conflict.

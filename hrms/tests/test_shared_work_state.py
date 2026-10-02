@@ -153,6 +153,12 @@ class TestSharedWorkState(unittest.TestCase):
 		self.act("start", {"project": self.projects[0]})
 		with self.assertRaises(frappe.ValidationError): timer.reject_legacy_save(self.users[0])
 
+	def test_active_legacy_timer_without_project_is_not_imported(self):
+		legacy = timer._empty_timer()
+		legacy.update(owner=self.users[0], startTime=timer._iso(self.now))
+		with self.assertRaises(frappe.ValidationError): self.act("import", {"timer": legacy})
+		self.assertFalse(timer.get_state()["initialized"])
+
 	def test_private_doctype_cannot_be_written_directly(self):
 		doc = frappe.get_doc(timer.STATE, timer.get_state()["timer"]["owner"])
 		doc.revision += 1
