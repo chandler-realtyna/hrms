@@ -44,6 +44,9 @@ end in `@qa.invalid`. Mail and background scheduling are paused for QA.
 - Visual checks passed at widths 1280 and 390 in light/dark modes. Native time
   inputs have dark backgrounds and contrasting text. Build and whitespace/JS
   syntax checks passed; existing font/chunk-size build warnings remain.
+- Seven deployment planner tests passed. Only the three verified directly
+  served Desk assets avoid an image build; unknown public sources remain full,
+  and schema changes still require backup and migration.
 
 ## Reproduction
 
@@ -86,7 +89,27 @@ records are not automatically closed or rewritten.
 
 ## Production activation
 
-Pending the final exact-commit canonical deployment and read-only health checks.
+Not complete. The canonical attempt for
+`6aec02d176ae62d4779c9bb1d7f2a1968df082b8` started at 10:06:58 UTC. It staged
+the immutable release and compose override, then launched the full image build
+at 10:07:30 UTC. No successful build, activation, migration, health gate or
+state advancement was observed. The last verified active state was the urgent
+`a80677b83f18f2626fb7b502fb7d9023c6a6c06c` repair.
+
+SSH subsequently timed out during banner exchange, and a fresh read-only live
+review request failed. Server resource pressure is a hypothesis, not a confirmed
+diagnosis. At 10:31:26 UTC the task-owned stalled local SSH launcher was stopped;
+the canonical script exited with failure, preventing later activation by that
+local process. The remote detached build, staged override and lock must be
+inspected before retrying. Do not assume that stopping local SSH stopped the
+remote build or released the server lock. Do not start a second image build.
+
+The planner incorrectly treated three raw Desk assets as bundled inputs. Their
+direct hook delivery was checked in source and in the isolated native Desk
+browser. The narrow classifier repair selects schema for this candidate while
+retaining the required backup/migration. Production completion still requires
+server recovery and an exact-commit canonical deployment with fresh read-only
+health verification.
 
 The behavioral reference is [workflows.md](workflows.md). Production health and
 QA acceptance are distinct; health alone does not prove each employee journey.

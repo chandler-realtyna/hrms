@@ -35,6 +35,11 @@ delivery of a real employee notification.
    **frontend** (Vite/static assets) · **backend** (Python-only) ·
    **schema** (doctypes, patches, hooks/setup) · **full** (deps, base image,
    build config, anything unknown). Unknown always escalates to full.
+   The directly served `admin_reviews.js`, `desk_utilities.js` and
+   `admin_reviews.css` files are exact, verified static exceptions. Other
+   `public/js`, `public/css` and `public/scss` sources still require an image
+   build. Combining these static exceptions with hooks/doctype changes still
+   requires a schema deployment, including backup and migration.
 2. App code activates via **immutable release dirs** (`/srv/hrms-releases/<sha>`,
    exact SHA, read-only) bind-mounted into containers
    (`apps/hrms` + served `assets/hrms`), never by copying files into containers.
