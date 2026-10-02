@@ -27,8 +27,9 @@ add_to_apps_screen = [
 app_include_js = [
 	"hrms.bundle.js",
 	"/assets/hrms/js/avatar_settings.js",
+	"/assets/hrms/js/desk_utilities.js",
 ]
-app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css?v=20261001-review-v3"]
+app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css?v=20261002-shared-v1"]
 
 page_js = {"admin-reviews": "public/js/admin_reviews.js"}
 boot_session = ["hrms.api.admin_desk.set_admin_reviews_home"]
@@ -181,6 +182,7 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Leave Application": {"before_validate": "hrms.utils.leave_routing.route_personal_leave"},
 	"User": {
 		"validate": [
 			"erpnext.setup.doctype.employee.employee.validate_employee_role",
@@ -203,7 +205,11 @@ doc_events = {
 		"on_update": "hrms.utils.holiday_list.invalidate_cache",
 		"on_trash": "hrms.utils.holiday_list.invalidate_cache",
 	},
-	"Timesheet": {"validate": "hrms.hr.utils.validate_active_employee"},
+	"Timesheet": {
+		"validate": "hrms.hr.utils.validate_active_employee",
+		"on_update": "hrms.utils.week_notifications.publish_week_change",
+		"on_submit": "hrms.utils.week_notifications.publish_week_change",
+	},
 	"Payment Entry": {
 		"on_submit": "hrms.hr.doctype.expense_claim.expense_claim.update_payment_for_expense_claim",
 		"on_cancel": "hrms.hr.doctype.expense_claim.expense_claim.update_payment_for_expense_claim",
@@ -248,6 +254,7 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
+	"cron": {"* * * * *": ["hrms.api.timer_state.save_paused_timers", "hrms.api.timer_state.notify_running_timers"]},
 	"all": [
 		"hrms.hr.doctype.interview.interview.send_interview_reminder",
 	],

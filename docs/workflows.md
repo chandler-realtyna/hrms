@@ -42,11 +42,28 @@ interval. Project selection never reassigns a running interval.
 
 Each row owns its Start/Pause/Resume/Switch and Save controls. Save persists only
 that project's unsaved intervals. Saving an inactive project leaves the active
-one running. Acknowledged intervals are removed from the retry queue immediately;
-the server also retains its existing idempotent interval-save protection.
-Discard is secondary, confirmed and project-specific. Paused automatic saving
-retains the existing two-hour policy. Logout/account ownership checks preserve
-timer isolation on shared browsers.
+one running. Timer state and favorites live in one private HRMS Work State per
+authenticated account, shared by browsers and mobile devices. The API never
+accepts another account as the target. Start/stop timestamps come from the server;
+the displayed counter accounts for device-clock offset.
+
+Every action locks the account row and requires a revision and operation ID.
+An acknowledged operation has a durable receipt; replay returns current state
+without saving intervals again. A stale revision returns a conflict and requires
+refresh. All intervals of one Save share a database transaction: failure leaves
+the entire pending set intact. A lost response retains the exact request for
+retry, not a newly generated operation. Controls require connectivity; an already
+running counter keeps advancing offline. Logout clears local request memory,
+not the server timer.
+
+Owner-stamped legacy state imports only before shared state is initialized.
+Conflicting local timers stay separate and can be downloaded for recovery; they
+never replace the shared timer automatically. Previous unowned browser favorites
+need an explicit import confirmation. Closed-project favorites are preserved but
+cannot start a new timer. Discard is secondary, confirmed and project-specific.
+Two-hour paused autosave runs on the server even with all browsers closed; failed
+autosaves retain time, show an error and retry with a thirty-minute backoff.
+Long-running reminders are deduplicated against the server's active start.
 
 ## Weekly Review
 
@@ -85,6 +102,28 @@ Team queues exclude the current user's personal entries and sort by the most
 recent modification. Personal entries remain in My Timesheets. Project review
 and whole-week state are displayed separately; activity types remain visible.
 
+Current includes authorized drafts and nonfinal employee/project/week sections.
+History contains final Closed weeks in the same team area. Both read original
+Timesheet/Detail/Approval records, not copied reporting records. Server filters
+and access scope apply before counting and fifty-section keyset pagination.
+Order is modified descending, then Timesheet name and project descending. Counts
+describe matching sections, not every employee in the organization. Archived
+projects remain readable in the authorized historical scope.
+
+Project display labels: Draft, Pending, Returned, Approved, HR.
+Week display labels: Draft, Project review, Returned, HR review, Final.
+Underlying stored workflow values are unchanged. Project Approved is not Final.
+Selection is enabled only for Pending sections in a submitted project-review
+week. Disabled choices explain whether submission, correction, existing approval,
+HR routing or a final closed week prevents approval.
+
+Weekly self-service refreshes on page entry, focus, visibility, reconnect and
+private post-commit change events, with a thirty-second visible-page fallback.
+Failed requests show Retry rather than indefinite loading. Refresh does not
+replace unsaved edits. Saves compare the original modified version under a lock;
+a stale save returns a conflict. A conflicting local draft is kept for recovery;
+Review latest shows the current server version only after explicit confirmation.
+
 ## Expenses
 
 The source is Expense Claim and its expense details. Employee self-service uses
@@ -111,7 +150,12 @@ No accounting rows, companies, categories or cost centers are deleted.
 ## Leave, Holidays and Schedules
 
 Leave Application and Expense Claim have separate review entry points. Leave
-and expense decisions remain with the configured approver or authorized HR.
+requests created or edited by their own employee route only to the enabled HR
+account configured in HR Settings / Employee Leave Approver. The employee form
+cannot change it, and the server enforces it. A missing or invalid HR destination
+blocks a new request clearly. Already-submitted requests and decision history
+are not automatically rewritten. Authorized on-behalf Desk requests keep their
+existing routing. Expense decisions retain their existing configured approver.
 The existing operations are approval/rejection; a new correction workflow is
 not implied for these documents.
 
@@ -133,6 +177,11 @@ Users, Employees and Projects link to their native Desk forms under existing
 permissions. Closing/deactivating a project changes its supported status rather
 than deleting its time/history records. Role/profile assignment determines future
 manager access; there is no hardcoded future account list in the workspace UI.
+
+The shared managerial Desk sidebar contains Search, Notification and Log out
+utilities only. Workflow links remain on the managerial workspace; the top
+Admin Reviews return action stays available. This presentation change removes no
+modules, records or underlying permissions.
 
 ## History, Not Another Approval Queue
 

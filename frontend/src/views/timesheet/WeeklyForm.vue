@@ -21,7 +21,16 @@
 					{{ __("Loading weekly timesheet…") }}
 				</div>
 
+				<div v-else-if="loadError && !timesheet.custom_week_start" class="p-4 text-red-600" role="alert">
+					<p>{{ loadError }}</p><Button @click="load">{{ __("Retry") }}</Button>
+				</div>
 				<main v-else class="grow w-full max-w-3xl mx-auto p-4 flex flex-col gap-4">
+					<div v-if="loadError || conflict" class="border-b py-3 text-sm text-amber-600" role="alert">
+						<p>{{ conflict ? __("This week changed elsewhere. Your unsaved draft is preserved.") : loadError }}</p>
+						<Button v-if="conflict" class="mt-2" @click="reviewLatest">{{ __("Review latest") }}</Button>
+						<Button v-if="conflict" class="mt-2 ml-2" @click="downloadDraft">{{ __("Download draft") }}</Button>
+						<Button v-else class="mt-2" @click="load">{{ __("Retry") }}</Button>
+					</div>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="bg-white border rounded-xl p-4">
 							<div class="text-xs text-gray-500">{{ __("Total hours") }}</div>
@@ -132,7 +141,7 @@
 						>
 							{{ autosaveLabel }}
 						</button>
-						<Button class="grow py-4" variant="solid" :loading="submitting" @click="submitWeek">
+						<Button class="grow py-4" variant="solid" :loading="submitting" :disabled="conflict" @click="submitWeek">
 							{{
 								timesheet.custom_weekly_status === "Correction Required"
 									? __("Resubmit week")
@@ -147,9 +156,9 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, ref, watch } from "vue"
+import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { IonPage, IonContent } from "@ionic/vue"
+import { IonPage, IonContent, onIonViewWillEnter, onIonViewWillLeave } from "@ionic/vue"
 import { Button, FeatherIcon, call, toast } from "frappe-ui"
 import TimeLogsTable from "@/components/TimeLogsTable.vue"
 import { formatHours } from "@/utils/formatters.js"
@@ -163,6 +172,10 @@ const dayjs = inject("$dayjs")
 const route = useRoute()
 const router = useRouter()
 const timesheet = ref({ time_logs: [], custom_weekly_status: "Draft" })
+const loadError = ref(""), conflict = ref(false)
+const routeChanging = ref(false)
+const socket = inject("$socket")
+let active = false, refreshing = false, poller, requestSequence = 0, skipDraftRestore = false
 const loading = ref(true)
 const saving = ref(false)
 const submitting = ref(false)
@@ -212,8 +225,8 @@ function restoreDraftIfNewer() {
 		const raw = localStorage.getItem(key)
 		if (!raw) return false
 		const draft = JSON.parse(raw)
-		if (!draft?.payload || draft.baseModified !== timesheet.value?.modified) {
-			localStorage.removeItem(key)
+		if (!draft?.payload || draft.baseModified !== (timesheet.value?.modified || "")) {
+			conflict.value = Boolean(draft?.payload)
 			return false
 		}
 		if (!draft.payload?.time_logs?.length && !draft.payload?.note) return false
@@ -247,7 +260,7 @@ let changeRevision = 0
 let readyForAutosave = false
 
 const isReadOnly = computed(
-	() => !["Draft", "Correction Required"].includes(timesheet.value.custom_weekly_status)
+	() => routeChanging.value || conflict.value || !["Draft", "Correction Required"].includes(timesheet.value.custom_weekly_status)
 )
 const totalHours = computed(() => {
 	const total = (timesheet.value.time_logs || []).reduce(
@@ -314,25 +327,79 @@ function deleteLog(index) {
 }
 
 async function load() {
-	loading.value = true
+	if (refreshing || saving.value || submitting.value) return
+	refreshing = true
+	const sequence = ++requestSequence
+	const revisionBefore = changeRevision
+	const name = props.id, week = route.query.week_start
+	let timeout
 	try {
-		timesheet.value = await call("hrms.api.weekly_timesheet.get_weekly_timesheet", {
-			name: props.id || undefined,
-			week_start: props.id ? undefined : route.query.week_start || undefined,
-		})
-		hasEverSaved.value = Boolean(timesheet.value.name)
-		lastServerModified.value = timesheet.value?.modified || ""
-		if (restoreDraftIfNewer()) {
-			autosaveState.value = "pending"
+		const fresh = await Promise.race([
+			call("hrms.api.weekly_timesheet.get_weekly_timesheet", {
+				name: name || undefined, week_start: name ? undefined : week || undefined,
+			}),
+			new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(__("Could not load this week. Please retry."))), 15000) }),
+		])
+		if (sequence !== requestSequence || name !== props.id || week !== route.query.week_start) return
+		loadError.value = ""
+		if (hasUnsavedChanges.value || revisionBefore !== changeRevision) {
+			if ((fresh.modified || "") !== lastServerModified.value) conflict.value = true
+			persistDraft()
+			return
 		}
+		readyForAutosave = false
+		timesheet.value = fresh
+		hasEverSaved.value = Boolean(fresh.name)
+		lastServerModified.value = fresh.modified || ""
+		if (!skipDraftRestore && restoreDraftIfNewer()) autosaveState.value = "pending"
+		skipDraftRestore = false
+		await Promise.resolve()
+	} catch (err) {
+		loadError.value = err?.messages?.[0] || err?.message || __("Could not load this week.")
 	} finally {
+		clearTimeout(timeout)
 		readyForAutosave = true
+		refreshing = false
 		loading.value = false
+		if (routeChanging.value) resetRoute()
 	}
 }
+function reviewLatest() {
+	persistDraft()
+	if (!window.confirm(__("Your draft remains stored on this device. Display the latest server version without applying that draft?"))) return
+	try {
+		const key = draftKey(), draft = localStorage.getItem(key)
+		if (draft) localStorage.setItem(`${key}_recovery_${Date.now()}`, draft)
+		clearPersistedDraft()
+	} catch { return }
+	hasUnsavedChanges.value = false
+	conflict.value = false
+	validationBlocked.value = false
+	skipDraftRestore = true
+	// Keep the conflicting draft, but do not restore it over the new version.
+	void load()
+}
+function downloadDraft() {
+	persistDraft()
+	const draft = localStorage.getItem(draftKey())
+	if (!draft) return
+	const url = URL.createObjectURL(new Blob([draft], { type: "application/json" }))
+	const link = document.createElement("a")
+	link.href = url; link.download = "weekly-timesheet-draft.json"; link.click()
+	URL.revokeObjectURL(url)
+}
+function refreshWhenActive() {
+	if (active && document.visibilityState !== "hidden") void load()
+}
+function enter() {
+	active = true
+	if (!poller) poller = setInterval(refreshWhenActive, 30000)
+	refreshWhenActive()
+}
+function leave() { active = false; clearInterval(poller); poller = null; persistDraft() }
 
 function scheduleAutosave(delay = 400, force = false) {
-	if (!readyForAutosave || isReadOnly.value) return
+	if (!readyForAutosave || refreshing || isReadOnly.value || conflict.value) return
 	if (validationBlocked.value && !force && structRev.value === blockedRev.value) return
 	changeRevision += 1
 	hasUnsavedChanges.value = true
@@ -347,6 +414,7 @@ function scheduleAutosave(delay = 400, force = false) {
 
 function queueAutosave() {
 	const persist = async () => {
+		if (conflict.value) throw new Error(__("Review the latest version before saving."))
 		if (!hasUnsavedChanges.value) return timesheet.value.name
 
 		const revisionBeingSaved = changeRevision
@@ -358,19 +426,22 @@ function queueAutosave() {
 		try {
 			const savedTimesheet = await call("hrms.api.weekly_timesheet.save_weekly_timesheet", {
 				payload: JSON.stringify(timesheet.value),
+				expected_modified: lastServerModified.value,
 			})
 
 			if (changeRevision === revisionBeingSaved) {
 				timesheet.value = savedTimesheet
 			} else {
 				timesheet.value.name = savedTimesheet.name
+				timesheet.value.modified = savedTimesheet.modified
 			}
 			hasEverSaved.value = true
 			lastServerModified.value = savedTimesheet.modified || lastServerModified.value
 			validationBlocked.value = false
-			clearPersistedDraft()
+			if (!hasUnsavedChanges.value) clearPersistedDraft()
+			else persistDraft()
 
-			if (wasNew) {
+			if (wasNew && !routeChanging.value) {
 				await router.replace({
 					name: "TimesheetDetailView",
 					params: { id: savedTimesheet.name },
@@ -380,6 +451,7 @@ function queueAutosave() {
 			autosaveState.value = hasUnsavedChanges.value ? "pending" : "saved"
 			return savedTimesheet.name
 		} catch (error) {
+			if (error?.exc_type === "TimestampMismatchError" || /changed elsewhere/.test(error?.messages?.[0] || error?.message || "")) conflict.value = true
 			hasUnsavedChanges.value = true
 			autosaveState.value = "error"
 			persistDraft()
@@ -397,6 +469,7 @@ function queueAutosave() {
 			throw error
 		} finally {
 			saving.value = false
+			if (routeChanging.value) resetRoute()
 		}
 	}
 
@@ -432,6 +505,7 @@ async function submitWeek() {
 		toast({ title: __("Week submitted for approval"), icon: "check" })
 	} finally {
 		submitting.value = false
+		if (routeChanging.value) resetRoute()
 	}
 }
 
@@ -442,5 +516,43 @@ watch(
 	}
 )
 
-onMounted(() => { load(); loadProjectLabels() })
+onMounted(() => {
+	loadProjectLabels(); enter()
+	window.addEventListener("focus", refreshWhenActive)
+	window.addEventListener("online", refreshWhenActive)
+	document.addEventListener("visibilitychange", refreshWhenActive)
+	socket?.on("hrms:week_changed", refreshWhenActive)
+	socket?.on("connect", refreshWhenActive)
+})
+onIonViewWillEnter(enter)
+onIonViewWillLeave(leave)
+function resetRoute() {
+	if (saving.value || submitting.value || refreshing) return
+	routeChanging.value = false
+	readyForAutosave = false
+	timesheet.value = { time_logs: [], custom_weekly_status: "Draft" }
+	lastServerModified.value = ""
+	hasUnsavedChanges.value = false
+	conflict.value = false
+	validationBlocked.value = false
+	autosaveState.value = "idle"
+	loading.value = true
+	refreshWhenActive()
+}
+watch(() => [props.id, route.query.week_start], () => {
+	if (props.id && props.id === timesheet.value.name) return
+	persistDraft()
+	clearTimeout(autosaveTimer)
+	requestSequence++
+	routeChanging.value = true
+	resetRoute()
+})
+onUnmounted(() => {
+	leave(); clearTimeout(autosaveTimer)
+	window.removeEventListener("focus", refreshWhenActive)
+	window.removeEventListener("online", refreshWhenActive)
+	document.removeEventListener("visibilitychange", refreshWhenActive)
+	socket?.off("hrms:week_changed", refreshWhenActive)
+	socket?.off("connect", refreshWhenActive)
+})
 </script>

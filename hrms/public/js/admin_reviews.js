@@ -47,6 +47,11 @@ class HRMSAdminReviews {
 						.attr({ role: "tab", "aria-selected": String(route === mode) });
 				}
 			}
+			if (mode === "project-timesheets") {
+				const data = await this.call("weekly_timesheet.get_team_timesheet_sections", { view: this.teamView || "current", filters: this.teamFilters || {} });
+				if (version === this.version) this.queue(data.rows, mode, data);
+				return;
+			}
 			const methods = { "project-timesheets": "get_project_review_queue", "project-reports": "get_project_approval_queue", "hr-timesheets": "get_hr_weekly_timesheet_queue" };
 			const rows = await this.call(`weekly_timesheet.${methods[mode]}`);
 			if (version !== this.version) return;
@@ -91,16 +96,21 @@ class HRMSAdminReviews {
 				try { await action(); } finally { $(this).prop("disabled", false); }
 			});
 	}
-	queue(rows, mode) {
+	queue(rows, mode, paging = null) {
 		const hr = mode === "hr-timesheets";
+		let cursor = paging?.next_cursor, total = paging?.total;
 		const selected = new Set();
 		const toolbar = $('<div class="admin-reviews-toolbar"></div>').appendTo(this.content);
+		if (paging) {
+			for (const [view, label] of [["current", "Current"], ["history", "History"]])
+				this.button(toolbar, label, () => { this.teamView = view; return this.show(); }, (this.teamView || "current") === view);
+		}
 		const search = $('<input type="search" class="form-control admin-reviews-search">').attr({ placeholder: __("Search employee, project or activity"), "aria-label": __("Search entries") }).appendTo(toolbar);
 		const status = $('<select class="form-control admin-reviews-filter"></select>').attr("aria-label", __("Status")).appendTo(toolbar);
 		$('<option value=""></option>').text(__("All statuses")).appendTo(status);
-		[...new Set(rows.map(row => row.project_status).filter(Boolean))].forEach(value => $('<option></option>').val(value).text(this.statusLabel(value)).appendTo(status));
+		(paging ? ["Draft", "Pending", "Returned", "Approved", "HR Review"] : [...new Set(rows.map(row => row.project_status).filter(Boolean))]).forEach(value => $('<option></option>').val(value).text(this.statusLabel(value)).appendTo(status));
 		let approve;
-		if (!hr) approve = this.button(toolbar, "Approve selected sections", async () => {
+		if (!hr && this.teamView !== "history") approve = this.button(toolbar, "Approve selected sections", async () => {
 			if (!selected.size) return frappe.msgprint(__("Select pending sections first."));
 			frappe.confirm(__("Approve {0} selected project sections?", [selected.size]), async () => {
 				try { for (const approval_name of selected) await this.call("weekly_timesheet.approve_project_review", { approval_name }); }
@@ -109,32 +119,54 @@ class HRMSAdminReviews {
 		}, true);
 		if (approve) approve.prop("disabled", true);
 		const counter = $('<div class="admin-reviews-count text-muted"></div>').appendTo(this.content);
-		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Status", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Project Review", "Week Status", "Action"]);
+		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Status", "Action"] : ["", "Employee", "Project", "Week", "Hours", "Activity Type", "Review", "Week status", "Updated", "Action"]);
 		const render = () => {
 			selected.clear(); if (approve) approve.prop("disabled", true); body.empty();
 			const query = search.val().toLowerCase();
 			const visible = rows.filter(row => (hr || !row.is_own_section)
 				&& (!status.val() || row.project_status === status.val())
-				&& [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(query))
+				&& (paging || [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(query)))
 				.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)));
-			counter.text(__("{0} sections", [visible.length]));
+			counter.text(paging ? __("{0} of {1} sections", [visible.length, total]) : __("{0} sections", [visible.length]));
 		visible.forEach(row => {
 			const tr = $("<tr></tr>").appendTo(body);
 			if (!hr) {
 				const cell = $("<td></td>").appendTo(tr);
-				$('<input type="checkbox">').prop("disabled", !row.actionable).attr({ "aria-label": __("Select section for {0}", [row.employee_name]), title: row.actionable ? __("Select for approval") : __("Only submitted sections awaiting project review can be approved") }).appendTo(cell).on("change", event => {
+				$('<input type="checkbox">').prop("disabled", !row.actionable).attr({ "aria-label": __("Select section for {0}", [row.employee_name]), title: __(row.selection_reason || (row.actionable ? "Select for approval" : "Only submitted sections awaiting project review can be approved")) }).appendTo(cell).on("change", event => {
 					if (event.target.checked) selected.add(row.approval_name); else selected.delete(row.approval_name);
-					approve.prop("disabled", !selected.size);
+					approve?.prop("disabled", !selected.size);
 				});
 			}
 			const cells = hr ? [row.employee_name, this.week(row.week_start, row.week_end), this.hours(row.total_hours)] : [row.employee_name, row.project_label || row.project, this.week(row.week_start, row.week_end), this.hours(row.hours), (row.activity_types || []).join(", ")];
 			cells.forEach(value => $("<td></td>").text(value).appendTo(tr));
 			if (!hr) this.statusCell($("<td></td>").appendTo(tr), row.project_status, row.routed_to_hr_reason);
 			this.statusCell($("<td></td>").appendTo(tr), hr ? row.ready_for_hr_close ? "Pending HR Review" : "Pending Project Approval" : row.hr_status);
+			if (!hr) $("<td></td>").text(row.modified ? moment(row.modified).format("D MMM HH:mm") : "").appendTo(tr);
 			this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail(row, hr));
 		});
 		};
-		search.on("input", render); status.on("change", render); render();
+		if (paging) {
+			search.val(this.teamFilters?.search || ""); status.val(this.teamFilters?.status || "");
+			let request = 0, debounce;
+			const more = this.button(this.content, "Load more", () => reload(false));
+			const reload = async (reset = true) => {
+				const version = ++request;
+				const filters = this.teamFilters = { search: search.val(), status: status.val() };
+				try {
+					const page = await this.call("weekly_timesheet.get_team_timesheet_sections", {
+						view: this.teamView || "current", cursor: reset ? null : cursor, filters,
+					});
+					if (version !== request) return;
+					rows = reset ? page.rows : [...rows, ...page.rows];
+					total = page.total; cursor = page.next_cursor;
+					more.toggle(Boolean(cursor)); render();
+				} catch (error) { frappe.msgprint(error.message || __("Could not load this page.")); }
+			};
+			search.on("input", () => { clearTimeout(debounce); debounce = setTimeout(reload, 300); });
+			status.on("change", () => reload());
+			more.toggle(Boolean(cursor));
+		} else { search.on("input", render); status.on("change", render); }
+		render();
 	}
 	reports(reports) {
 		reports.forEach(report => {
@@ -300,7 +332,7 @@ class HRMSAdminReviews {
 		});
 	}
 	statusLabel(status) {
-		return __({ Draft: "Not submitted", Pending: "Awaiting project review", Returned: "Needs correction", Approved: "Project approved", "HR Review": "HR review required", "Pending HR Review": "Awaiting final HR review", "Pending Project Approval": "Awaiting project review", "Correction Required": "Needs correction", Closed: "Final approval completed", Submitted: "Submitted" }[status] || status || "");
+		return __({ Draft: "Draft", Pending: "Pending", Returned: "Returned", Approved: "Approved", "HR Review": "HR", "Pending HR Review": "HR review", "Pending Project Approval": "Project review", "Correction Required": "Returned", Closed: "Final", Submitted: "Submitted" }[status] || status || "");
 	}
 	statusCell(cell, status, reason) {
 		const color = ["Returned", "Correction Required"].includes(status) ? "orange" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";

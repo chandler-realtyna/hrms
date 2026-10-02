@@ -99,3 +99,15 @@
 		grid-template-columns: 1fr;
 	}
 }
+.hrms-utilities-sidebar .body-sidebar-top,
+.hrms-utilities-sidebar .body-sidebar-cards,
+.hrms-utilities-sidebar .body-sidebar-bottom .promotional-banners,
+.hrms-utilities-sidebar .body-sidebar-bottom .onboarding-sidebar,
+.hrms-utilities-sidebar .body-sidebar-bottom .dropdown-navbar-user,
+.hrms-utilities-sidebar .body-sidebar .sidebar-header {
+	display: none !important;
+}
+.hrms-utilities-sidebar .hrms-logout {
+	width: 100%;
+	text-align: left;
+}

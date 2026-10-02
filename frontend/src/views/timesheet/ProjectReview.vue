@@ -20,10 +20,14 @@
 				<div>
 					<h1 class="text-lg font-semibold text-gray-900">{{ __("Team Timesheets") }}</h1>
 					<div v-if="!detail" class="flex flex-wrap items-center gap-3 mt-3">
+						<div class="flex items-center gap-2" role="tablist">
+							<Button v-for="item in ['current', 'history']" :key="item" :variant="view === item ? 'solid' : 'subtle'" role="tab" :aria-selected="view === item" @click="view = item">{{ __(item === 'current' ? 'Current' : 'History') }}</Button>
+						</div>
 						<input v-model="search" type="search" :placeholder="__('Search employee, project or activity')" :aria-label="__('Search entries')" class="flex-1 min-w-0 border rounded px-3 py-2 text-sm" />
 					</div>
 				</div>
 
+				<p v-if="loadError" role="alert" class="text-red-600">{{ loadError }}</p>
 				<div v-if="loading" class="bg-white border rounded-xl p-8 text-center text-sm text-gray-500">
 					{{ __("Loading reviews…") }}
 				</div>
@@ -40,6 +44,7 @@
 				<!-- Bulk action: approve every pending section at once. Per-record
 				     Approve/Return stays on each card below. -->
 				<template v-if="!detail">
+					<div class="text-xs text-gray-500">{{ __("{0} of {1} sections", [sections.length, total]) }}</div>
 					<div
 						v-if="actionableSections.length > 1"
 						class="bg-white border rounded-xl p-4 flex items-center justify-between gap-3"
@@ -53,7 +58,7 @@
 							:disabled="approvingAll"
 							@click="approveAll"
 						>
-							{{ approvingAll ? __("Approving…") : __("Approve all") }}
+							{{ approvingAll ? __("Approving…") : __("Approve visible") }}
 						</Button>
 					</div>
 
@@ -84,7 +89,7 @@
 									<span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(row.project_status)">
 										{{ projectStatusLabel(row) }}
 									</span>
-									<span v-if="row.hr_status !== row.project_status" class="text-[11px] text-gray-400">{{ projectStatusLabel({ project_status: row.hr_status }) }}</span>
+									<span v-if="row.hr_status !== row.project_status" class="text-[11px] text-gray-400">{{ __("Week") }}: {{ projectStatusLabel({ project_status: row.hr_status }) }}</span>
 								</div>
 							</div>
 							<p v-if="row.routed_to_hr_reason === 'no_lead'" class="mt-2 text-[11px] text-amber-600">
@@ -111,6 +116,7 @@
 							</Button>
 						</div>
 					</article>
+					<Button v-if="cursor" :disabled="loading" @click="loadMore">{{ __("Load more") }}</Button>
 				</template>
 
 				<!-- Detail: time logs for one employee / project / week -->
@@ -178,7 +184,7 @@
 </template>
 
 <script setup>
-import { computed, inject, reactive, ref } from "vue"
+import { computed, inject, reactive, ref, watch, onUnmounted } from "vue"
 import {
 	IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons,
 	IonButton, IonBackButton, onIonViewWillEnter,
@@ -201,7 +207,8 @@ const reasons = reactive({})
 const detail = ref(null)
 const detailReason = ref("")
 const approvingAll = ref(false)
-const search = ref("")
+const search = ref(""), view = ref("current"), total = ref(0), cursor = ref(null), loadError = ref("")
+let requestVersion = 0, searchTimer
 
 // Project-scoped total for the open section (sum of its own logs only).
 const detailProjectTotal = computed(() =>
@@ -231,8 +238,7 @@ function updatedAgo(value) {
 
 // Recent changes first; personal entries belong in My Timesheets.
 const orderedSections = computed(() =>
-	(sections.value || []).filter(row => !row.is_own_section
-		&& [row.employee_name, row.project_label, ...(row.activity_types || [])].join(" ").toLowerCase().includes(search.value.toLowerCase()))
+	(sections.value || []).filter(row => !row.is_own_section)
 		.sort((a, b) => String(b.modified || b.week_start).localeCompare(String(a.modified || a.week_start)))
 )
 
@@ -272,24 +278,33 @@ function statusClass(status) {
 
 // Drafts can be returned for correction, but cannot yet be approved.
 function projectStatusLabel(row) {
-	if (row.project_status === "Draft") return __("Not submitted yet")
-	if (row.project_status === "Pending") return __("Awaiting project review")
-	if (row.project_status === "HR Review") return __("HR review required")
-	if (row.project_status === "Pending HR Review") return __("Awaiting final HR review")
-	if (row.project_status === "Closed") return __("Final approval completed")
+	if (row.project_status === "Draft") return __("Draft")
+	if (row.project_status === "Pending") return __("Pending")
+	if (row.project_status === "HR Review") return __("HR")
+	if (row.project_status === "Pending HR Review") return __("HR review")
+	if (row.project_status === "Closed") return __("Final")
 	if (row.project_status === "Pending Project Approval") return __("Awaiting project review")
-	if (row.project_status === "Returned" || row.project_status === "Correction Required") return __("Needs correction")
+	if (row.project_status === "Returned" || row.project_status === "Correction Required") return __("Returned")
 	return __(row.project_status)
 }
 
-async function load() {
+async function load(more = false) {
+	const version = ++requestVersion
 	loading.value = true
 	try {
-		sections.value = await call("hrms.api.weekly_timesheet.get_project_review_queue")
-	} finally {
-		loading.value = false
-	}
+		const data = await call("hrms.api.weekly_timesheet.get_team_timesheet_sections", {
+			view: view.value, cursor: more === true ? cursor.value : null, filters: { search: search.value },
+		})
+		if (version !== requestVersion) return
+		sections.value = more === true ? [...sections.value, ...data.rows] : data.rows
+		total.value = data.total; cursor.value = data.next_cursor; loadError.value = ""
+	} catch (err) { loadError.value = err?.messages?.[0] || err?.message }
+	finally { if (version === requestVersion) loading.value = false }
 }
+function loadMore() { return load(true) }
+watch(view, () => { detail.value = null; load() })
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(load, 300) })
+onUnmounted(() => clearTimeout(searchTimer))
 
 function toastSaved(message) {
 	toast({ title: message, icon: "check", iconClasses: "text-green-500" })

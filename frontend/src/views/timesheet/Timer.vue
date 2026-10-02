@@ -37,7 +37,7 @@
 							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
 							:aria-label="__('Add time')"
 							:title="__('Forgot to start earlier? Add minutes')"
-							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+							:disabled="controlsDisabled" @click="adjustDir = adjustDir === 1 ? 0 : 1"
 						>
 							+
 						</button>
@@ -46,7 +46,7 @@
 							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
 							:aria-label="__('Remove time')"
 							:title="__('Forgot to stop sooner? Remove minutes')"
-							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+							:disabled="controlsDisabled" @click="adjustDir = adjustDir === -1 ? 0 : -1"
 						>
 							−
 						</button>
@@ -64,7 +64,7 @@
 							class="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
 							:aria-label="__('Add time')"
 							:title="__('Forgot to start earlier? Add minutes')"
-							@click="adjustDir = adjustDir === 1 ? 0 : 1"
+							:disabled="controlsDisabled" @click="adjustDir = adjustDir === 1 ? 0 : 1"
 						>
 							+
 						</button>
@@ -74,7 +74,7 @@
 							class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-base font-bold leading-none text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
 							:aria-label="__('Remove time')"
 							:title="__('Forgot to stop sooner? Remove minutes')"
-							@click="adjustDir = adjustDir === -1 ? 0 : -1"
+							:disabled="controlsDisabled" @click="adjustDir = adjustDir === -1 ? 0 : -1"
 						>
 							−
 						</button>
@@ -95,7 +95,7 @@
 						<button
 							type="button"
 							class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white"
-							@click="applyAdjust"
+							:disabled="controlsDisabled" @click="applyAdjust"
 						>
 							{{ adjustDir > 0 ? __("Add") : __("Trim") }}
 						</button>
@@ -110,11 +110,27 @@
 				</div>
 
 				<div class="mx-4 mt-4">
+					<div v-if="metadataConflict" class="mb-3 flex flex-wrap items-center gap-2 text-sm text-amber-600" role="alert">
+						<span>{{ __("The timer changed elsewhere. Your unsaved description was kept separately.") }}</span>
+						<button type="button" class="underline" @click="exportRecovery">{{ __("Download draft") }}</button>
+						<button type="button" class="underline" @click="metadataConflict = false">{{ __("Use latest timer") }}</button>
+					</div>
+					<div v-if="error || !connected" class="mb-3 flex items-center justify-between gap-2 text-sm text-amber-600" role="status">
+						<span>{{ error || __("Connecting…") }}</span>
+						<button type="button" class="shrink-0 underline" :disabled="isSaving" @click="refresh">{{ __("Retry") }}</button>
+					</div>
+					<div v-if="legacyConflict" class="mb-3 flex items-center justify-between gap-2 text-sm text-amber-600">
+						<span>{{ __("A local timer was kept separately; the shared timer was not replaced.") }}</span>
+						<button type="button" class="shrink-0 underline" @click="exportRecovery">{{ __("Download draft") }}</button>
+					</div>
+					<div v-if="browserFavorites" class="mb-3 text-sm text-gray-600">
+						<button type="button" class="underline" :disabled="controlsDisabled" @click="importFavorites">{{ __("Import favorites from this browser") }}</button>
+					</div>
 					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Projects") }}</div>
 					<div class="flex flex-col gap-2">
 						<div v-for="project in timerProjects" :key="project.name" class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-3">
 							<div class="flex min-w-0 flex-1 basis-full sm:basis-0 items-center gap-2">
-								<button type="button" class="h-8 w-8 shrink-0 flex items-center justify-center" :disabled="isSaving" :aria-label="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" :title="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" @click="toggleFavorite(project.name)">
+								<button type="button" class="h-8 w-8 shrink-0 flex items-center justify-center" :disabled="controlsDisabled" :aria-label="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" :title="isFavorite(project.name) ? __('Remove favorite') : __('Add to favorites')" @click="toggleFavorite(project.name)">
 									<FeatherIcon name="heart" class="h-4 w-4" :class="isFavorite(project.name) ? 'fill-amber-400 text-amber-500' : 'text-gray-400'" />
 								</button>
 								<span class="truncate text-sm font-medium text-gray-800" :title="projectDisplayLabel(project)">{{ projectDisplayLabel(project) }}</span>
@@ -128,16 +144,16 @@
 								</div>
 							</div>
 							<div class="flex items-center gap-2 shrink-0">
-							<button class="shrink-0 rounded px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" :disabled="isSaving" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
+							<button class="shrink-0 rounded px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" :disabled="controlsDisabled" :class="projectButtonClass(project.name)" @click="toggleProjectTimer(project.name)">
 								<FeatherIcon :name="projectStatus(project.name) === 'running' ? 'pause' : 'play'" class="h-3 w-3 inline mr-1" />
 								{{ projectButtonLabel(project.name) }}
 							</button>
-							<button class="rounded border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40" :disabled="isSaving || projectSeconds(project.name) <= 0" @click="saveProject(project.name)">
+							<button class="rounded border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40" :disabled="controlsDisabled || projectSeconds(project.name) <= 0" @click="saveProject(project.name)">
 								<FeatherIcon name="save" class="h-3 w-3 inline mr-1" />{{ __("Save") }}
 							</button>
 							<details v-if="projectSeconds(project.name) > 0" class="relative">
 								<summary class="list-none cursor-pointer p-2" :aria-label="__('More actions')" :title="__('More actions')"><FeatherIcon name="more-vertical" class="h-4 w-4 text-gray-500" /></summary>
-								<button class="absolute right-0 top-full z-20 border rounded bg-white px-3 py-2 text-xs text-red-600 whitespace-nowrap" :disabled="isSaving" @click="discardProject(project.name)">{{ __("Discard unsaved time") }}</button>
+								<button class="absolute right-0 top-full z-20 border rounded bg-white px-3 py-2 text-xs text-red-600 whitespace-nowrap" :disabled="controlsDisabled" @click="discardProject(project.name)">{{ __("Discard unsaved time") }}</button>
 							</details>
 							</div>
 						</div>
@@ -162,7 +178,7 @@
 						:label="__('Activity Type')"
 						options="Activity Type"
 						v-model="form.activity_type"
-						:read-only="isSaving"
+						:read-only="controlsDisabled"
 						@change="persistState"
 					/>
 					<FormField
@@ -171,7 +187,7 @@
 						fieldname="description"
 						:label="__('Description')"
 						v-model="form.description"
-						:read-only="isSaving"
+						:read-only="controlsDisabled"
 						@change="persistState"
 					/>
 				</div>
@@ -183,634 +199,259 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, inject } from "vue"
-import { IonPage, IonContent } from "@ionic/vue"
+import { IonPage, IonContent, onIonViewWillEnter, onIonViewWillLeave } from "@ionic/vue"
 import { FeatherIcon, call, toast } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
-import { TIMER_NOTIFIED_KEY } from "@/composables/useTimerReminder.js"
 import { TIMER_STORAGE_KEY as STORAGE_KEY } from "@/data/session.js"
-import { unreadNotificationsCount } from "@/data/notifications"
 
 const __ = inject("$translate")
 const employee = inject("$employee")
-const dayjs = inject("$dayjs")
-
+const socket = inject("$socket")
 const FAVORITES_KEY = "hrms_favorite_projects"
-
-function stateOwner() {
-	return employee.data?.user_id || employee.data?.name || null
-}
-
-const isRunning = ref(false)
-const isPaused = ref(false)
-const pausedSince = ref(null)
-const startTime = ref(null) // dayjs-compatible string
-const elapsed = ref(0) // seconds in the current session
-const segments = ref([])
-const isSaving = ref(false)
+const isRunning = ref(false), isPaused = ref(false), pausedSince = ref(null), startTime = ref(null)
+const elapsed = ref(0), segments = ref([]), isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
-const favoriteProjects = ref([])
-const availableProjects = ref([])
-const pickedProject = ref("")
-const longRunningNotified = ref(false)
+const favoriteProjects = ref([]), availableProjects = ref([]), pickedProject = ref("")
+const connected = ref(false), error = ref(""), initialized = ref(false), revision = ref(-1), browserFavorites = ref(false)
+const adjustDir = ref(0), adjustMinutes = ref(15)
+const metadataConflict = ref(false)
+const controlsDisabled = computed(() => isSaving.value || !connected.value || revision.value < 0 || metadataConflict.value)
+let clockOffset = 0, ticker, poller, metadataTimer, metadataDirty = false, active = false, loading = false
+let pending = null
+function stateOwner() { return employee.data?.user_id || employee.data?.name }
+function pendingKey() { return "hrms_timer_operation:" + stateOwner() }
+function recoveryKey() { return "hrms_timer_recovery:" + stateOwner() }
+function localRead(key) { try { return JSON.parse(localStorage.getItem(key) || "null") } catch { return null } }
+function localWrite(key, value) { try { value ? localStorage.setItem(key, JSON.stringify(value)) : localStorage.removeItem(key) } catch {} }
+function message(err) { return err?.messages?.[0] || err?.message || __("Could not connect. Your time is preserved.") }
+function serverNow() { return Date.now() + clockOffset }
 
-let ticker = null
-let pauseTimeout = null
-let longRunningTimeout = null
-
-// ─── Browser tab indicator (Toggl-style) ─────────────────────────────────────
-// While the timer runs: "<elapsed> • <project>" in the tab title + red
-// recording favicon. Restores both when the timer stops. Reminder value:
-// you can see at a glance that a timer is still ticking.
-
-let baseTitle = ""
-let baseFavicon = ""
-const RECORDING_FAVICON =
-	"data:image/svg+xml," +
-	encodeURIComponent(
-		"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='#e5484d'/></svg>"
-	)
-
-function compactElapsed(totalSeconds) {
-	const s = Math.max(0, Math.floor(totalSeconds || 0))
-	if (s < 60) return `${s}s`
-	const m = Math.floor(s / 60)
-	if (s < 3600) return `${m}:${String(s % 60).padStart(2, "0")}`
-	return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+function hydrate(state, preserveMetadata = false) {
+	if (state.revision < revision.value) return
+	if (preserveMetadata && state.revision > revision.value) {
+		const recovery = localRead(recoveryKey()) || {}
+		localWrite(recoveryKey(), { ...recovery, metadataDraft: { revision: revision.value, form: { ...form.value } } })
+		metadataDirty = false
+		metadataConflict.value = true
+		preserveMetadata = false
+		clearTimeout(metadataTimer)
+	}
+	revision.value = state.revision
+	initialized.value = state.initialized
+	clockOffset = new Date(state.server_now).getTime() - Date.now()
+	const timer = state.timer
+	const localForm = form.value
+	form.value = preserveMetadata && localForm.project === timer.form.project ? localForm : { ...timer.form }
+	startTime.value = timer.startTime
+	segments.value = timer.segments || []
+	isRunning.value = Boolean(timer.startTime)
+	isPaused.value = Boolean(timer.isPaused)
+	pausedSince.value = timer.pausedSince
+	favoriteProjects.value = (state.favorites || []).map(name => availableProjects.value.find(p => p.name === name) || { name })
+	error.value = state.last_error || ""
+	updateElapsed()
 }
 
-function setRecordingFavicon() {
-	try {
-		let link = document.querySelector("link[rel~='icon']")
-		if (!link) {
-			link = document.createElement("link")
-			link.rel = "icon"
-			document.head.appendChild(link)
-		}
-		if (!baseFavicon) baseFavicon = link.href || ""
-		if (link.href !== RECORDING_FAVICON) link.href = RECORDING_FAVICON
-	} catch { /* favicon is best-effort */ }
+async function request(operation) {
+	return timedCall("hrms.api.timer_state.apply_action", {
+		...operation, payload: JSON.stringify(operation.payload),
+	})
 }
-
-function restoreTabIndicator() {
+async function timedCall(method, args) {
+	let timeout
 	try {
-		if (baseTitle) document.title = baseTitle
-		const link = document.querySelector("link[rel~='icon']")
-		if (link && baseFavicon && link.href !== baseFavicon) link.href = baseFavicon
-	} catch { /* best-effort */ }
+		return await Promise.race([call(method, args), new Promise((_, reject) => {
+			timeout = setTimeout(() => reject(new Error(__("Could not connect. Your time is preserved."))), 15000)
+		})])
+	} finally { clearTimeout(timeout) }
 }
-
-function refreshTabIndicator() {
+async function refresh() {
+	if (loading || isSaving.value || !active || document.visibilityState === "hidden") return
+	if (!navigator.onLine) { connected.value = false; return }
+	loading = true
 	try {
-		const label = activeProjectLabel.value || __("Time Tracker")
-		if (isRunning.value) {
-			document.title = `${compactElapsed(elapsed.value)} • ${label}`
-			setRecordingFavicon()
-		} else if (isPaused.value && (elapsed.value > 0 || segments.value.length)) {
-			document.title = `⏸ ${compactElapsed(elapsed.value)} • ${label}`
-			setRecordingFavicon()
+		if (pending) {
+			const state = await request(pending)
+			pending = null; localWrite(pendingKey(), null)
+			hydrate(state, metadataDirty)
 		} else {
-			restoreTabIndicator()
+			hydrate(await timedCall("hrms.api.timer_state.get_state"), metadataDirty)
 		}
-	} catch { /* best-effort */ }
+		connected.value = true
+		await migrateLegacy()
+	} catch (err) {
+		const rejected = Boolean(err?.exc_type || err?.messages?.length)
+		if (pending && rejected) { pending = null; localWrite(pendingKey(), null) }
+		connected.value = false
+		error.value = message(err)
+	} finally { loading = false }
 }
-
-// ─── Computed ────────────────────────────────────────────────────────────────
-
-const formattedTime = computed(() => {
-	// Depend on the ticker so the active project's display updates every second.
-	return formatSeconds(projectSeconds(form.value.project))
-})
-
-const timerProjects = computed(() => {
-	const names = new Set([...favoriteProjects.value.map(item => item.name),
-		...segments.value.map(item => item.project), form.value.project, pickedProject.value].filter(Boolean))
-	return [...names].map(name => availableProjects.value.find(item => item.name === name)
-		|| favoriteProjects.value.find(item => item.name === name) || { name })
-})
-
-const activeProjectLabel = computed(() => {
-	const name = form.value.project
-	if (!name) return ""
-	const found =
-		availableProjects.value.find((item) => item.name === name) ||
-		favoriteProjects.value.find((item) => item.name === name)
-	if (found) return projectDisplayLabel(found)
-	return name
-})
-
-// ─── Persistence ─────────────────────────────────────────────────────────────
-
-function persistState() {
-	localStorage.setItem(
-		STORAGE_KEY,
-		JSON.stringify({ owner: stateOwner(), startTime: startTime.value, form: form.value, segments: segments.value, isPaused: isPaused.value, pausedSince: pausedSince.value })
-	)
-}
-
-function clearPersistedState() {
-	localStorage.removeItem(STORAGE_KEY)
+async function command(action, payload = {}) {
+	if (controlsDisabled.value || pending) return false
+	if (metadataDirty && action !== "metadata") {
+		if (!await command("metadata", { ...form.value })) return false
+	}
+	isSaving.value = true
+	const operation = { action, expected_revision: revision.value,
+		operation_id: crypto.randomUUID(), payload }
+	pending = operation
+	localWrite(pendingKey(), pending)
 	try {
-		localStorage.removeItem(TIMER_NOTIFIED_KEY)
-	} catch {}
-}
-
-function loadPersistedState() {
-	try {
-		const raw = localStorage.getItem(STORAGE_KEY)
-		if (!raw) return
-		const state = JSON.parse(raw)
-		// Never resurrect another account's timer on a shared browser: logout
-		// wipes this key, and any leftover stamped for someone else is dropped.
-		const owner = stateOwner()
-		if (state.owner && owner && state.owner !== owner) {
-			clearPersistedState()
-			return
+		const state = await request(operation)
+		pending = null; localWrite(pendingKey(), null)
+		metadataDirty = false
+		hydrate(state)
+		connected.value = true
+		return true
+	} catch (err) {
+		// Transport failures keep exactly the same request for safe retry.
+		if (err?.exc_type || err?.messages?.length) {
+			pending = null; localWrite(pendingKey(), null)
 		}
-		segments.value = state.segments || []
-		if (!state.startTime && !segments.value.length) return
-		startTime.value = state.startTime || null
-		form.value = state.form || { project: "", activity_type: "", description: "" }
-		isPaused.value = Boolean(state.isPaused)
-		pausedSince.value = state.pausedSince || null
-		isRunning.value = Boolean(state.startTime) && !isPaused.value
-		updateElapsed()
-		if (isRunning.value) startTick()
-		else if (isPaused.value) schedulePausedSave()
-		if (isRunning.value) scheduleLongRunningHint()
-	} catch {
-		clearPersistedState()
+		error.value = message(err)
+		connected.value = false
+		return false
+	} finally {
+		isSaving.value = false
+		if (!connected.value && navigator.onLine) void refresh()
 	}
 }
-
-// ─── Timer control ───────────────────────────────────────────────────────────
-
-function startTick() {
-	clearInterval(ticker)
-	ticker = setInterval(() => {
-		updateElapsed()
-	}, 1000)
+const legacyConflict = ref(false)
+async function migrateLegacy() {
+	browserFavorites.value = Boolean(localRead(FAVORITES_KEY)?.length)
+	const old = localRead(STORAGE_KEY)
+	if (!old || ![stateOwner(), employee.data?.name].includes(old.owner)) return
+	localWrite(recoveryKey(), { timer: old, favorites: localRead(FAVORITES_KEY) || [] })
+	if (initialized.value) { legacyConflict.value = true; return }
+	const ok = await command("import", { timer: old, favorites: localRead(FAVORITES_KEY) || [] })
+	if (ok) {
+		localWrite(STORAGE_KEY, null); localWrite(FAVORITES_KEY, null); localWrite(recoveryKey(), null)
+		browserFavorites.value = false
+	}
 }
-
-function updateElapsed() {
-	const saved = segments.value.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
-	const current = startTime.value ? Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000)) : 0
-	elapsed.value = saved + current
-	refreshTabIndicator()
+async function importFavorites() {
+	if (!window.confirm(__("Add this browser's previous favorites to your account?"))) return
+	if (await command("import_favorites", { favorites: localRead(FAVORITES_KEY) || [] })) {
+		localWrite(FAVORITES_KEY, null); browserFavorites.value = false
+	}
 }
-
-function loadFavorites() {
-	try { favoriteProjects.value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]") } catch { favoriteProjects.value = [] }
+function exportRecovery() {
+	const data = localRead(recoveryKey())
+	if (!data) return
+	const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }))
+	const link = document.createElement("a")
+	link.href = url; link.download = "timer-recovery.json"; link.click()
+	URL.revokeObjectURL(url)
 }
-
+function persistState() {
+	metadataDirty = true
+	clearTimeout(metadataTimer)
+	metadataTimer = setTimeout(() => {
+		if (!controlsDisabled.value) void command("metadata", { ...form.value })
+	}, 500)
+}
 async function loadProjects() {
 	try {
 		const rows = await call("hrms.api.search_employee_projects", {
 			doctype: "Project", txt: "", searchfield: "name", start: 0, page_len: 500, filters: {},
 		})
-		availableProjects.value = (rows || []).map((row) => ({ name: row[0] || row.name, label: row[1] || row[0] || row.name }))
-		favoriteProjects.value = favoriteProjects.value.map((item) => availableProjects.value.find((project) => project.name === item.name) || item)
+		availableProjects.value = (rows || []).map(row => ({ name: row[0] || row.name, label: row[1] || row[0] || row.name }))
+		favoriteProjects.value = favoriteProjects.value.map(item => availableProjects.value.find(p => p.name === item.name) || item)
 	} catch { availableProjects.value = [] }
 }
-
-function isFavorite(project) { return favoriteProjects.value.some((item) => item.name === project) }
-function toggleFavorite(project) {
-	if (!project) return
-	if (isFavorite(project)) favoriteProjects.value = favoriteProjects.value.filter((item) => item.name !== project)
-	else favoriteProjects.value = [availableProjects.value.find((item) => item.name === project) || { name: project, label: project }, ...favoriteProjects.value]
-	localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteProjects.value))
-}
-function projectDisplayLabel(project) {
-	if (!project) return ""
-	const label = project.label || ""
-	const name = project.name || ""
-	if (!label) return name
-	return label || name
-}
-function startProject(project) {
-	if (!project || isSaving.value) return
-	if (isRunning.value && form.value.project !== project) pause()
-	if (form.value.project !== project) {
-		const previous = segments.value.filter(item => item.project === project).at(-1)
-		form.value = { project, activity_type: previous?.activity_type || "", description: previous?.description || "" }
-	}
-	if (!isRunning.value) resume()
-}
-function projectStatus(project) {
-	if (form.value.project !== project || (!isRunning.value && !isPaused.value)) return "idle"
-	return isRunning.value ? "running" : "paused"
-}
+function isFavorite(project) { return favoriteProjects.value.some(p => p.name === project) }
+function toggleFavorite(project) { return command("favorite", { project }) }
+function projectDisplayLabel(project) { return project?.label || project?.name || "" }
+function projectNameLabel(name) { return projectDisplayLabel(availableProjects.value.find(p => p.name === name) || { name }) }
+const activeProjectLabel = computed(() => projectNameLabel(form.value.project))
+const timerProjects = computed(() => [...new Set([
+	...favoriteProjects.value.map(p => p.name), ...segments.value.map(p => p.project),
+	form.value.project, pickedProject.value,
+].filter(Boolean))].map(name => availableProjects.value.find(p => p.name === name) || { name }))
 function projectSeconds(project) {
 	void elapsed.value
-	const saved = segments.value
-		.filter((segment) => segment.project === project)
-		.reduce((sum, segment) => sum + Number(segment.seconds || 0), 0)
-	if (form.value.project !== project || !startTime.value) return saved
-	return saved + Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
+	const saved = segments.value.filter(s => s.project === project).reduce((sum, s) => sum + Number(s.seconds || 0), 0)
+	return saved + (form.value.project === project && startTime.value
+		? Math.max(0, Math.floor((serverNow() - new Date(startTime.value).getTime()) / 1000)) : 0)
 }
-function formatSeconds(totalSeconds) {
-	const h = Math.floor(totalSeconds / 3600)
-		.toString()
-		.padStart(2, "0")
-	const m = Math.floor((totalSeconds % 3600) / 60)
-		.toString()
-		.padStart(2, "0")
-	const s = (totalSeconds % 60).toString().padStart(2, "0")
-	return `${h}:${m}:${s}`
+function formatSeconds(seconds) {
+	const n = Math.max(0, Math.floor(seconds))
+	return [Math.floor(n / 3600), Math.floor(n % 3600 / 60), n % 60].map(x => String(x).padStart(2, "0")).join(":")
 }
-function projectFormattedTime(project) {
-	return formatSeconds(projectSeconds(project))
+const formattedTime = computed(() => formatSeconds(projectSeconds(form.value.project)))
+function projectFormattedTime(project) { return formatSeconds(projectSeconds(project)) }
+function projectStatus(project) {
+	if (form.value.project !== project) return "idle"
+	return isRunning.value ? "running" : isPaused.value ? "paused" : "idle"
 }
 function projectStatusLabel(project) {
-	const status = projectStatus(project)
-	if (status === "running") return __("Recording")
-	if (status === "paused") return __("Paused")
-	if (projectSeconds(project) > 0) return __("Ready to save")
-	return __("Ready")
+	return __(projectStatus(project) === "running" ? "Recording" : projectStatus(project) === "paused" ? "Paused" : projectSeconds(project) > 0 ? "Ready to save" : "Ready")
 }
 function projectButtonLabel(project) {
 	const status = projectStatus(project)
-	if (status === "running") return __("Pause")
-	if (status === "paused") return __("Resume")
-	return isRunning.value ? __("Switch") : __("Start")
+	return __(status === "running" ? "Pause" : status === "paused" ? "Resume" : isRunning.value ? "Switch" : "Start")
 }
-function projectButtonClass(project) {
+function projectButtonClass(project) { return projectStatus(project) === "running" ? "bg-amber-500" : "bg-blue-500" }
+async function toggleProjectTimer(project) {
+	clearTimeout(metadataTimer)
 	const status = projectStatus(project)
-	if (status === "running") return "bg-amber-500"
-	if (status === "paused") return "bg-green-500"
-	return "bg-blue-500"
+	return command(status === "running" ? "pause" : status === "paused" ? "resume" : isRunning.value ? "switch" : "start",
+		{ ...form.value, project })
 }
-function toggleProjectTimer(project) {
-	if (isSaving.value) return
-	const status = projectStatus(project)
-	if (status === "running") return pause()
-	if (status === "paused") return resume()
-	startProject(project)
-}
-
-// ─── Manual time adjustment (± minutes, e.g. forgot to start/stop) ──────────
-// Adjustments apply to the ACTIVE project only and are baked into segments /
-// startTime, so they persist and are saved like normally tracked time.
-const adjustDir = ref(0) // 0 = hidden, 1 = add, -1 = trim
-const adjustMinutes = ref(15)
-
-function activeProjectSegments() {
-	return segments.value.filter((segment) => segment.project === form.value.project)
-}
-
-function projectNameLabel(name) {
-	if (!name) return ""
-	const found =
-		availableProjects.value.find((item) => item.name === name) ||
-		favoriteProjects.value.find((item) => item.name === name)
-	return projectDisplayLabel(found || { name })
-}
-
-function describeSegment(segment) {
-	if (!segment) return ""
-	const fmt = (iso) => {
-		const d = new Date(iso)
-		const p = (n) => String(n).padStart(2, "0")
-		return `${p(d.getHours())}:${p(d.getMinutes())}`
-	}
-	return `${projectNameLabel(segment.project)} ${fmt(segment.from)}–${fmt(segment.to)}`
-}
-
-// Latest segment ending at or before ms (any project: one person, one timeline).
-function latestEndAtOrBefore(ms) {
-	let best = null
-	let bestTo = -1
-	for (const segment of segments.value) {
-		const to = new Date(segment.to).getTime()
-		if (Number.isNaN(to) || to > ms) continue
-		if (to > bestTo) {
-			bestTo = to
-			best = segment
-		}
-	}
-	return best
-}
-
-function addTime(totalSeconds) {
-	const requestedMin = Math.max(1, Math.floor(totalSeconds / 60))
-	const truncMin = (ms) => Math.floor(ms / 60000) * 60000
-	if (startTime.value) {
-		const startMs = new Date(startTime.value).getTime()
-		const bound = latestEndAtOrBefore(startMs)
-		const boundMs = bound ? new Date(bound.to).getTime() : 0
-		const capMin = Math.max(0, Math.floor((truncMin(startMs) - truncMin(boundMs)) / 60000))
-		const appliedMin = Math.min(requestedMin, capMin)
-		if (appliedMin <= 0) return { appliedSecs: 0, blocked: true, bound }
-		const applied = appliedMin * 60
-		startTime.value = new Date(startMs - applied * 1000).toISOString()
-		updateElapsed()
-		persistState()
-		return { appliedSecs: applied, blocked: false, capped: appliedMin < requestedMin, bound }
-	}
-	const mine = activeProjectSegments()
-	if (!mine.length) {
-		toast({ title: __("Nothing to adjust yet"), icon: "alert-circle", iconClasses: "text-amber-500" })
-		return { appliedSecs: 0, blocked: true, empty: true }
-	}
-	const last = mine[mine.length - 1]
-	const fromMs = new Date(last.from).getTime()
-	const bound = latestEndAtOrBefore(fromMs)
-	const boundMs = bound ? new Date(bound.to).getTime() : 0
-	const capMin = Math.max(0, Math.floor((truncMin(fromMs) - truncMin(boundMs)) / 60000))
-	const appliedMin = Math.min(requestedMin, capMin)
-	if (appliedMin <= 0) return { appliedSecs: 0, blocked: true, bound }
-	const applied = appliedMin * 60
-	last.from = new Date(fromMs - applied * 1000).toISOString()
-	last.seconds = Number(last.seconds || 0) + applied
-	updateElapsed()
-	persistState()
-	return { appliedSecs: applied, blocked: false, capped: appliedMin < requestedMin, bound }
-}
-
-function trimTime(totalSeconds) {
-	let remaining = totalSeconds
-	if (startTime.value) {
-		const current = Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
-		const take = Math.min(current, remaining)
-		startTime.value = new Date(new Date(startTime.value).getTime() + take * 1000).toISOString()
-		remaining -= take
-	}
-	const mine = activeProjectSegments()
-	for (let i = mine.length - 1; i >= 0 && remaining > 0; i--) {
-		const segment = mine[i]
-		const take = Math.min(Number(segment.seconds || 0), remaining)
-		segment.seconds = Number(segment.seconds || 0) - take
-		segment.to = new Date(new Date(segment.to).getTime() - take * 1000).toISOString()
-		remaining -= take
-		if (Number(segment.seconds) <= 0) {
-			segments.value.splice(segments.value.indexOf(segment), 1)
-		}
-	}
-	updateElapsed()
-	persistState()
-	if (remaining > 0) {
-		toast({ title: __("Trimmed down to zero"), icon: "alert-circle", iconClasses: "text-amber-500" })
-	}
-	return true
-}
-
-function applyAdjust() {
-	if (isSaving.value) return
-	const minutes = Math.max(1, Math.floor(Number(adjustMinutes.value) || 0))
-	adjustMinutes.value = minutes
-	if (adjustDir.value > 0) {
-		const res = addTime(minutes * 60)
-		if (!res || res.blocked || res.appliedSecs <= 0) {
-			toast({
-				title: __("No time added"),
-				text: res?.bound
-					? __("Limited to avoid overlap with {0}.", [describeSegment(res.bound)])
-					: __("Nothing recorded for this project yet."),
-				icon: "alert-circle",
-				iconClasses: "text-amber-500",
-			})
-			return // keep the panel open so a smaller value can be entered
-		}
-		const appliedMin = Math.floor(res.appliedSecs / 60)
-		adjustMinutes.value = appliedMin
-		if (res.capped) {
-			toast({
-				title: __("Added {0} min instead of {1}", [appliedMin, minutes]),
-				text: res.bound
-					? __("Limited to avoid overlap with {0}.", [describeSegment(res.bound)])
-					: undefined,
-				icon: "check",
-				iconClasses: "text-green-500",
-			})
-		} else {
-			toast({
-				title: __("Added {0} min", [appliedMin]),
-				icon: "check",
-				iconClasses: "text-green-500",
-			})
-		}
-		adjustDir.value = 0
-		// Re-arm the 2h reminder from the adjusted start: crossing 2h via +/-
-		// fires on the next tick instead of waiting for the original schedule.
-		if (isRunning.value) scheduleLongRunningHint()
-		return
-	}
-	const ok = trimTime(minutes * 60)
-	if (ok) {
-		toast({
-			title: __("Trimmed {0} min", [minutes]),
-			icon: "check",
-			iconClasses: "text-green-500",
-		})
-		adjustDir.value = 0
-		if (isRunning.value) scheduleLongRunningHint()
-	}
-}
-
-function pushCurrentSegment() {
-	if (!startTime.value) return
-	const seconds = Math.max(0, Math.floor((Date.now() - new Date(startTime.value).getTime()) / 1000))
-	if (seconds) segments.value.push({ from: startTime.value, to: new Date().toISOString(), seconds, ...form.value })
-	startTime.value = null
-}
-
-function start() {
-	if (!form.value.project) {
-		toast({
-			title: __("Select a project before starting the timer"),
-			icon: "alert-circle",
-			iconClasses: "text-red-500",
-		})
-		return
-	}
-	segments.value = []
-	elapsed.value = 0
-	isPaused.value = false
-	adjustDir.value = 0
-	startTime.value = new Date().toISOString()
-	longRunningNotified.value = false
-	try {
-		localStorage.removeItem(TIMER_NOTIFIED_KEY)
-	} catch {}
-	isRunning.value = true
-	startTick()
-	scheduleLongRunningHint()
-	persistState()
-	updateElapsed()
-}
-
-function pause() {
-	if (!isRunning.value) return
-	pushCurrentSegment()
-	clearInterval(ticker)
-	ticker = null
-	clearTimeout(longRunningTimeout)
-	isRunning.value = false
-	isPaused.value = true
-	pausedSince.value = new Date().toISOString()
-	updateElapsed()
-	refreshTabIndicator()
-	persistState()
-	schedulePausedSave()
-}
-
-function schedulePausedSave() {
-	clearTimeout(pauseTimeout)
-	if (!isPaused.value || !pausedSince.value) return
-	const remaining = Math.max(0, 2 * 60 * 60 * 1000 - (Date.now() - new Date(pausedSince.value).getTime()))
-	pauseTimeout = setTimeout(() => {
-		if (isPaused.value) stop()
-	}, remaining)
-}
-
-function scheduleLongRunningHint() {
-	clearTimeout(longRunningTimeout)
-	if (!isRunning.value || !startTime.value || longRunningNotified.value) return
-	const remaining = Math.max(0, 2 * 60 * 60 * 1000 - (Date.now() - new Date(startTime.value).getTime()))
-	longRunningTimeout = setTimeout(async () => {
-		if (!isRunning.value || longRunningNotified.value) return
-		// Shared exactly-once flag with the global watchdog (App.vue): if it
-		// already notified for this timer start, stay quiet.
-		try {
-			if (localStorage.getItem(TIMER_NOTIFIED_KEY) === startTime.value) {
-				longRunningNotified.value = true
-				return
-			}
-		} catch {}
-		try {
-			await call("hrms.api.notify_long_running_timer", { employee: employee.data.name, project: form.value.project, started_at: startTime.value })
-			longRunningNotified.value = true
-			try {
-				localStorage.setItem(TIMER_NOTIFIED_KEY, startTime.value)
-			} catch {}
-			unreadNotificationsCount.reload().catch(() => {})
-			toast({ title: __("This timer has been running for over two hours. You may have forgotten to save it."), icon: "alert-circle", iconClasses: "text-amber-500" })
-		} catch (err) {
-			// Keep the timer usable if mail is unavailable, but leave a trace.
-			console.warn("Timer reminder failed:", err)
-		}
-	}, remaining)
-}
-
-function resume() {
-	if (!form.value.project) return start()
-	startTime.value = new Date().toISOString()
-	isRunning.value = true
-	isPaused.value = false
-	pausedSince.value = null
-	longRunningNotified.value = false
-	clearTimeout(pauseTimeout)
-	clearTimeout(longRunningTimeout)
-	startTick()
-	scheduleLongRunningHint()
-	persistState()
-	updateElapsed()
-}
-
-async function stop() {
-	if (isSaving.value) return
-	if (isRunning.value) pause()
-	return saveSegments()
-}
-
 async function saveProject(project) {
-	if (isSaving.value) return
-	if (isRunning.value && form.value.project === project) pause()
-	return saveSegments(project)
+	clearTimeout(metadataTimer)
+	if (await command("save", { ...form.value, project })) toast({ title: __("Time log saved!"), icon: "check" })
 }
-
-async function saveSegments(project = null) {
-	const pending = segments.value.filter(segment => !project || segment.project === project)
-	if (!pending.length || isSaving.value) return
-	persistState()
-	isSaving.value = true
-
-	try {
-		for (const segment of pending) {
-			await call("hrms.api.save_timer_log", {
-				employee: employee.data.name,
-				from_time: dayjs(segment.from).format("YYYY-MM-DD HH:mm:ss"),
-				to_time: dayjs(segment.to).format("YYYY-MM-DD HH:mm:ss"),
-				hours: parseFloat((segment.seconds / 3600).toFixed(4)),
-				activity_type: segment.activity_type || null,
-				project: segment.project || null,
-				description: segment.description || null,
-			})
-			// Acknowledged intervals must never be retried after a later failure.
-			segments.value = segments.value.filter(item => item !== segment)
-			persistState()
-			updateElapsed()
-		}
-
-		if (!segments.value.length && !startTime.value) discard()
-		toast({
-			title: __("Time log saved!"),
-			icon: "check",
-			iconClasses: "text-green-500",
-		})
-
-	} catch (e) {
-		// Failed intervals remain available; an inactive project's save never
-		// pauses the currently running project.
-		if (isPaused.value) {
-			pausedSince.value = new Date().toISOString()
-			persistState()
-		}
-		toast({
-			title: __("Failed to save time log"),
-			text: e?.messages?.[0] || e?.message,
-			icon: "x",
-			iconClasses: "text-red-500",
-		})
-	} finally {
-		isSaving.value = false
-		updateElapsed()
-		if (isPaused.value) schedulePausedSave()
-	}
-}
-
 function discardProject(project) {
-	if (isSaving.value || !window.confirm(__("Discard unsaved time for {0}?", [projectNameLabel(project)]))) return
-	if (form.value.project === project) {
-		if (isRunning.value) pause()
-		isRunning.value = false
-		isPaused.value = false
-		pausedSince.value = null
-		form.value = { project: "", activity_type: "", description: "" }
-	}
-	segments.value = segments.value.filter(item => item.project !== project)
-	if (!segments.value.length && !startTime.value) discard()
-	else {
-		if (!isRunning.value) {
-			isPaused.value = true
-			pausedSince.value = new Date().toISOString()
-			schedulePausedSave()
-		}
-		updateElapsed()
-		persistState()
-	}
+	if (controlsDisabled.value || !window.confirm(__("Discard unsaved time for {0}?", [projectNameLabel(project)]))) return
+	return command("discard", { ...form.value, project })
 }
-
-function discard() {
-	clearInterval(ticker)
-	clearTimeout(pauseTimeout)
-	clearTimeout(longRunningTimeout)
-	ticker = null
-	clearPersistedState()
-	isRunning.value = false
-	isPaused.value = false
-	adjustDir.value = 0
-	pausedSince.value = null
-	segments.value = []
-	startTime.value = null
-	elapsed.value = 0
-	restoreTabIndicator()
+async function applyAdjust() {
+	if (await command("adjust", { seconds: adjustDir.value * Math.max(1, Math.floor(Number(adjustMinutes.value) || 1)) * 60 }))
+		adjustDir.value = 0
 }
-
-// ─── Lifecycle ───────────────────────────────────────────────────────────────
-
+let baseTitle = "", baseFavicon = ""
+function updateElapsed() {
+	elapsed.value = segments.value.reduce((sum, s) => sum + Number(s.seconds || 0), 0) +
+		(startTime.value ? Math.max(0, Math.floor((serverNow() - new Date(startTime.value).getTime()) / 1000)) : 0)
+	if (isRunning.value || isPaused.value) document.title = formattedTime.value + " | " + activeProjectLabel.value
+	else restoreTabIndicator()
+}
+function restoreTabIndicator() {
+	if (baseTitle) document.title = baseTitle
+	const icon = document.querySelector("link[rel~='icon']")
+	if (icon && baseFavicon) icon.href = baseFavicon
+}
+function offline() { connected.value = false }
+function enter() {
+	active = true
+	if (!poller) poller = setInterval(refresh, 10000)
+	void refresh()
+}
+function leave() {
+	active = false
+	clearInterval(poller); poller = null
+}
 onMounted(() => {
-	try { baseTitle = document.title || "" } catch { baseTitle = "" }
-	loadFavorites(); loadProjects(); loadPersistedState(); refreshTabIndicator()
+	baseTitle = document.title
+	baseFavicon = document.querySelector("link[rel~='icon']")?.href || ""
+	pending = localRead(pendingKey())
+	ticker = setInterval(updateElapsed, 1000)
+	void loadProjects()
+	window.addEventListener("online", refresh); window.addEventListener("offline", offline)
+	window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh)
+	socket?.on("hrms:timer_changed", refresh)
+	socket?.on("connect", refresh)
+	enter()
 })
-onUnmounted(() => { clearInterval(ticker); clearTimeout(pauseTimeout); clearTimeout(longRunningTimeout); restoreTabIndicator() })
+onIonViewWillEnter(enter)
+onIonViewWillLeave(leave)
+onUnmounted(() => {
+	leave(); clearInterval(ticker); clearTimeout(metadataTimer)
+	window.removeEventListener("online", refresh); window.removeEventListener("offline", offline)
+	window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh)
+	socket?.off("hrms:timer_changed", refresh)
+	socket?.off("connect", refresh)
+	restoreTabIndicator()
+})
 </script>

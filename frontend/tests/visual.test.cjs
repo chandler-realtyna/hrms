@@ -20,7 +20,17 @@ const css = fs.readdirSync(assetDir).filter(f => /^index-.*\.css$/.test(f)).map(
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    const mocks = `const call=async(method)=>method.includes('search_employee_projects')?[['Alpha','HR System'],['Beta','Platform Development']]:null;
+    const mocks = `const state={revision:0,initialized:true,server_now:new Date().toISOString(),favorites:['Alpha','Beta'],timer:{startTime:null,form:{project:'',activity_type:'',description:''},segments:[],isPaused:false}};
+const call=async(method,args)=>{
+ if(method.includes('search_employee_projects'))return [['Alpha','HR System'],['Beta','Platform Development']];
+ if(method.endsWith('apply_action')){
+ const p=JSON.parse(args.payload),t=state.timer;
+ if(['start','switch','resume'].includes(args.action)){if(t.startTime)t.segments.push({project:t.form.project,seconds:1,from:t.startTime,to:new Date().toISOString()});t.form={project:p.project,activity_type:'',description:''};t.startTime=new Date().toISOString();t.isPaused=false;}
+ if(args.action==='pause'){t.startTime=null;t.isPaused=true;}state.revision++;
+ }state.server_now=new Date().toISOString();return JSON.parse(JSON.stringify(state));
+};
+const onIonViewWillEnter=()=>{},onIonViewWillLeave=()=>{};
+Object.defineProperty(window.crypto,'randomUUID',{value:()=>String(Date.now())+'_'+Math.random().toString(16).slice(2)});
 const toast=()=>{},unreadNotificationsCount={reload:async()=>{}},STORAGE_KEY='timer',TIMER_NOTIFIED_KEY='notified';
 const FormField={props:['label','modelValue'],emits:['update:modelValue'],template:'<label class="text-gray-700 text-sm">{{label}}<input type="text" :value="modelValue" class="block w-full border rounded p-2 mt-1" @input="$emit(\\'update:modelValue\\',$event.target.value)"></label>'};
 const FeatherIcon={props:['name'],template:'<span aria-hidden="true" class="inline-block">*</span>'};

@@ -134,16 +134,7 @@ def set_admin_reviews_home(bootinfo: dict) -> None:
 	# Frappe v16 accepts session-specific sidebar definitions in boot data.
 	# Records and permissions are unchanged; only the managerial navigation changes.
 	if "workspace_sidebar_item" in bootinfo:
-		items = [{"type": "Link", "label": _("Admin Reviews"), "link_type": "Page", "link_to": "admin-reviews", "icon": "home"}]
-		for section in sections:
-			items.append({"type": "Section Break", "label": section["label"], "collapsible": 1})
-			for item in section["items"]:
-				link = {"type": "Link", "label": item["label"], "child": 1, "icon": "list"}
-				if item.get("doctype"):
-					link.update({"link_type": "DocType", "link_to": item["doctype"], "route_options": frappe.as_json(item.get("filters") or {})})
-				else:
-					link.update({"link_type": "Page", "link_to": item["route"].removeprefix("/desk/")})
-				items.append(link)
+		items = []
 		bootinfo.workspace_sidebar_item = {
 			"admin reviews": {"name": "Admin Reviews", "label": "Admin Reviews", "app": "hrms", "module": "HR", "items": items, "module_onboarding": None}
 		}

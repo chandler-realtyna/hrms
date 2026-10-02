@@ -273,12 +273,14 @@ function setHourlyFields(is_hourly_leave) {
 
 function setLeaveApprovers(data) {
 	const leave_approver = formFields.data?.find((field) => field.fieldname === "leave_approver")
+	if (!leave_approver) return
 	leave_approver.reqd = data?.is_mandatory
+	leave_approver.read_only = Boolean(data?.fixed_approver)
 	leave_approver.documentList = data?.department_approvers.map((approver) => ({
 		label: approver.full_name ? `${approver.name} : ${approver.full_name}` : approver.name,
 		value: approver.name,
 	}))
-	if (!leaveApplication.value.leave_approver) {
+	if (!leaveApplication.value.leave_approver || (data?.fixed_approver && !leaveApplication.value.docstatus)) {
 		leaveApplication.value.leave_approver = data?.leave_approver
 		leaveApplication.value.leave_approver_name = data?.leave_approver_name
 	}

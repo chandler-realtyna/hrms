@@ -643,6 +643,12 @@ def get_holidays_for_employee(employee: str) -> list[dict]:
 @frappe.whitelist()
 def get_leave_approval_details(employee: str) -> dict:
 	frappe.has_permission("Employee", "read", employee, throw=True)
+	if frappe.db.get_value("Employee", employee, "user_id") == frappe.session.user:
+		from hrms.utils.leave_routing import default_approver
+		approver = default_approver()
+		full_name = frappe.db.get_value("User", approver, "full_name")
+		return dict(leave_approver=approver, leave_approver_name=full_name,
+			department_approvers=[dict(name=approver, full_name=full_name)], is_mandatory=True, fixed_approver=True)
 	leave_approver, department = frappe.get_cached_value(
 		"Employee",
 		employee,
@@ -1065,6 +1071,8 @@ def save_timer_log(
 ) -> str:
 	"""Save a timer entry into the employee's weekly timesheet."""
 	from hrms.api.weekly_timesheet import save_weekly_timer_log
+	from hrms.api.timer_state import reject_legacy_save
+	reject_legacy_save(frappe.session.user)
 
 	return save_weekly_timer_log(
 		employee=employee,
@@ -1082,6 +1090,12 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 	current = get_current_employee()
 	if current != employee:
 		frappe.throw(_("You can only receive timer alerts for yourself."), frappe.PermissionError)
+	from hrms.api.timer_state import STATE, _locked_state, _timer, _internal_write
+	if frappe.db.exists(STATE, {"user": frappe.session.user, "initialized": 1}):
+		doc = _locked_state()
+		timer = _timer(doc)
+		if timer.get("startTime") != started_at or timer["form"]["project"] != project or doc.notified_start == started_at:
+			return False
 	started = get_datetime(started_at)
 	if getattr(started, "tzinfo", None) is not None:
 		# Browser timestamps carry an offset (ISO "...Z") while now_datetime()
@@ -1092,6 +1106,10 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 		started = convert_utc_to_system_timezone(started).replace(tzinfo=None)
 	if not project or (now_datetime() - started).total_seconds() < 2 * 60 * 60:
 		return False
+	if frappe.db.exists(STATE, {"user": frappe.session.user, "initialized": 1}):
+		doc.notified_start = started_at
+		with _internal_write():
+			doc.save(ignore_permissions=True)
 	user = frappe.session.user
 	project_label = project
 	project_name = frappe.db.get_value("Project", project, "project_name")

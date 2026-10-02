@@ -214,6 +214,7 @@ def _serialize_weekly(doc):
 
 	return {
 		"name": doc.name,
+		"modified": str(doc.modified) if doc.modified else None,
 		"employee": doc.employee,
 		"employee_name": doc.employee_name,
 		"company": doc.company,
@@ -434,14 +435,17 @@ def _mark_correction(doc, rows, reason, projects=()):
 
 
 @frappe.whitelist()
-def save_weekly_timesheet(payload):
+def save_weekly_timesheet(payload, expected_modified=None):
 	payload = frappe.parse_json(payload)
+	from hrms.utils.account_lock import lock_current_account
+	lock_current_account()
 	employee = _current_employee()
 	start, end = _week_bounds(payload.get("custom_week_start") or payload.get("start_date"))
 	week_key = f"{employee.name}|{start}"
 	name = payload.get("name")
 
 	if name:
+		frappe.db.sql("SELECT name FROM tabTimesheet WHERE name = %s FOR UPDATE", (name,))
 		doc = frappe.get_doc("Timesheet", name)
 		_assert_employee_owns(doc)
 		if not cint(doc.custom_is_weekly):
@@ -457,6 +461,9 @@ def save_weekly_timesheet(payload):
 			_assert_employee_owns(doc)
 	if doc.docstatus != 0 or (not doc.is_new() and doc.custom_weekly_status not in ALLOWED_EMPLOYEE_STATES):
 		frappe.throw(_("This weekly timesheet is locked while it is under review."))
+	if not doc.is_new() and str(expected_modified or payload.get("modified") or "") != str(doc.modified):
+		frappe.local.response.http_status_code = 409
+		frappe.throw(_("This week changed elsewhere. Your draft is preserved; review the latest version before saving."), frappe.TimestampMismatchError)
 
 	new_rows = [_row_payload(row) for row in payload.get("time_logs") or []]
 	if doc.name and doc.custom_weekly_status == CORRECTION_REQUIRED:
@@ -1021,11 +1028,16 @@ def get_project_review_queue():
 
 
 @frappe.whitelist()
+def get_team_timesheet_sections(view="current", cursor=None, filters=None):
+	from hrms.api.team_timesheets import get_sections
+	return get_sections(view, cursor, filters)
+
+
+@frappe.whitelist()
 def get_project_review_detail(project: str, week_start: str, employee: str):
 	"""Time logs for one employee/project/week. Project Lead of the project
 	(or HR) only — enforced server-side."""
-	lead_projects, _ = _lead_scoped_projects()
-	if not _is_hr() and project not in lead_projects and _project_manager_user(project) != frappe.session.user:
+	if not _is_hr() and _project_lead_user(project) != frappe.session.user and _project_manager_user(project) != frappe.session.user:
 		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
 	week_key = f"{employee}|{getdate(week_start)}"
 	name = frappe.db.get_value(
@@ -1065,7 +1077,7 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"project_status": approval.status if approval else WEEKLY_DRAFT,
 		"approval_name": approval.name if approval else None,
 		"return_reason": approval.return_reason if approval else None,
-		"actionable": bool(approval) and approval.status == APPROVAL_PENDING,
+		"actionable": doc.docstatus == 0 and doc.custom_weekly_status == PENDING_PROJECT and bool(approval) and approval.status == APPROVAL_PENDING,
 		"can_return_entries": doc.docstatus == 0 and (
 			doc.custom_weekly_status == WEEKLY_DRAFT
 			or bool(approval) and approval.status in {APPROVAL_PENDING, APPROVAL_RETURNED}
