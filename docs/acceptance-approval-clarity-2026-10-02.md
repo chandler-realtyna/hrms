@@ -46,4 +46,25 @@ and actual production notification delivery were not retested. This change
 does not introduce a new workflow or reclassify historical Submitted records.
 The independently dirty original checkout remains untouched.
 
-Publication is recorded after the canonical deployment and health checks finish.
+## Publication
+
+Canonical release `deploy-20261002-140851` activated
+`0ff038510e6d65673d2c24945ca0398cbca3763b` on 2026-10-02 at 18:10:17
+Asia/Yerevan (14:10:17 UTC). The previous known-good application release is
+`ea8f600e240d2caa2001c80a8b42dac1c2f19bae`.
+
+Classification was frontend-only. All six source/assets mounts matched the exact
+release; HTTP/API, database, Redis and frontend asset checks passed. Migration
+was skipped and no fresh database backup was taken for this display-only release.
+The existing schema-backup policy and code rollback remain unchanged.
+
+The served approval JavaScript SHA-256 matches the tested local source:
+`fec8d9b42d1f7c1cd8dc039308a805246936ef60ed18872a53aee39d3ace8dbf`.
+State records this exact active SHA with health `ok`; the deployment lock is absent.
+
+The command exited nonzero **after** health success and state advancement: old
+release retention could not chmod a root-owned Python cache in unrelated release
+`6c6104bcf4895b9ff5e994e6785a7949a6863e3f`. No manual cleanup, second activation
+or rollback was attempted. This is a retention warning, not an unverified active
+release; future maintenance should address that old cache ownership separately.
+Private QA containers were stopped and the temporary tunnel closed.
