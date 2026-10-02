@@ -119,6 +119,16 @@
 						<span>{{ error || __("Connecting…") }}</span>
 						<button type="button" class="shrink-0 underline" :disabled="isSaving" @click="retry">{{ __("Retry") }}</button>
 					</div>
+					<div v-if="saveConflicts?.rows?.length" class="mb-4 border-b border-gray-200 pb-4 text-sm text-gray-700" role="alert">
+						<p class="mb-2 font-semibold">{{ __("This time overlaps existing entries. Your timer is preserved.") }}</p>
+						<p class="mb-2 text-xs text-gray-500">{{ saveConflicts.timezone }}</p>
+						<ul class="space-y-2">
+							<li v-for="row in saveConflicts.rows" :key="row.name" class="flex flex-wrap items-center justify-between gap-2">
+								<span>{{ row.project_name }} · {{ row.from_time }} → {{ row.to_time }}</span>
+								<router-link class="shrink-0 text-blue-600 underline" :to="{ path: '/timesheets/' + row.timesheet }">{{ __("Review timesheet") }}</router-link>
+								</li>
+							</ul>
+					</div>
 					<div v-if="legacyConflict" class="mb-3 flex items-center justify-between gap-2 text-sm text-amber-600">
 						<span>{{ __("A local timer was kept separately; the shared timer was not replaced.") }}</span>
 						<button type="button" class="shrink-0 underline" @click="exportRecovery">{{ __("Download draft") }}</button>
@@ -216,6 +226,7 @@ const connected = ref(false), error = ref(""), initialized = ref(false), revisio
 const adjustDir = ref(0), adjustMinutes = ref(15)
 const metadataConflict = ref(false)
 const serverError = ref("")
+const actionError = ref(null), saveConflicts = ref(null)
 const controlsDisabled = computed(() => isSaving.value || !connected.value || revision.value < 0 || metadataConflict.value)
 let clockOffset = 0, ticker, poller, metadataTimer, metadataDirty = false, active = false, loading = false
 let pending = null
@@ -250,7 +261,7 @@ function hydrate(state, preserveMetadata = false) {
 	pausedSince.value = timer.pausedSince
 	favoriteProjects.value = (state.favorites || []).map(name => availableProjects.value.find(p => p.name === name) || { name })
 	serverError.value = state.last_error || ""
-	error.value = serverError.value
+	error.value = actionError.value?.message || serverError.value
 	updateElapsed()
 }
 
@@ -273,7 +284,9 @@ async function refresh() {
 	loading = true
 	try {
 		if (pending) {
-			const state = await request(pending)
+			const operation = pending
+			const state = await request(operation)
+			clearActionError(operation)
 			pending = null; localWrite(pendingKey(), null)
 			hydrate(state, metadataDirty)
 		} else {
@@ -283,7 +296,10 @@ async function refresh() {
 		await migrateLegacy()
 	} catch (err) {
 		const rejected = Boolean(err?.exc_type || err?.messages?.length)
-		if (pending && rejected) { pending = null; localWrite(pendingKey(), null) }
+		if (pending && rejected) {
+			actionError.value = { ...pending, message: message(err) }
+			pending = null; localWrite(pendingKey(), null)
+		}
 		connected.value = false
 		error.value = message(err)
 	} finally { loading = false }
@@ -300,6 +316,7 @@ async function command(action, payload = {}) {
 	localWrite(pendingKey(), pending)
 	try {
 		const state = await request(operation)
+		clearActionError(operation)
 		pending = null; localWrite(pendingKey(), null)
 		metadataDirty = false
 		hydrate(state)
@@ -308,6 +325,7 @@ async function command(action, payload = {}) {
 	} catch (err) {
 		// Transport failures keep exactly the same request for safe retry.
 		if (err?.exc_type || err?.messages?.length) {
+			actionError.value = { ...operation, message: message(err) }
 			pending = null; localWrite(pendingKey(), null)
 		}
 		error.value = message(err)
@@ -320,8 +338,21 @@ async function command(action, payload = {}) {
 }
 async function retry() {
 	await refresh()
-	if (connected.value && serverError.value && !controlsDisabled.value) {
+	if (connected.value && actionError.value && !controlsDisabled.value) {
+		const operation = actionError.value
+		if (operation.action === "save") await saveProject(operation.payload.project)
+		else await command(operation.action, operation.payload)
+	} else if (connected.value && serverError.value && !controlsDisabled.value) {
 		await command("retry_save")
+	}
+}
+function clearActionError(operation) {
+	const failed = actionError.value
+	if (!failed) return
+	if ((failed.action === operation.action && failed.payload.project === operation.payload.project) ||
+		(operation.action === "discard" && failed.payload.project === operation.payload.project)) {
+		actionError.value = null
+		saveConflicts.value = null
 	}
 }
 const legacyConflict = ref(false)
@@ -408,7 +439,12 @@ async function toggleProjectTimer(project) {
 }
 async function saveProject(project) {
 	clearTimeout(metadataTimer)
-	if (await command("save", { ...form.value, project })) toast({ title: __("Time log saved!"), icon: "check" })
+	if (await command("save", { ...form.value, project })) {
+		toast({ title: __("Time log saved!"), icon: "check" })
+	} else if (actionError.value?.action === "save") {
+		try { saveConflicts.value = await timedCall("hrms.api.timer_state.get_save_conflicts", { project }) }
+		catch { /* The save error and all timer intervals remain visible. */ }
+	}
 }
 function discardProject(project) {
 	if (controlsDisabled.value || !window.confirm(__("Discard unsaved time for {0}?", [projectNameLabel(project)]))) return

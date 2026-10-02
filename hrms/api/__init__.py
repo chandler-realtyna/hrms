@@ -161,7 +161,8 @@ def upload_own_profile_image(content: str, filename: str) -> dict:
 
 @frappe.whitelist()
 def get_all_employees() -> list[dict]:
-	return frappe.get_list(
+	from hrms.api.profile_photo import directory_image
+	rows = frappe.get_list(
 		"Employee",
 		fields=[
 			"name",
@@ -178,6 +179,9 @@ def get_all_employees() -> list[dict]:
 		ignore_permissions=True,
 		limit=999999,
 	)
+	for row in rows:
+		row.image = directory_image(row.name, row.image)
+	return rows
 
 
 def get_current_employee() -> str:
@@ -1760,7 +1764,8 @@ def get_team_availability(
 	schedule_map = {}
 	for row in schedule_rows:
 		doc = frappe.get_doc("Employee Schedule", row["name"], ignore_permissions=True)
-		employee_image = frappe.db.get_value("Employee", row["employee"], "image") or ""
+		from hrms.api.profile_photo import directory_image
+		employee_image = directory_image(row["employee"], frappe.db.get_value("Employee", row["employee"], "image"))
 		schedule_map[row["employee"]] = {
 			"employee_name": row["employee_name"],
 			"image": employee_image,

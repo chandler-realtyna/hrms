@@ -68,6 +68,26 @@ Two-hour paused autosave runs on the server even with all browsers closed; faile
 autosaves retain time, show an error and retry with a thirty-minute backoff.
 Long-running reminders are deduplicated against the server's active start.
 
+Manual save failures remain visible through refresh and metadata changes. Retry
+reissues a rejected save against the fresh revision; a lost response still replays
+the original operation ID. Failed saves never clear recorded timer intervals.
+When recorded personal entries intersect pending timer time, the timer shows
+the existing project/time ranges in the server timezone and links to the original
+personal timesheet. It does not silently trim, move or duplicate those entries.
+The established minute-precision overlap rule ignores zero-extent sub-minute
+intervals, while detecting nested positive-minute overlaps as well as adjacent
+ones. A genuine overlap still needs an explicit correction decision.
+
+## Directory Photos
+
+Team availability uses authenticated, metadata-free 128-pixel thumbnails for
+private profile photos. The endpoint accepts a contractor identifier, not a file
+path, and serves only that active person's currently assigned raster photo linked
+to their contractor or user record. The caller must be active or an authorized
+manager. Original private-file permissions remain unchanged; originals are not
+made public. Responses are private and not cached. Unsupported, missing or
+inaccessible photos fall back to initials in the timeline rather than broken images.
+
 ## Weekly Review
 
 1. A contractor saves entries. Draft means **not submitted**, not cancelled,

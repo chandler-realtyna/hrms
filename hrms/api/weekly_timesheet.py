@@ -1313,13 +1313,19 @@ def _validate_time_rows(doc):
 			frappe.throw(_("Row {0}: End time must be after start time.").format(row.idx))
 		if to_time > week_end_exclusive:
 			frappe.throw(_("Row {0}: End time must be inside the selected week.").format(row.idx))
-		intervals.append((_trunc_minute(from_time), _trunc_minute(to_time), row.idx, row.project or ""))
+		start_minute, end_minute = _trunc_minute(from_time), _trunc_minute(to_time)
+		# Sub-minute records have no extent under the established minute policy.
+		if end_minute > start_minute:
+			intervals.append((start_minute, end_minute, row.idx, row.project or ""))
 
 	conflicts = []
 	ordered = sorted(intervals)
-	for previous, current in zip(ordered, ordered[1:]):
+	previous = ordered[0] if ordered else None
+	for current in ordered[1:]:
 		if current[0] < previous[1]:
 			conflicts.append((previous, current))
+		if current[1] > previous[1]:
+			previous = current
 	if conflicts:
 		parts = []
 		for (from_1, to_1, idx_1, proj_1), (from_2, to_2, idx_2, proj_2) in conflicts[:3]:

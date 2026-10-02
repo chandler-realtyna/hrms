@@ -166,6 +166,29 @@ def _save_project(doc, timer, project):
 	return names
 
 
+@frappe.whitelist(methods=["POST"])
+def get_save_conflicts(project=None):
+	"""Read only the current account's recorded intervals intersecting its timer."""
+	doc = _locked_state()
+	timer = _timer(doc)
+	_close_active(timer, _now())
+	zone = ZoneInfo(get_system_timezone())
+	conflicts = {}
+	for row in timer["segments"]:
+		if project and row["project"] != project:
+			continue
+		start = _date(row["from"]).astimezone(zone).replace(tzinfo=None)
+		end = _date(row["to"]).astimezone(zone).replace(tzinfo=None)
+		for existing in frappe.db.sql("""SELECT detail.name, detail.project, detail.from_time, detail.to_time,
+				ts.name AS timesheet, ts.custom_week_start AS week_start
+			FROM `tabTimesheet Detail` detail INNER JOIN `tabTimesheet` ts ON ts.name = detail.parent
+			WHERE ts.employee = %s AND ts.docstatus < 2 AND detail.from_time < %s AND detail.to_time > %s
+			ORDER BY detail.from_time, detail.name""", (doc.employee, end, start), as_dict=True):
+			conflicts[existing.name] = dict(existing,
+				project_name=frappe.db.get_value("Project", existing.project, "project_name") or existing.project)
+	return dict(revision=cint(doc.revision), timezone=get_system_timezone(), rows=list(conflicts.values()))
+
+
 def _adjust(timer, seconds, now):
 	seconds = max(-86400, min(86400, cint(seconds)))
 	project = timer["form"]["project"]

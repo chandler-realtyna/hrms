@@ -56,7 +56,7 @@ function client(backend, offset = 0) {
     STORAGE_KEY: "legacy", toast() {}, call: backend.call,
   }
   vm.createContext(context)
-  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,activate:()=>{active=true},pending:()=>pending};", context)
+  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,error,actionError,saveConflicts,activate:()=>{active=true},pending:()=>pending};", context)
   context.api.hydrate(JSON.parse(JSON.stringify(backend.state))); context.api.connected.value = true
   context.api.activate()
   return { ...context.api, storage, navigator }
@@ -140,4 +140,29 @@ test("Retry performs failed automatic saving rather than just rereading its erro
   assert.equal(backend.saved, 1); assert.equal(backend.calls.at(-1).action, "retry_save")
   assert.equal(c.startTime.value, start); assert.equal(c.isRunning.value, true)
   await c.retry(); assert.equal(backend.saved, 1)
+})
+test("save validation survives refresh and metadata; Retry really attempts the save", async () => {
+  const backend = server(), original = backend.call
+  let attempts = 0, deny = true
+  backend.call = async (method, args) => {
+    if (method.endsWith('get_save_conflicts')) return { timezone: 'UTC', rows: [{ name: 'ROW', timesheet: 'SHEET' }] }
+    if (args?.action === 'save') {
+      attempts++
+      if (deny) throw { exc_type: 'ValidationError', messages: ['Time entries cannot overlap'] }
+    }
+    return original(method, args)
+  }
+  const c = client(backend)
+  await c.toggleProjectTimer('Alpha'); await c.toggleProjectTimer('Alpha')
+  const before = JSON.stringify(c.segments.value)
+  await c.saveProject('Alpha'); await c.refresh()
+  assert.match(c.error.value, /cannot overlap/)
+  assert.equal(c.saveConflicts.value.rows[0].timesheet, 'SHEET')
+  assert.equal(JSON.stringify(c.segments.value), before)
+  await c.command('metadata', { project: 'Alpha', description: 'Kept' })
+  assert.match(c.error.value, /cannot overlap/)
+  await c.retry(); assert.equal(attempts, 2)
+  deny = false; await c.retry(); assert.equal(attempts, 3)
+  assert.equal(c.actionError.value, null); assert.equal(c.saveConflicts.value, null)
+  assert.equal(c.error.value, '')
 })
