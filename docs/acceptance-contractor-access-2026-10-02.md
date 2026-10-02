@@ -40,3 +40,36 @@ test email was performed.
 Browser evidence: `/private/tmp/hrms-contractor-desk-access.png` (local only).
 Production publication and read-only post-release findings are recorded below
 after canonical deployment; health alone is not complete system acceptance.
+
+## Published release and read-only production checks
+
+- Active application SHA: `27387bc5d5bd5640e06234b287154cd2a2978983`.
+- Canonical deployment: `deploy-20261002-163501`, schema classification;
+  migration and health both `ok`, exact mounts verified for all six services.
+- Pre-migration database backup:
+  `20261002_113536-frontend-database.sql.gz`.
+- State recorded at `2026-10-02T16:37:05Z` (20:37:05 Asia/Yerevan);
+  previous application SHA: `c04236284a6533bbc684f8b786a5d4a1e82a0b4d`.
+- Final script status was nonzero only during old-release retention cleanup:
+  a root-owned cache beneath release `6c6104bcf4895b9ff5e994e6785a7949a6863e3f`
+  could not be chmod-ed. Health/state were already successful; subsequent
+  read-only state verification confirmed the exact active SHA and free lock.
+  No manual cleanup or repeat activation was performed.
+
+Read-only checks using the reported Lucas account confirmed:
+
+- Only Team Timesheets and Time History home cards remain.
+- User list contains exactly his account; foreign User document read is denied.
+- Full Project list is empty and direct master read is denied; 52 available
+  project choices remain in the bounded time-logging lookup.
+- His contractor record is readable but not writable.
+- No foreign booking-settings or meeting records are visible.
+- The team queue excludes his own entries; activity catalogue write is denied.
+- Administrator and all four authorized company managers retain eleven home
+  cards and actual Project/Contractor document read access.
+
+Checks ran with transaction rollback and no business-record decisions. The
+synthetic QA containers and local tunnel were stopped after acceptance.
+The shared original checkout and independent production-branch commits were
+not changed. Wider inherited Desk/ERP permissions remain explicitly outside
+this targeted release pending the separate restriction decision and tests.
