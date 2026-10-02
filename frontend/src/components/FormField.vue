@@ -9,14 +9,14 @@
 				`block text-sm leading-5 text-gray-700`,
 			]"
 		>
-			{{ props.label }}
+			{{ __(props.label) }}
 		</span>
 
 		<!-- Select or Link field with predefined options -->
 		<Autocomplete
 			v-if="props.fieldtype === 'Select' || props.documentList"
 			:class="isReadOnly ? 'pointer-events-none' : ''"
-			:placeholder="__('Select {0}', [props.label])"
+			:placeholder="__('Select {0}', [__(props.label)])"
 			:options="selectionList"
 			:modelValue="modelValue"
 			v-bind="$attrs"
@@ -38,7 +38,7 @@
 		<TextEditor
 			v-else-if="props.fieldtype === 'Text Editor'"
 			:content="modelValue"
-			:placeholder="__('Enter {0}', [props.label])"
+			:placeholder="__('Enter {0}', [__(props.label)])"
 			@change="(v) => emit('update:modelValue', v)"
 			:fixedMenu="true"
 			:editable="!isReadOnly"
@@ -50,7 +50,7 @@
 			v-else-if="['Small Text', 'Text', 'Long Text'].includes(props.fieldtype)"
 			type="textarea"
 			:value="modelValue"
-			:placeholder="__('Enter {0}', [props.label])"
+			:placeholder="__('Enter {0}', [__(props.label)])"
 			@input="(v) => emit('update:modelValue', v)"
 			@change="(v) => emit('change', v)"
 			v-bind="$attrs"
@@ -62,7 +62,7 @@
 		<Input
 			v-else-if="props.fieldtype === 'Check'"
 			type="checkbox"
-			:label="props.label"
+			:label="__(props.label)"
 			:value="modelValue"
 			@input="(v) => emit('update:modelValue', v)"
 			@change="(v) => emit('change', v)"
@@ -114,7 +114,7 @@
 				class="text-base font-semibold text-gray-800"
 				:class="props.addSectionPadding ? 'pt-4' : ''"
 			>
-				{{ props.label }}
+				{{ __(props.label) }}
 			</h2>
 		</div>
 
@@ -124,7 +124,7 @@
 			v-else-if="props.fieldtype === 'Date'"
 			type="date"
 			:value="modelValue"
-			:placeholder="__('Select {0}', [props.label])"
+			:placeholder="__('Select {0}', [__(props.label)])"
 			:formatValue="(val) => dayjs(val).format('DD-MM-YYYY')"
 			@input="(v) => emit('update:modelValue', v)"
 			@change="(v) => emit('change', v)"
@@ -138,7 +138,7 @@
 		<DateTimePicker
 			v-else-if="props.fieldtype === 'Datetime'"
 			:value="modelValue"
-			:placeholder="`Select ${props.label}`"
+			:placeholder="__('Select {0}', [__(props.label)])"
 			:formatter="(val) => dayjs(val).format('DD-MM-YYYY HH:mm:ss')"
 			@update:modelValue="(v) => emit('update:modelValue', v)"
 			v-bind="$attrs"

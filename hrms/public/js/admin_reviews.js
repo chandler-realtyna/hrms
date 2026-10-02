@@ -269,7 +269,7 @@ class HRMSAdminReviews {
 		this.button(toolbar, "Apply filters", () => load(false), true);
 		const exportButton = this.button(toolbar, "Export CSV", () => {
 			if (!data) return;
-			const columns = ["Employee", "Project", "Activity Type", "Date", "Hours", "Week Status", "Timesheet"];
+			const columns = ["Employee", "Project", "Activity Type", "Date", "Hours", "Week Status", "Timesheet"].map(label => __(label));
 			const escape = value => `"${String(value ?? "").replace(/^(\s*[=+@\-]|[\t\r\n])/, "'$&").replace(/"/g, '""')}"`;
 			const csv = [columns, ...data.entries.map(row => [row.employee_name, row.project_label, row.activity_type, String(row.from_time).slice(0, 10), row.hours, row.status, row.timesheet])].map(row => row.map(escape).join(",")).join("\r\n");
 			const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));

@@ -36,9 +36,9 @@ class TestAdminDesk(unittest.TestCase):
 
 		self.assertIn("Holiday Approvals", labels)
 		self.assertIn("Schedule Approvals", labels)
-		self.assertIn("Employee Invoices", labels)
+		self.assertIn("Invoices", labels)
 		self.assertIn("Users", labels)
-		self.assertIn("Employees", labels)
+		self.assertIn("Contractors", labels)
 		self.assertIn("Projects", labels)
 		self.assertIn("Leave Requests", labels)
 		self.assertIn("Expense Requests", labels)
@@ -90,9 +90,9 @@ class TestAdminDesk(unittest.TestCase):
 				"Expense Requests",
 				"Holiday Approvals",
 				"Schedule Approvals",
-				"Employee Invoices",
+				"Invoices",
 				"Users",
-				"Employees",
+				"Contractors",
 				"Projects",
 			},
 		)

@@ -76,7 +76,7 @@ def _is_schema(path: str) -> bool:
         return True
     # Desk reports / workspaces sync into the DB on migrate (a new Report doc
     # only exists after migrate) — no image rebuild needed (released via mounts).
-    if "/report/" in path or "/workspace/" in path:
+    if "/report/" in path or "/workspace/" in path or "/print_format/" in path:
         return True
     if "/doctype/" in path and path.endswith(".json"):
         return True

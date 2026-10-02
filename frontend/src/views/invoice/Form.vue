@@ -13,7 +13,7 @@
 									{{ doc?.name || __("New invoice") }}
 								</h1>
 								<p v-if="doc" class="text-xs text-gray-500 mt-1">
-									{{ doc.employee_name }} · {{ doc.status }}
+									{{ doc.employee_name }} · {{ __(doc.status) }}
 								</p>
 							</div>
 						</div>
@@ -43,15 +43,10 @@
 
 					<section v-else-if="!doc" class="bg-white border rounded-xl p-5 max-w-lg">
 						<h2 class="font-semibold text-gray-900">{{ __("Create invoice") }}</h2>
-						<p class="text-sm text-gray-500 mt-1 mb-4">
-							{{ __("The default period starts on the same day one month before the due date.") }}
-						</p>
-						<label class="text-sm font-medium text-gray-700">{{ __("Due date") }}</label>
-						<input
-							v-model="newDueDate"
-							type="date"
-							class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-						/>
+						<div class="grid grid-cols-2 gap-3 mt-4">
+							<Field label="Issue date"><input :value="defaults.invoice_date" type="date" readonly class="field" /></Field>
+							<Field label="Due date"><input :value="defaults.due_date" type="date" readonly class="field" /></Field>
+						</div>
 						<Button variant="solid" class="mt-4 w-full" :loading="saving" @click="createInvoice">{{
 							__("Create and calculate")
 						}}</Button>
@@ -66,10 +61,11 @@
 						<section class="grid md:grid-cols-2 gap-4">
 							<div class="bg-white border rounded-xl p-5 space-y-3">
 								<h2 class="font-semibold text-gray-900">{{ __("Invoice period") }}</h2>
+								<Field label="Issue date"><input :value="doc.invoice_date" type="date" readonly class="field" /></Field>
 								<Field label="Due date"
 									><input
-										v-model="form.due_date"
-										:disabled="!effectiveEdit"
+										:value="doc.due_date"
+										readonly
 										type="date"
 										class="field"
 								/></Field>
@@ -391,11 +387,11 @@ const props = defineProps({ id: { type: String, default: null } })
 const __ = inject("$translate")
 const user = inject("$user")
 const router = useRouter()
-const loading = ref(Boolean(props.id))
+const loading = ref(true)
 const saving = ref(false)
 const error = ref("")
 const doc = ref(null)
-const newDueDate = ref(new Date().toISOString().slice(0, 10))
+const defaults = ref({})
 const form = reactive({})
 const isHR = (user.data?.roles || []).some((role) =>
 	["HR Manager", "HR User", "System Manager", "Administrator"].includes(role)
@@ -416,7 +412,6 @@ const adjustmentTypes = [
 	"Other",
 ]
 const editableFields = [
-	"due_date",
 	"period_start",
 	"period_end",
 	"due_hours",
@@ -489,7 +484,7 @@ async function run(action) {
 
 async function createInvoice() {
 	const result = await run(() =>
-		call("hrms.api.employee_invoice.create_employee_invoice", { due_date: newDueDate.value })
+		call("hrms.api.employee_invoice.create_employee_invoice")
 	)
 	router.replace({ name: "EmployeeInvoiceDetailView", params: { id: result.name } })
 }
@@ -575,9 +570,12 @@ async function markPaid() {
 }
 
 onMounted(async () => {
-	if (!props.id) return
 	try {
-		fillForm(await call("hrms.api.employee_invoice.get_employee_invoice", { name: props.id }))
+		if (props.id) {
+			fillForm(await call("hrms.api.employee_invoice.get_employee_invoice", { name: props.id }))
+		} else {
+			defaults.value = await call("hrms.api.employee_invoice.get_invoice_defaults")
+		}
 	} catch (err) {
 		error.value = message(err)
 	} finally {

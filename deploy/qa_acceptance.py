@@ -39,9 +39,10 @@ try:
 		setup_timesheet_entry_corrections,
 		create_company_director_access,
 		setup_shared_work_state,
+		setup_employee_invoices,
 	)
 	for module in (setup_weekly_timesheet_workflow, setup_timesheet_entry_corrections,
-		create_company_director_access, setup_shared_work_state):
+		create_company_director_access, setup_shared_work_state, setup_employee_invoices):
 		if module is create_company_director_access and frappe.db.exists("Role Profile", "Company Directors"):
 			continue
 		module.execute()

@@ -23,12 +23,12 @@
   {% if doc.status != "Paid" %}<div class="watermark">DRAFT</div>{% endif %}
   <div class="invoice-head">
     <div>
-      <h1>Employee Invoice</h1>
+      <h1>Invoice</h1>
       <div class="muted">{{ doc.name }}</div>
     </div>
     <div style="text-align:right">
-      <span class="status {{ 'final' if doc.status == 'Paid' else 'draft' }}">{{ 'FINAL / PAID' if doc.status == 'Paid' else doc.status }}</span><br>
-      <span class="muted">Invoice date: {{ frappe.utils.formatdate(doc.invoice_date) }}</span><br>
+      <span class="status {{ 'final' if doc.status == 'Paid' else 'draft' }}">{{ 'FINAL / PAID' if doc.status == 'Paid' else _(doc.status) }}</span><br>
+      <span class="muted">Issue date: {{ frappe.utils.formatdate(doc.invoice_date) }}</span><br>
       <span class="muted">Due date: {{ frappe.utils.formatdate(doc.due_date) }}</span>
     </div>
   </div>
@@ -98,6 +98,6 @@
   {% endif %}
 
   {% if doc.leave_summary %}<div class="box section"><h3>Leave information</h3>{{ doc.leave_summary | replace('\n', '<br>') }}<div class="muted">Only approved leave inside this invoice period is included.</div></div>{% endif %}
-  {% if doc.employee_note or doc.hr_note %}<div class="box section"><h3>Notes</h3>{% if doc.employee_note %}<strong>Employee:</strong> {{ doc.employee_note }}<br>{% endif %}{% if doc.hr_note %}<strong>HR:</strong> {{ doc.hr_note }}{% endif %}</div>{% endif %}
+  {% if doc.employee_note or doc.hr_note %}<div class="box section"><h3>Notes</h3>{% if doc.employee_note %}<strong>Contractor:</strong> {{ doc.employee_note }}<br>{% endif %}{% if doc.hr_note %}<strong>HR:</strong> {{ doc.hr_note }}{% endif %}</div>{% endif %}
   <div class="muted section">Operational payment document. It is not a tax invoice or an accounting entry.</div>
 </div>

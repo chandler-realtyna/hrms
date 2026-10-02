@@ -21,6 +21,9 @@ class TestReleaseProxyClassification(unittest.TestCase):
     def test_hook_changes_still_require_migration(self):
         self.assertEqual(self.classify_path("hrms/hooks.py"), "schema")
 
+    def test_standard_print_template_requires_schema_sync(self):
+        self.assertEqual(self.classify_path("hrms/hr/print_format/employee_invoice/employee_invoice.html"), "schema")
+
     def test_verified_raw_desk_assets_require_activation_not_build(self):
         for path in plan.RAW_DESK_ASSETS:
             with self.subTest(path=path):

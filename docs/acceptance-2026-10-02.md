@@ -97,19 +97,57 @@ state advancement was observed. The last verified active state was the urgent
 `a80677b83f18f2626fb7b502fb7d9023c6a6c06c` repair.
 
 SSH subsequently timed out during banner exchange, and a fresh read-only live
-review request failed. Server resource pressure is a hypothesis, not a confirmed
-diagnosis. At 10:31:26 UTC the task-owned stalled local SSH launcher was stopped;
-the canonical script exited with failure, preventing later activation by that
-local process. The remote detached build, staged override and lock must be
-inspected before retrying. Do not assume that stopping local SSH stopped the
-remote build or released the server lock. Do not start a second image build.
+review request failed. At 10:31:26 UTC the task-owned local SSH launcher was
+stopped; the canonical script exited with failure. After connectivity recovered,
+the exact detached build process was identified by its command and release tag
+and terminated without recreating any production service. Its build log ended
+with `CANCELED` and `failed to solve: Canceled: context canceled`. No build
+process remained. Production still mounted the urgent permission repair.
+
+At 10:56:00 UTC the origin API returned `{"message":"pong"}`. This is recovery
+of basic reachability, not acceptance of every user journey. The database had
+restarted during the build; its cause is not established. No migration or
+activation of the shared-state candidate took place.
+
+The inactive staged compose override and old lock were recovered after checking
+the exact attempt owner, absent build, unchanged active state/image tag and all
+six live source mounts. The override was atomically restored from the original
+pre-attempt backup, the cancelled configuration was preserved, and only that
+attempt's lock was released. No service restart or migration occurred during
+recovery. The recovery receipt is stored in the server deployment history.
 
 The planner incorrectly treated three raw Desk assets as bundled inputs. Their
 direct hook delivery was checked in source and in the isolated native Desk
 browser. The narrow classifier repair selects schema for this candidate while
 retaining the required backup/migration. Production completion still requires
-server recovery and an exact-commit canonical deployment with fresh read-only
-health verification.
+staged-configuration recovery and an exact-commit canonical deployment with
+fresh read-only health verification.
+
+## Invoice and Contractor terminology
+
+The additional invoice changes are not yet published. English display labels
+use Invoice/Invoices and Contractor/Contractors, including Desk, self-service,
+invoice printing and report export. Internal DocType/role/field/status names
+remain unchanged. No historical record renaming or bulk financial update ran.
+
+New and editable invoices use a server issue date and a read-only due date
+fifteen calendar days later. Both personal and HR update APIs ignore forged
+payment dates. Finalized financial history is intentionally not backfilled.
+
+- Eight invoice framework/database tests passed on synthetic `qa.local` data,
+  including creation, personal/HR saves, actual document validation, date
+  boundaries, print rendering and preserved internal roles/statuses.
+- The same run also passed fifteen shared-state regressions and four Desk
+  tests: twenty-seven tests combined, not twenty-seven new invoice tests.
+- Twenty frontend script tests passed, including three invoice regressions.
+- Eight deployment planner and seven image-build proof tests passed.
+- The reproducible English catalog contains 350 checked translations. The
+  frontend build passed with the existing font/chunk warnings.
+- Authenticated invoice browser checks passed at widths 1280 and 390: server
+  issue/due dates, creation, read-only payment terms, Contractor notes, no
+  horizontal overflow and light/dark date inputs. The native Desk entry opens
+  the Invoice list with Contractor column/filter labels. These are synthetic
+  browser-sized checks, not physical-device or production financial decisions.
 
 The behavioral reference is [workflows.md](workflows.md). Production health and
 QA acceptance are distinct; health alone does not prove each employee journey.

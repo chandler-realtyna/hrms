@@ -7,10 +7,11 @@ import frappe
 from frappe import _
 from frappe.utils import add_months, cint, flt, getdate, now_datetime, nowdate
 
+from hrms.utils.invoice_terms import apply_invoice_terms, invoice_defaults
+
 
 HR_ROLES = {"HR Manager", "HR User", "System Manager", "Administrator"}
 EMPLOYEE_EDITABLE_FIELDS = {
-	"due_date",
 	"period_start",
 	"period_end",
 	"due_hours",
@@ -388,6 +389,7 @@ def _material_payload(doc):
 
 
 def _recalculate(doc):
+	apply_invoice_terms(doc)
 	rows, all_final = _timesheet_rows(doc.employee, doc.period_start, doc.period_end)
 	doc.set("time_summary", [])
 	for row in rows:
@@ -586,10 +588,12 @@ def get_employee_invoice(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def create_employee_invoice(due_date):
+def create_employee_invoice(due_date=None):
 	employee = _configured_employee(_current_employee())
-	due = getdate(due_date)
-	period_start = add_months(due, -1)
+	# Keep the old argument accepted, but never trust caller-controlled payment terms.
+	defaults = invoice_defaults()
+	issue_date = getdate(defaults["invoice_date"])
+	period_start = add_months(issue_date, -1)
 	bill_to_name, bill_to_address = _company_snapshot(employee.company)
 	doc = frappe.new_doc("Employee Invoice")
 	doc.update(
@@ -599,10 +603,10 @@ def create_employee_invoice(due_date):
 			"employee_user": employee.user_id,
 			"company": employee.company,
 			"status": "Draft",
-			"invoice_date": nowdate(),
-			"due_date": due,
+			"invoice_date": defaults["invoice_date"],
+			"due_date": defaults["due_date"],
 			"period_start": period_start,
-			"period_end": due,
+			"period_end": issue_date,
 			"calculation_method": employee.custom_invoice_calculation_method,
 			"monthly_amount": employee.custom_monthly_invoice_amount,
 			"hourly_rate": employee.custom_invoice_hourly_rate,
@@ -621,6 +625,11 @@ def create_employee_invoice(due_date):
 	_recalculate(doc)
 	_persist(doc, insert=True)
 	return _serialize(doc)
+
+
+@frappe.whitelist()
+def get_invoice_defaults():
+	return invoice_defaults()
 
 
 @frappe.whitelist(methods=["POST"])

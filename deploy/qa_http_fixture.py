@@ -15,5 +15,14 @@ for user in ("worker@qa.invalid", "lead@qa.invalid", "hr@qa.invalid"):
 	update_password(user, "Synthetic-QA-Only!9842-Browser")
 	frappe.db.delete("HRMS Work State Operation", {"user": user})
 	frappe.db.delete("HRMS Work State", {"user": user})
+worker = frappe.db.get_value("Employee", {"user_id": "worker@qa.invalid"}, "name")
+assert worker, "Synthetic worker fixture must exist before browser acceptance"
+frappe.db.set_value("Employee", worker, {
+	"custom_invoice_calculation_method": "Fixed Monthly",
+	"custom_invoice_currency": "USD",
+	"custom_invoice_payee_name": "Synthetic Contractor",
+	"custom_preferred_payment_method": "Bank Transfer",
+	"custom_monthly_invoice_amount": 1000,
+})
 frappe.db.commit()
 frappe.destroy()

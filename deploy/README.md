@@ -33,7 +33,7 @@ delivery of a real employee notification.
 
 1. `plan.py` diffs deployed commit → target and classifies:
    **frontend** (Vite/static assets) · **backend** (Python-only) ·
-   **schema** (doctypes, patches, hooks/setup) · **full** (deps, base image,
+   **schema** (doctypes, patches, hooks/setup, standard print formats) · **full** (deps, base image,
    build config, anything unknown). Unknown always escalates to full.
    The directly served `admin_reviews.js`, `desk_utilities.js` and
    `admin_reviews.css` files are exact, verified static exceptions. Other

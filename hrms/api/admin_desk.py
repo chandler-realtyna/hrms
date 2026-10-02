@@ -31,7 +31,7 @@ def _admin_desk_sections() -> list[dict]:
 	can_review_projects = is_hr or is_project_lead() or is_project_manager()
 	sections = [
 		{"label": _("Timesheet Reviews"), "items": []},
-		{"label": _("Employee Requests"), "items": []},
+		{"label": _("Contractor Requests"), "items": []},
 		{"label": _("HR Approvals"), "items": []},
 		{"label": _("People and Projects"), "items": []},
 	]
@@ -65,13 +65,13 @@ def _admin_desk_sections() -> list[dict]:
 			[
 				{"label": _("Holiday Approvals"), "route": "/desk/employee-holiday", "doctype": "Employee Holiday", "filters": {"status": "Submitted"}},
 				{"label": _("Schedule Approvals"), "route": "/desk/employee-schedule", "doctype": "Employee Schedule", "filters": {"status": "Submitted"}},
-				{"label": _("Employee Invoices"), "route": "/desk/employee-invoice", "doctype": "Employee Invoice", "filters": {"status": ["not in", ["Draft", "Cancelled"]]}},
+				{"label": _("Invoices"), "route": "/desk/employee-invoice", "doctype": "Employee Invoice", "filters": {"status": ["not in", ["Draft", "Cancelled"]]}},
 			]
 		)
 
 	for doctype, label, route in (
 		("User", _("Users"), "/desk/user"),
-		("Employee", _("Employees"), "/desk/employee"),
+		("Employee", _("Contractors"), "/desk/employee"),
 		("Project", _("Projects"), "/desk/project"),
 	):
 		if _has_any_permission(doctype, "create", "write"):
