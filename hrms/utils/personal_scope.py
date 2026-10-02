@@ -49,14 +49,16 @@ def expense_query(user=None):
 def has_personal_permission(doc, ptype=None, user=None):
 	user = user or frappe.session.user
 	if _is_manager(user):
-		return None
+		return True
 	if approver := APPROVER_FIELDS.get(doc.doctype):
 		if doc.get(approver) == user:
-			return None
+			return True
 	employee = doc.name if doc.doctype == "Employee" else doc.get("employee")
 	if not employee or frappe.db.get_value("Employee", employee, "user_id") != user:
 		return False
-	return None
+	# Controller hooks can only deny access. Frappe v16 treats None as denial;
+	# True preserves the role and user-permission checks performed by Frappe.
+	return True
 
 
 def validate_personal_request(doc):
