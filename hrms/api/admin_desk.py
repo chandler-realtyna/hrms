@@ -38,6 +38,7 @@ def _is_approver(parentfield: str, employee_field: str) -> bool:
 
 def _admin_desk_sections() -> list[dict]:
 	from hrms.api.weekly_timesheet import is_project_lead, is_project_manager
+	from hrms.utils.master_access import can_manage_master
 
 	roles = set(frappe.get_roles())
 	is_company_director = COMPANY_DIRECTOR_ROLE in roles
@@ -88,7 +89,7 @@ def _admin_desk_sections() -> list[dict]:
 		("Employee", _("Contractors"), "/desk/employee"),
 		("Project", _("Projects"), "/desk/project"),
 	):
-		if _has_any_permission(doctype, "create", "write"):
+		if can_manage_master(doctype) and _has_any_permission(doctype, "create", "write"):
 			sections[3]["items"].append({"label": label, "route": route, "doctype": doctype})
 	if can_review_projects:
 		sections.append({"label": _("Management Reports"), "items": [

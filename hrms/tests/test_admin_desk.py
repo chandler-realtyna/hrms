@@ -59,10 +59,10 @@ class TestAdminDesk(unittest.TestCase):
 				{
 					"label": "Timesheet Reviews",
 					"items": [
-						{"label": "Team Timesheets", "route": "/desk/admin-reviews/project-timesheets"}
+						{"label": "Team Timesheets", "route": "/desk/admin-reviews/project-timesheets", "icon": "hr"}
 					],
 				},
-				{"label": "Management Reports", "items": [{"label": "Time History", "route": "/desk/admin-reviews/time-history"}]},
+				{"label": "Management Reports", "items": [{"label": "Time History", "route": "/desk/admin-reviews/time-history", "icon": "chart"}]},
 			],
 		)
 

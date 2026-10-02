@@ -209,7 +209,9 @@ def search_employee_projects(
 
 	normalized_query = normalize_search_text(txt)
 	compact_query = normalized_query.replace(" ", "")
-	projects = frappe.get_list(
+	# Self-service lookup exposes names only, not the financial/master form.
+	frappe.has_permission("Project", "read", throw=True)
+	projects = frappe.get_all(
 		"Project",
 		fields=["name", "project_name", "custom_project_lead"],
 		filters={"status": "Open", "is_active": "Yes"},

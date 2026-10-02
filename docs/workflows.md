@@ -233,6 +233,29 @@ utilities only. Workflow links remain on the managerial workspace; the top
 Admin Reviews return action stays available. This presentation change removes no
 modules, records or underlying permissions.
 
+## Contractor Master-Record Boundaries
+
+Ordinary contractors, including project leads, do not receive Users, Contractors
+or Projects management cards from generic self-service read/write grants.
+Management cards require the matching managerial role and existing framework
+permissions. Project leads retain their scoped Team Timesheets and Time History.
+
+Server list and document checks restrict User profiles to the current account,
+make the personal contractor master record read-only, and deny full Project
+master forms to ordinary contractors. Account profile editing remains subject
+to the framework's own privileged-field checks. HR/director master access still
+requires the original role and user permissions; these checks never grant access.
+
+Project selectors expose only project identifiers and names through the bounded
+self-service lookup. They preserve available project choices for time logging
+and expenses without opening financial/master forms. Booking settings belong to
+the linked contractor; meeting details are limited to the host or booker.
+Activity types remain selectable but cannot be edited by ordinary contractors.
+
+These are explicit boundaries for audited doctypes, not a wildcard permission
+policy or a blanket Desk route ban. Other inherited framework/ERP permissions
+require a separately tested review before broader restrictions are activated.
+
 ## Review Badges and New-Request Email
 
 Every managerial home card has a native framework icon. Numeric badges appear

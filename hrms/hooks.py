@@ -33,6 +33,7 @@ app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css?v=2026
 
 page_js = {"admin-reviews": "public/js/admin_reviews.js"}
 boot_session = ["hrms.api.admin_desk.set_admin_reviews_home"]
+standard_queries = {"Project": "hrms.utils.master_access.project_lookup"}
 
 # website
 
@@ -143,6 +144,10 @@ before_app_uninstall = "hrms.setup.before_app_uninstall"
 # Permissions evaluated in scripted ways
 
 permission_query_conditions = {
+	"User": "hrms.utils.master_access.user_query",
+	"Project": "hrms.utils.master_access.project_query",
+	"Employee Booking Settings": "hrms.utils.master_access.booking_settings_query",
+	"Meeting Booking": "hrms.utils.master_access.meeting_query",
 	"Employee": "hrms.utils.personal_scope.employee_query",
 	"Employee Schedule": "hrms.utils.personal_scope.schedule_query",
 	"Employee Holiday": "hrms.utils.personal_scope.holiday_query",
@@ -154,6 +159,11 @@ permission_query_conditions = {
 }
 
 has_permission = {
+	"User": "hrms.utils.master_access.user_permission",
+	"Project": "hrms.utils.master_access.project_permission",
+	"Employee Booking Settings": "hrms.utils.personal_scope.has_personal_permission",
+	"Meeting Booking": "hrms.utils.master_access.meeting_permission",
+	"Activity Type": "hrms.utils.master_access.activity_permission",
 	"Employee": "hrms.utils.personal_scope.has_personal_permission",
 	"Employee Schedule": "hrms.utils.personal_scope.has_personal_permission",
 	"Employee Holiday": "hrms.utils.personal_scope.has_personal_permission",

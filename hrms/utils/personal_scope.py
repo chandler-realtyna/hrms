@@ -50,6 +50,8 @@ def has_personal_permission(doc, ptype=None, user=None):
 	user = user or frappe.session.user
 	if _is_manager(user):
 		return True
+	if doc.doctype == "Employee" and ptype not in {None, "read", "print", "email"}:
+		return False
 	if approver := APPROVER_FIELDS.get(doc.doctype):
 		if doc.get(approver) == user:
 			return True

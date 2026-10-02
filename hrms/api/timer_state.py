@@ -94,7 +94,8 @@ def _project(project, open_required=True):
 	if not project:
 		frappe.throw(_("Select a project."))
 	doc = frappe.get_doc("Project", project)
-	frappe.has_permission("Project", "read", doc=doc, throw=True)
+	# Time logging needs lookup rights, not access to the master form.
+	frappe.has_permission("Project", "read", throw=True)
 	if open_required and doc.status != "Open":
 		frappe.throw(_("Project must be open."))
 	return project
