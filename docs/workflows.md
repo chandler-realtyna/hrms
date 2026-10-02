@@ -238,6 +238,9 @@ Canonical release procedure: `deploy/README.md`. Pushed clean commits only, back
 up schema changes, exact release/mount/asset verification and recoverable rollback.
 The raw Desk stylesheet has a versioned URL. Increment its version when changing
 that file, so browser/CDN caches cannot retain old review/history layout rules.
+The review page adds its versioned stylesheet through a native link element;
+the installed framework asset loader misidentifies file extensions when given
+a query string, so do not pass that versioned URL to `frappe.require`.
 The versioned proxy rejects unmatched browser Origin/Host pairs before the
 realtime upstream. Only the valid production HTTPS origin is normalized to the
 private frontend endpoint, so Frappe's session/document checks do not encounter
@@ -250,7 +253,7 @@ Verify both a legitimate connection and rejection of an unrelated origin.
   history tests under the installed Frappe runtime with synthetic documents.
 - Run timer interval/switch/partial-save tests and build the frontend.
 - Check both the native Desk entry and direct links; verify names, activity types,
-  state labels, disabled actions, latest-first order and empty states.
+  state labels, disabled actions, server queue priority/history order and empty states.
 - Compare actual record access for all authorized directors, not just roles or
   shortcut counts. Verify an ordinary contractor remains scoped to self-service.
 - Inspect desktop/mobile light/dark pages, native time inputs, expense fields,
