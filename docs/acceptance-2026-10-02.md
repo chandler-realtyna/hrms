@@ -125,6 +125,14 @@ original backup. The canonical writer now fails immediately on write errors
 and checks the exact marker; a separate six-service source/asset mount proof
 must pass before migration. Six additional mount-proof tests passed.
 
+The next attempt activated `6c6104bcf4895b9ff5e994e6785a7949a6863e3f`, passed
+the exact mount proof and migration, then lost SSH during cache invalidation.
+State was not advanced. Recovery preserves the original rollback override;
+only idempotent cache clearing and read-only probes retry transport errors.
+Four isolated shell tests cover invalid recovery IDs and bounded cache retries,
+including refusal to retry application errors. Migration/activation are never
+automatically replayed. The app payload is unchanged from invoice QA.
+
 The planner incorrectly treated three raw Desk assets as bundled inputs. Their
 direct hook delivery was checked in source and in the isolated native Desk
 browser. The narrow classifier repair selects schema for this candidate while

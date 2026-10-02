@@ -83,6 +83,7 @@ ROLLBACK=0
 BOOTSTRAP=""
 BREAK_LOCK=0
 RESUME_BUILD=0
+PREVIOUS_OVERRIDE_FROM=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--target)    TARGET="${2:?}"; shift 2 ;;
@@ -91,10 +92,14 @@ while [ $# -gt 0 ]; do
 		--bootstrap) BOOTSTRAP="${2:?}"; shift 2 ;;
 		--break-lock) BREAK_LOCK=1; shift ;;
 		--resume-build) RESUME_BUILD=1; shift ;;
+		--previous-override-from) PREVIOUS_OVERRIDE_FROM="${2:?}"; shift 2 ;;
 		-h|--help) usage ;;
 		*) fail "unknown flag: $1 (see --help)" ;;
 	esac
 done
+if [ -n "$PREVIOUS_OVERRIDE_FROM" ] && ! [[ "$PREVIOUS_OVERRIDE_FROM" =~ ^deploy-[0-9]{8}-[0-9]{6}$ ]]; then
+	fail "previous override must name an exact deployment id"
+fi
 
 command -v python3 >/dev/null || fail "python3 is required (planner)"
 [ -f "$SSH_KEY" ] || fail "SSH key not found: $SSH_KEY"
@@ -218,7 +223,19 @@ log "release ready: $RELEASES_DIR/$TARGET (exact sha, immutable)"
 # Dual mounts (app source + served assets) for every app service. Written but
 # inert until containers are recreated in step 8.
 OVERRIDE_BACKUP="$REMOTE_DIR/$OVERRIDE_FILE.backup-deploy-$DEPLOY_ID"
-rssh "if [ -f '$REMOTE_DIR/$OVERRIDE_FILE' ]; then cp '$REMOTE_DIR/$OVERRIDE_FILE' '$OVERRIDE_BACKUP'; else printf 'services: {}\n' > '$OVERRIDE_BACKUP'; fi" \
+PREVIOUS_OVERRIDE="$REMOTE_DIR/$OVERRIDE_FILE"
+if [ -n "$PREVIOUS_OVERRIDE_FROM" ]; then
+	PREVIOUS_OVERRIDE="$REMOTE_DIR/$OVERRIDE_FILE.backup-deploy-$PREVIOUS_OVERRIDE_FROM"
+	log "using verified previous override from $PREVIOUS_OVERRIDE_FROM (interrupted activation recovery)"
+fi
+rssh "set -e
+if [ -f '$PREVIOUS_OVERRIDE' ]; then
+  grep -qx '# Release: $ACTIVE_SHA' '$PREVIOUS_OVERRIDE'
+  cp '$PREVIOUS_OVERRIDE' '$OVERRIDE_BACKUP'
+else
+  test -z '$PREVIOUS_OVERRIDE_FROM'
+  printf 'services: {}\n' > '$OVERRIDE_BACKUP'
+fi" \
 	|| fail "cannot snapshot the previous release mounts"
 FRONTEND_COMMAND=""
 FRONTEND_PROXY_MOUNT=""
@@ -355,8 +372,17 @@ if [ "$NEED_MIGRATE" = "1" ]; then
 	OPS="$OPS|migrate:ok"
 fi
 
-cx exec -T backend bench --site $SITE clear-cache >/dev/null \
-	|| fail "clear-cache failed"
+CACHE_CLEARED=0
+# Cache invalidation is idempotent; never apply this retry to migration/activation.
+for _ in 1 2 3; do
+	if cx exec -T backend bench --site $SITE clear-cache >/dev/null; then
+		CACHE_CLEARED=1
+		break
+	else CACHE_STATUS=$?; fi
+	[ "$CACHE_STATUS" = "255" ] || fail "clear-cache failed"
+	sleep 5
+done
+[ "$CACHE_CLEARED" = "1" ] || fail "clear-cache connection failed"
 OPS="$OPS|clear-cache"
 
 # ------------------------------------------------------- 9. health gate -----
@@ -364,14 +390,14 @@ log "health verification (polling, no blind sleeps)"
 HEALTH="pending"
 for _ in $(seq 1 18); do
 	sleep 10
-	if rssh "cd '$REMOTE_DIR' && sudo docker compose $CFILES ps --format '{{.Name}} {{.State}}' 2>/dev/null | grep -E 'backend-1|frontend-1|websocket-1|scheduler-1|queue-short-1|queue-long-1' | grep -qv 'running'" 2>/dev/null; then
+	if rssh_read "cd '$REMOTE_DIR' && sudo docker compose $CFILES ps --format '{{.Name}} {{.State}}' 2>/dev/null | grep -E 'backend-1|frontend-1|websocket-1|scheduler-1|queue-short-1|queue-long-1' | grep -qv 'running'" 2>/dev/null; then
 		continue
 	fi
-	UP="$(rssh "curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1:8080/hrms'")"
-	PONG="$(rssh "curl -s --max-time 8 'http://127.0.0.1:8080/api/method/frappe.ping'")"
-	RD="$(rssh "sudo docker exec frappe_docker-redis-cache-1 redis-cli ping 2>/dev/null; sudo docker exec frappe_docker-redis-queue-1 redis-cli ping 2>/dev/null")"
-	DBOK="$(rssh "RPW=\$(grep MARIADB_ROOT_PASSWORD '$REMOTE_DIR/pwd.yml' | head -n 1 | cut -d: -f2 | tr -d '[:space:]'); sudo docker exec frappe_docker-db-1 mariadb -uroot -p\$RPW -N -e 'SELECT 1' 2>/dev/null")"
-	ASSET="$(rssh "REL='$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'; SRV=\$(sudo docker ps --format '{{.Names}}' | grep 'frontend-1' | head -n 1); WANT=\$(grep -o 'assets/index-[^\"]*\.js' \"\$REL\" | head -n 1); sudo docker exec \"\$SRV\" test -f \"/home/frappe/frappe-bench/sites/assets/hrms/frontend/\$WANT\" && echo ok")"
+	UP="$(rssh_read "curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1:8080/hrms'")"
+	PONG="$(rssh_read "curl -s --max-time 8 'http://127.0.0.1:8080/api/method/frappe.ping'")"
+	RD="$(rssh_read "sudo docker exec frappe_docker-redis-cache-1 redis-cli ping 2>/dev/null; sudo docker exec frappe_docker-redis-queue-1 redis-cli ping 2>/dev/null")"
+	DBOK="$(rssh_read "RPW=\$(grep MARIADB_ROOT_PASSWORD '$REMOTE_DIR/pwd.yml' | head -n 1 | cut -d: -f2 | tr -d '[:space:]'); sudo docker exec frappe_docker-db-1 mariadb -uroot -p\$RPW -N -e 'SELECT 1' 2>/dev/null")"
+	ASSET="$(rssh_read "REL='$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'; SRV=\$(sudo docker ps --format '{{.Names}}' | grep 'frontend-1' | head -n 1); WANT=\$(grep -o 'assets/index-[^\"]*\.js' \"\$REL\" | head -n 1); sudo docker exec \"\$SRV\" test -f \"/home/frappe/frappe-bench/sites/assets/hrms/frontend/\$WANT\" && echo ok")"
 	if [ "$UP" = "200" ] && printf '%s' "$PONG" | grep -q pong \
 		&& [ "$RD" = "$(printf 'PONG\nPONG')" ] && [ "$DBOK" = "1" ] && [ "$ASSET" = "ok" ]; then
 		HEALTH="ok"

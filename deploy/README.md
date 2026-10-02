@@ -19,7 +19,15 @@ digest before normal backup, activation, migration, health checks, and state
 recording. An incomplete build or stale tag is rejected. The image tag includes
 the UTC date, so resume this way on the same UTC day as the original build.
 Read-only build probes retry SSH failures; mutating commands are never replayed
-automatically.
+automatically, except idempotent cache invalidation on SSH transport failure.
+Migration and container activation are never automatically replayed.
+
+After an interrupted activation, inspect live mounts, active state and lock
+first. A canonical retry can preserve the original rollback snapshot with
+`--previous-override-from <deploy-id>`. The named backup must carry the recorded
+active SHA; otherwise the retry refuses it. Without this flag, a mismatch
+between the current override and recorded active state is rejected, preventing
+an unrecorded candidate from becoming the previous known-good configuration.
 
 After a proxy/realtime change, run `check_realtime_origin.py` through Python on
 the production host (for example through SSH stdin). It uses only a Guest
