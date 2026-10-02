@@ -34,8 +34,27 @@ legacy Desk permission restrictions. No real timesheet was edited for testing.
   persistent overlap notice, actual retry, unchanged timer revision/intervals,
   private original HTTP 403, thumbnail HTTP 200/WebP/no-store and rendered
   128-pixel image. Screenshots were inspected; the timer has no page overflow.
-- Live read-only verification is recorded below after publication, not inferred
-  from build or container health.
+  Controls re-enable after rejection; blocked image requests show initials.
+
+## Publication and Live Verification
+
+- Exact pushed application SHA: `bb45d051b94c16f11c7f9a5a3b82d8b5a4162b20`.
+- The canonical planner selected `backend`. All six release mounts and health
+  checks passed, and deployment state advanced at 17:42 UTC. No database
+  migration or fresh database backup was selected for this code-only release.
+  Previous release `27387bc5d5bd5640e06234b287154cd2a2978983` remains the rollback target.
+- The deploy script exited nonzero only after successful health/state advancement:
+  cleanup could not chmod an old release's root-owned Python cache. This was not
+  treated as a failed activation or grounds for manual production cleanup.
+- Live read-only checks under Lucas's account verified both Ia and Steven return
+  128-by-128 WebP/private-no-store thumbnails; every matching original private
+  File remains denied. No real photo was modified or made public.
+- Live timer conflict preview found five intersecting saved rows and left the
+  persisted timer JSON and revision exactly unchanged. Real-data save was not attempted.
+- Lucas retains only Team Timesheets and Time History cards. All four directors
+  retain eleven cards. No new global legacy restriction was applied.
+- The deployment lock was released; the temporary local tunnel was closed and
+  only the isolated QA containers were stopped, with their volumes preserved.
 
 ## Real-Data Boundary
 
