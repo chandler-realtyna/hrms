@@ -221,6 +221,30 @@ function clearPersistedDraft() {
 	} catch {}
 }
 
+function additiveDraft(draft, fresh) {
+	// A missing/old version alone must not lock an otherwise identical draft.
+	// Rebase only unchanged persisted rows plus new, unnamed additions.
+	if (draft?.name !== fresh.name || draft?.employee !== fresh.employee ||
+		draft?.custom_week_start !== fresh.custom_week_start ||
+		(draft?.note || "") !== (fresh.note || "")) return null
+	const rows = new Map((fresh.time_logs || []).map(row => [row.name, row]))
+	const seen = new Set(), additions = []
+	const sameTime = (a, b) => String(a || "").replace("T", " ").replace(/\.0+$/, "") ===
+		String(b || "").replace("T", " ").replace(/\.0+$/, "")
+	for (const row of draft.time_logs || []) {
+		if (!row.name) { additions.push(row); continue }
+		const server = rows.get(row.name)
+		if (!server || seen.has(row.name)) return null
+		seen.add(row.name)
+		if (["project", "activity_type", "description"].some(key => (row[key] || "") !== (server[key] || "")) ||
+			!sameTime(row.from_time, server.from_time) || !sameTime(row.to_time, server.to_time) ||
+			Math.abs(Number(row.hours || 0) - Number(server.hours || 0)) > 0.00005 ||
+			Number(row.is_billable || 0) !== Number(server.is_billable || 0)) return null
+	}
+	if (seen.size !== rows.size) return null
+	return { ...fresh, time_logs: [...fresh.time_logs, ...additions] }
+}
+
 function restoreDraftIfNewer() {
 	try {
 		const key = draftKey()
@@ -228,9 +252,15 @@ function restoreDraftIfNewer() {
 		const raw = localStorage.getItem(key)
 		if (!raw) return false
 		const draft = JSON.parse(raw)
-		if (!draft?.payload || draft.baseModified !== (timesheet.value?.modified || "")) {
-			conflict.value = Boolean(draft?.payload)
-			return false
+		if (!draft?.payload) return false
+		if (draft.baseModified !== (timesheet.value?.modified || "")) {
+			const rebased = additiveDraft(draft.payload, timesheet.value)
+			if (!rebased) { conflict.value = true; return false }
+			if (rebased.time_logs.length === timesheet.value.time_logs.length) {
+				clearPersistedDraft()
+				return false
+			}
+			draft.payload = rebased
 		}
 		if (!draft.payload?.time_logs?.length && !draft.payload?.note) return false
 		timesheet.value = draft.payload
@@ -334,6 +364,7 @@ async function load() {
 	refreshing = true
 	const sequence = ++requestSequence
 	const revisionBefore = changeRevision
+	const versionBefore = lastServerModified.value
 	const name = props.id, week = route.query.week_start
 	let timeout
 	try {
@@ -343,7 +374,8 @@ async function load() {
 			}),
 			new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(__("Could not load this week. Please retry."))), 15000) }),
 		])
-		if (sequence !== requestSequence || name !== props.id || week !== route.query.week_start) return
+		if (sequence !== requestSequence || name !== props.id || week !== route.query.week_start ||
+			saving.value || versionBefore !== lastServerModified.value) return
 		loadError.value = ""
 		if (hasUnsavedChanges.value || revisionBefore !== changeRevision) {
 			if ((fresh.modified || "") !== lastServerModified.value) conflict.value = true
@@ -365,6 +397,7 @@ async function load() {
 		refreshing = false
 		loading.value = false
 		if (routeChanging.value) resetRoute()
+		else if (hasUnsavedChanges.value && !conflict.value && !validationBlocked.value) scheduleAutosave(0)
 	}
 }
 function reviewLatest() {
@@ -402,7 +435,7 @@ function enter() {
 function leave() { active = false; clearInterval(poller); poller = null; persistDraft() }
 
 function scheduleAutosave(delay = 400, force = false) {
-	if (!readyForAutosave || refreshing || isReadOnly.value || conflict.value) return
+	if (!readyForAutosave || isReadOnly.value || conflict.value) return
 	if (validationBlocked.value && !force && structRev.value === blockedRev.value) return
 	changeRevision += 1
 	hasUnsavedChanges.value = true

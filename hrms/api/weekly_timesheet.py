@@ -435,6 +435,37 @@ def _mark_correction(doc, rows, reason, projects=()):
 	doc.custom_weekly_return_reason = reason
 
 
+def _legacy_draft_is_additive(doc, payload):
+	"""Accept versionless clients only when every persisted value is preserved.
+
+	A cached pre-version frontend can append entries, but cannot overwrite,
+	delete, or resurrect a server entry without first fetching its version.
+	"""
+	if (payload.get("note") or "") != (doc.note or ""):
+		return False
+	if not payload.get("name") or payload.get("name") != doc.name:
+		return False
+	server_rows = {row.name: _serialize_row(row) for row in doc.time_logs}
+	seen = set()
+	for row in payload.get("time_logs") or []:
+		name = row.get("name")
+		if not name:
+			continue
+		if name in seen or name not in server_rows:
+			return False
+		seen.add(name)
+		server = server_rows[name]
+		for field in ("project", "activity_type", "description"):
+			if (row.get(field) or "") != (server.get(field) or ""):
+				return False
+		for field in ("from_time", "to_time"):
+			if not row.get(field) or get_datetime(row[field]) != get_datetime(server[field]):
+				return False
+		if flt(row.get("hours"), 4) != server["hours"] or cint(row.get("is_billable")) != server["is_billable"]:
+			return False
+	return seen == set(server_rows)
+
+
 @frappe.whitelist()
 def save_weekly_timesheet(payload, expected_modified=None):
 	payload = frappe.parse_json(payload)
@@ -462,7 +493,10 @@ def save_weekly_timesheet(payload, expected_modified=None):
 			_assert_employee_owns(doc)
 	if doc.docstatus != 0 or (not doc.is_new() and doc.custom_weekly_status not in ALLOWED_EMPLOYEE_STATES):
 		frappe.throw(_("This weekly timesheet is locked while it is under review."))
-	if not doc.is_new() and str(expected_modified or payload.get("modified") or "") != str(doc.modified):
+	client_modified = expected_modified or payload.get("modified")
+	if not doc.is_new() and str(client_modified or "") != str(doc.modified) and not (
+		not client_modified and _legacy_draft_is_additive(doc, payload)
+	):
 		frappe.local.response.http_status_code = 409
 		frappe.throw(_("This week changed elsewhere. Your draft is preserved; review the latest version before saving."), frappe.TimestampMismatchError)
 

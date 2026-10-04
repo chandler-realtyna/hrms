@@ -17,7 +17,7 @@ function form(call) {
     localStorage: { getItem: k => storage.get(k), setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) },
   }
   vm.createContext(ctx)
-  vm.runInContext(script+'\nthis.api={timesheet,loading,loadError,conflict,hasUnsavedChanges,lastServerModified,load,queueAutosave,scheduleAutosave,routeChanging,enter,routeWatch:()=>'+
+  vm.runInContext(script+'\nthis.api={timesheet,loading,loadError,conflict,hasUnsavedChanges,lastServerModified,load,queueAutosave,scheduleAutosave,routeChanging,enter,additiveDraft,reviewLatest,isReadOnly,routeWatch:()=>'+
     '0};', ctx)
   return { ...ctx.api, props, route, storage, routeWatch: watches.at(-1) }
 }
@@ -58,4 +58,68 @@ test('changing weeks preserves the old draft without carrying it into the new we
   c.props.id = 'TS-B'; c.routeWatch(); await new Promise(resolve => setImmediate(resolve))
   assert.equal(c.timesheet.value.name, 'TS-B'); assert.equal(c.timesheet.value.note, '')
   assert.equal(JSON.parse(c.storage.get('hrms_weekly_draft_EMP_2026-09-27')).payload.note, 'Old week draft')
+})
+
+function entry(name = 'ROW-1') {
+  return { name, project: 'P', activity_type: 'Support', description: 'Task',
+    from_time: '2026-09-28 09:30:00', to_time: '2026-09-28 09:42:00', hours: 0.2, is_billable: 0 }
+}
+test('legacy additive draft restores with current token and saves without losing entries', async () => {
+  const fresh = { ...doc(), time_logs: [entry()] }
+  let sent
+  const c = form(async (method, args) => {
+    if (method.endsWith('get_weekly_timesheet')) return fresh
+    sent = args
+    return { ...JSON.parse(args.payload), modified: 'two' }
+  })
+  const legacy = { ...fresh, modified: undefined, time_logs: [entry(), entry(undefined)] }
+  delete legacy.time_logs[1].name
+  c.storage.set('hrms_weekly_draft_EMP_2026-09-27', JSON.stringify({ baseModified: '', payload: legacy }))
+  await c.load()
+  assert.equal(c.conflict.value, false)
+  assert.equal(c.timesheet.value.time_logs.length, 2)
+  await c.queueAutosave()
+  assert.equal(sent.expected_modified, 'one')
+  assert.equal(c.timesheet.value.modified, 'two')
+  assert.equal(c.storage.size, 0)
+})
+test('already saved legacy draft does not lock editing', async () => {
+  const fresh = { ...doc(), time_logs: [entry()] }, c = form(async () => fresh)
+  c.storage.set('hrms_weekly_draft_EMP_2026-09-27', JSON.stringify({ baseModified: '', payload: fresh }))
+  await c.load()
+  assert.equal(c.conflict.value, false)
+  assert.equal(c.isReadOnly.value, false)
+  assert.equal(c.hasUnsavedChanges.value, false)
+  assert.equal(c.storage.size, 0)
+})
+test('changed, deleted, duplicate and unknown persisted rows still require review', () => {
+  const c = form(async () => doc()), fresh = { ...doc(), time_logs: [entry()] }
+  const drafts = [
+    { ...fresh, note: 'changed' },
+    { ...fresh, time_logs: [] },
+    { ...fresh, time_logs: [{ ...entry(), description: 'changed' }] },
+    { ...fresh, time_logs: [entry(), entry()] },
+    { ...fresh, time_logs: [entry(), entry('deleted-on-server')] },
+  ]
+  for (const draft of drafts) assert.equal(c.additiveDraft(draft, fresh), null)
+})
+test('refresh started before our own successful save cannot produce a false conflict', async () => {
+  let resolveRefresh, fetches = 0
+  const c = form(async (method, args) => {
+    if (method.endsWith('get_weekly_timesheet')) {
+      if (++fetches === 1) return doc()
+      return new Promise(resolve => { resolveRefresh = resolve })
+    }
+    return { ...JSON.parse(args.payload), modified: 'two' }
+  })
+  await c.load()
+  const refresh = c.load()
+  c.timesheet.value.note = 'New note'
+  c.scheduleAutosave()
+  await c.queueAutosave()
+  resolveRefresh(doc())
+  await refresh
+  assert.equal(c.timesheet.value.modified, 'two')
+  assert.equal(c.timesheet.value.note, 'New note')
+  assert.equal(c.conflict.value, false)
 })
