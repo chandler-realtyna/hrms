@@ -28,9 +28,9 @@ const route = useRoute()
 useDarkMode() // initialises watchEffect to keep html class in sync
 useTimerReminder() // global 2h running-timer watchdog (works from any page)
 
-// Only show the sidebar on authenticated pages
-const GUEST_ROUTES = ["Login", "InvalidEmployee"]
-const showSidebar = computed(() => !GUEST_ROUTES.includes(route.name) && !route.meta.hideSidebar)
+// Keep desktop navigation on every internal page, including approval routes.
+const GUEST_ROUTES = ["Login", "ForgotPassword", "InvalidEmployee"]
+const showSidebar = computed(() => !GUEST_ROUTES.includes(route.name) && !route.meta.isPublic)
 
 onMounted(() => {
 	window?.frappePushNotification?.onMessage((payload) => {

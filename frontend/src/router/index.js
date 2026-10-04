@@ -72,19 +72,19 @@ const routes = [
 		path: "/admin-requests/leave",
 		name: "AdminLeaveRequests",
 		component: () => import("@/views/AdminRequests.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true, requestType: "Leave Application" },
+		meta: { requiresEmployee: false, requestType: "Leave Application" },
 	},
 	{
 		path: "/admin-requests/expense",
 		name: "AdminExpenseRequests",
 		component: () => import("@/views/AdminRequests.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true, requestType: "Expense Claim" },
+		meta: { requiresEmployee: false, requestType: "Expense Claim" },
 	},
 	{
 		path: "/admin-timesheets",
 		name: "AdminTimesheets",
 		component: () => import("@/views/HrTimesheetApprovals.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 	{
 		path: "/login",

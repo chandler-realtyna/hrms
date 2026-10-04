@@ -8,14 +8,14 @@ const routes = [
 		name: "HolidayApprovals",
 		path: "/holidays/approvals",
 		component: () => import("@/views/holidays/HolidayApprovals.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 	{
 		name: "HolidayApprovalDetail",
 		path: "/holidays/approvals/:id",
 		props: true,
 		component: () => import("@/views/holidays/HolidayApprovalDetail.vue"),
-		meta: { requiresEmployee: false, hideSidebar: true },
+		meta: { requiresEmployee: false },
 	},
 ]
 
