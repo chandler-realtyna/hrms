@@ -267,30 +267,108 @@ class HRMSAdminReviews {
 		}
 	}
 	reports(reports) {
-		const search = $('<input type="search" class="form-control admin-reviews-search mb-3">').attr({placeholder:__("Search projects or employees"), "aria-label":__("Search project summaries")}).appendTo(this.content);
-		search.on("input", () => { const query=String(search.val()).toLowerCase(); this.content.find(".admin-project-summary").each(function(){ $(this).toggle($(this).text().toLowerCase().includes(query)); }); });
-		let company = Symbol();
+		const toolbar = $('<div class="admin-summary-toolbar"></div>').prependTo(this.content);
+		const company = this.content.children('select.admin-reviews-filter').first().detach();
+		const date = this.content.children('input[type="date"]').first().detach();
+		for (const [control, label] of [[company, "Company"], [date, "Week containing date"]]) {
+			if (!control.length) continue;
+			const field = $('<label class="admin-summary-filter"></label>').appendTo(toolbar);
+			$('<span class="text-muted small"></span>').text(__(label)).appendTo(field);
+			control.appendTo(field);
+		}
+		const searchField = $('<label class="admin-summary-filter admin-summary-search"></label>').appendTo(toolbar);
+		$('<span class="text-muted small"></span>').text(__("Search projects or employees")).appendTo(searchField);
+		const search = $('<input type="search" class="form-control">').attr({placeholder:__("Project, employee or activity"), "aria-label":__("Search project summaries")}).appendTo(searchField);
+		const start = reports[0]?.week_start || moment(this.reportWeek || undefined).day(0).format("YYYY-MM-DD");
+		const end = reports[0]?.week_end || moment(start).add(6, "days").format("YYYY-MM-DD");
+		const recorded = reports.filter(report => report.members.length);
+		const total = reports.reduce((sum, report) => sum + report.members.reduce((hours, member) => hours + Number(member.weekly_total || 0), 0), 0);
+		const overview = $('<div class="admin-summary-overview"></div>').appendTo(this.content);
+		$('<strong></strong>').text(this.week(start, end)).appendTo(overview);
+		$('<span class="text-muted"></span>').text(__("{0} projects · {1} with recorded time · {2} recorded", [reports.length, recorded.length, this.duration(total)])).appendTo(overview);
+		$('<p class="text-muted small admin-summary-purpose"></p>').text(__("Recorded time by project and day. Project review and final HR approval are separate steps.")).appendTo(this.content);
+		const groups = new Map();
 		reports.forEach(report => {
-			if (report.company !== company) {
-				company = report.company;
-				$("<h3></h3>").text(company || __("Company not specified")).appendTo(this.content);
-			}
-			const band = $('<details class="admin-reviews-section admin-project-summary"></details>').appendTo(this.content);
-			$('<summary class="admin-reviews-heading"></summary>').text(report.project_label || report.project).appendTo(band);
-			$('<div class="text-muted admin-reviews-count"></div>').text(this.week(report.week_start, report.week_end)).appendTo(band);
-			const body = this.table(band, ["Employee", "Activity Type", ...report.days.map(day => moment(day).format("ddd D")), "Total time", "Project review", "Action"]);
-			report.members.forEach(member => {
-				const tr = $("<tr></tr>").appendTo(body);
-				[member.employee_name, (member.activity_types || []).filter(value => value && value !== "Unassigned").join(", ")].forEach(value => $("<td></td>").text(value).appendTo(tr));
-				member.daily_hours.forEach(value => $('<td class="admin-reviews-number"></td>').toggleClass("text-muted", !Number(value)).text(Number(value) ? this.duration(value) : "-").appendTo(tr));
-				$('<td class="admin-reviews-number font-weight-bold"></td>').text(this.duration(member.weekly_total)).appendTo(tr);
-				this.statusCell($("<td></td>").appendTo(tr), member.status);
-				const action = $("<td></td>").appendTo(tr);
-				if (member.includes_legacy_entries) $('<span class="text-muted small"></span>').text(__("Includes legacy daily records · details in Time History")).appendTo(action);
-				else this.button(action, "Review entries", () => this.detail({ ...member, project: report.project, week_start: report.week_start }, false));
-			});
-			if (!report.members.length) $('<p class="text-muted"></p>').text(__("No time recorded for this week")).appendTo(band);
+			const key = report.company || __("Company not specified");
+			if (!groups.has(key)) groups.set(key, []);
+			groups.get(key).push(report);
 		});
+		const rendered = [];
+		const drawProject = (report, target) => {
+			const band = $('<details class="admin-project-summary"></details>').appendTo(target);
+			const heading = $('<summary class="admin-summary-project-heading"></summary>').appendTo(band);
+			$('<span class="admin-summary-project-name"></span>').text(report.project_label || report.project).appendTo(heading);
+			const hours = report.members.reduce((sum, member) => sum + Number(member.weekly_total || 0), 0);
+			const count = new Set(report.members.map(member => member.employee || member.employee_name)).size;
+			$('<span class="admin-summary-project-metrics"></span>').text(report.members.length ? __(count === 1 ? "{0} · {1} employee" : "{0} · {1} employees", [this.duration(hours), count]) : __("No recorded time")).appendTo(heading);
+			let drawn = false;
+			band.on("toggle", () => {
+				if (!band.prop("open") || drawn) return;
+				drawn = true;
+				if (!report.members.length) {
+					$('<p class="text-muted small admin-summary-no-time"></p>').text(__("No time recorded for this week")).appendTo(band);
+					return;
+				}
+				const body = this.table(band, ["Employee", "Activity Type", ...report.days.map(day => moment(day).format("ddd D")), "Total time", "Project review", "Details"]);
+				report.members.forEach(member => {
+					const tr = $("<tr></tr>").appendTo(body);
+					const employee = $('<td></td>').appendTo(tr);
+					const identity = $('<span class="admin-summary-employee"></span>').appendTo(employee);
+					const fallback = $('<span class="admin-summary-avatar" aria-hidden="true"></span>').text(String(member.employee_name || "?").slice(0, 1)).appendTo(identity);
+					if (member.employee_image) $('<img class="admin-summary-avatar">').attr({src:member.employee_image, alt:"", width:24, height:24}).on("error", function(){ $(this).remove(); fallback.show(); }).on("load", () => fallback.hide()).appendTo(identity);
+					$('<span></span>').text(member.employee_name).appendTo(identity);
+					$('<td></td>').text((member.activity_types || []).filter(value => value && value !== "Unassigned").join(", ")).appendTo(tr);
+					member.daily_hours.forEach(value => $('<td class="admin-reviews-number"></td>').toggleClass("text-muted", !Number(value)).text(Number(value) ? this.duration(value) : "-").appendTo(tr));
+					$('<td class="admin-reviews-number font-weight-bold"></td>').text(this.duration(member.weekly_total)).appendTo(tr);
+					this.statusCell($("<td></td>").appendTo(tr), member.status);
+					const action = $("<td></td>").appendTo(tr);
+					if (member.includes_legacy_entries) $('<span class="text-muted small"></span>').text(__("Includes legacy daily records · details in Time History")).appendTo(action);
+					else this.button(action, "View entries", () => this.detail({ ...member, project: report.project, week_start: report.week_start }, false));
+				});
+				const totals = $('<tr class="admin-summary-total-row"></tr>').appendTo(body);
+				$('<th scope="row" colspan="2"></th>').text(__("Project total")).appendTo(totals);
+				report.days.forEach((day, index) => {
+					const hours = report.members.reduce((sum, member) => sum + Number(member.daily_hours[index] || 0), 0);
+					$('<td class="admin-reviews-number"></td>').text(hours ? this.duration(hours) : "-").appendTo(totals);
+				});
+				$('<td class="admin-reviews-number font-weight-bold"></td>').text(this.duration(hours)).appendTo(totals);
+				$('<td colspan="2"></td>').appendTo(totals);
+			});
+			return {band, searchText:[report.company, report.project_label, report.project, ...report.members.flatMap(member => [member.employee_name, ...(member.activity_types || [])])].join(" ").toLowerCase()};
+		};
+		[...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([name, projects]) => {
+			const group = $('<section class="admin-summary-company"></section>').appendTo(this.content);
+			$('<h3 class="admin-reviews-heading"></h3>').text(name).appendTo(group);
+			const active = projects.filter(report => report.members.length).sort((a,b) => String(a.project_label || a.project).localeCompare(String(b.project_label || b.project)));
+			const empty = projects.filter(report => !report.members.length).sort((a,b) => String(a.project_label || a.project).localeCompare(String(b.project_label || b.project)));
+			const activeRows = active.map(report => drawProject(report, group));
+			let emptyGroup, emptyTitle, emptyRows = [];
+			if (empty.length) {
+				emptyGroup = $('<details class="admin-summary-empty-projects"></details>').appendTo(group);
+				emptyTitle = $('<summary></summary>').text(__("Projects without recorded time ({0})", [empty.length])).appendTo(emptyGroup);
+				emptyRows = empty.map(report => drawProject(report, emptyGroup));
+			}
+			rendered.push({group, activeRows, emptyGroup, emptyTitle, emptyRows});
+		});
+		const noMatch = $('<p class="admin-reviews-empty" role="status"></p>').text(__("No projects match your search")).hide().appendTo(this.content);
+		let searching = false;
+		search.on("input", () => {
+			const query = String(search.val()).trim().toLowerCase();
+			let count = 0;
+			rendered.forEach(group => {
+				const apply = rows => rows.filter(row => { const match = row.searchText.includes(query); row.band.toggle(match); return match; }).length;
+				const active = apply(group.activeRows), empty = apply(group.emptyRows);
+				group.group.toggle(Boolean(active + empty)); count += active + empty;
+				if (group.emptyGroup) {
+					if (query && !searching) group.wasOpen = group.emptyGroup.prop("open");
+					group.emptyGroup.toggle(Boolean(empty)).prop("open", query ? Boolean(empty) : searching ? Boolean(group.wasOpen) : group.emptyGroup.prop("open"));
+					group.emptyTitle.text(__("Projects without recorded time ({0})", [empty]));
+				}
+			});
+			searching = Boolean(query);
+			noMatch.toggle(!count);
+		});
+		if (!reports.length) noMatch.text(__("No projects available for this company")).show();
 	}
 	async detail(row, hr) {
 		const data = hr ? await this.call("weekly_timesheet.get_timesheet_review_detail", { name: row.name }) : await this.call("weekly_timesheet.get_project_review_detail", { project: row.project, week_start: row.week_start, employee: row.employee });

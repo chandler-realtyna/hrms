@@ -15,8 +15,15 @@ frappe.ui.form.on("Employee Invoice", {
 			if (response.message?.needs_employee_confirmation) frappe.msgprint(__("Invoice data changed. Employee confirmation is required again."));
 		};
 		if (frm.doc.status === "Pending HR Review") {
-			const approve = frm.add_custom_button(__("Approve for Payment"), () => frappe.confirm(__("Approve this invoice for payment?"), () => invoke("hr_approve_employee_invoice")), __("Review"));
-			approve.prop("disabled", true).attr("title", __("Checking timesheet finalization"));
+			let approval_ready = false;
+			const approve = frm.add_custom_button(__("Approve for Payment"), () => {
+				if (!approval_ready) {
+					frappe.msgprint(__("Timesheet finalization must be checked and complete before approving this invoice."));
+					return;
+				}
+				frappe.confirm(__("Approve this invoice for payment?"), () => invoke("hr_approve_employee_invoice"));
+			}, __("Review"));
+			approve.prop("disabled", true).addClass("disabled").attr({"aria-disabled": "true", title: __("Checking timesheet finalization")});
 			const review_token = {};
 			frm.__invoice_review_token = review_token;
 			frappe.call({
@@ -26,7 +33,8 @@ frappe.ui.form.on("Employee Invoice", {
 					if (frm.__invoice_review_token !== review_token || frm.doc.status !== "Pending HR Review") return;
 					const readiness = response.message;
 					if (!readiness) return;
-					approve.prop("disabled", !readiness.ready).attr("title", readiness.ready ? "" : __("Finalize the referenced timesheets before approving this invoice."));
+					approval_ready = Boolean(readiness.ready);
+					approve.prop("disabled", !approval_ready).toggleClass("disabled", !approval_ready).attr("aria-disabled", String(!approval_ready)).attr("title", readiness.ready ? "" : __("Finalize the referenced timesheets before approving this invoice."));
 					employee_invoice_render_review(frm, readiness);
 				},
 				error() {

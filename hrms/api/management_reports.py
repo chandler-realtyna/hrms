@@ -119,7 +119,7 @@ def get_review_companies():
 @frappe.whitelist()
 def get_daily_project_summary(week_start=None, company=None):
 	"""Read-only project coverage, independent of the project approval queue."""
-	from hrms.api.weekly_timesheet import _week_bounds
+	from hrms.api.weekly_timesheet import _hr_employee_image, _week_bounds
 	scope = _project_scope()
 	start, end = _week_bounds(week_start)
 	filters = {"company": company} if company else {}
@@ -144,9 +144,13 @@ def get_daily_project_summary(week_start=None, company=None):
 		if row.activity_type:
 			member["activity_types"].add(row.activity_type)
 	result = []
+	images = {}
 	for project in projects:
 		members = sorted(grouped[project.name].values(), key=lambda r: r["employee_name"] or "")
 		for member in members:
+			if member["employee"] not in images:
+				images[member["employee"]] = _hr_employee_image(member["employee"])
+			member["employee_image"] = images[member["employee"]]
 			member["activity_types"] = sorted(member["activity_types"])
 		result.append({"project": project.name, "project_label": project.project_name or project.name, "company": project.company, "week_start": str(start), "week_end": str(end), "days": days, "members": members})
 	return result
