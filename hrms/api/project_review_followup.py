@@ -63,6 +63,6 @@ def ping_project_reviewer(name: str, project: str, expected_modified: str, expec
 	frappe.get_doc({"doctype": "Notification Log", "subject": subject, "email_content": message, "for_user": recipient, "type": "Alert", "document_type": "Timesheet", "document_name": name}).insert(ignore_permissions=True)
 	# Every explicit reminder must reach the employee's HRMS bell; do not suppress
 	# it just because an older notification exists for the same weekly document.
-	frappe.get_doc({"doctype": "PWA Notification", "from_user": frappe.session.user, "to_user": recipient, "message": subject + ": " + message, "reference_document_type": "Timesheet", "reference_document_name": name}).insert(ignore_permissions=True)
+	frappe.get_doc({"doctype": "PWA Notification", "from_user": frappe.session.user, "to_user": recipient, "message": subject + ": " + message, "reference_document_type": "Timesheet Project Approval", "reference_document_name": f"{project}|{doc.custom_week_start}"}).insert(ignore_permissions=True)
 	doc.add_comment("Comment", _("HR sent a project review reminder to {0} for project {1}.").format(frappe.bold(escape(recipient)), frappe.bold(escape(project))))
 	return {"sent": True, "last_ping_at": str(now_datetime()), "reviewer_name": frappe.db.get_value("User", recipient, "full_name") or recipient, "message": _("Reminder sent to the current project reviewer.")}

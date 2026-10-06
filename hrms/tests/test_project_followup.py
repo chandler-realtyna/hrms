@@ -31,7 +31,7 @@ class TestFollowup(unittest.TestCase):
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(path),'exec'),self.env)
  def ping(self):return self.env['ping_project_reviewer']('T','P','v1',self.env['_project_lead_user']('P'))
  def test_explicit_ping_sends_both_bells_and_audit(self):
-  self.assertTrue(self.ping()['sent']);self.assertEqual([n['doctype'] for n in self.sent],['Notification Log','PWA Notification']);self.assertEqual(self.sent[0]['for_user'],'lead');self.assertEqual(len(self.doc.comments),1);self.assertIn('HR System',self.sent[0]['email_content']);self.assertIn('2026-10-03',self.sent[0]['email_content'])
+  self.assertTrue(self.ping()['sent']);self.assertEqual([n['doctype'] for n in self.sent],['Notification Log','PWA Notification']);self.assertEqual(self.sent[0]['for_user'],'lead');self.assertEqual(len(self.doc.comments),1);self.assertIn('HR System',self.sent[0]['email_content']);self.assertIn('2026-10-03',self.sent[0]['email_content']);self.assertEqual(self.sent[1]['reference_document_type'],'Timesheet Project Approval');self.assertEqual(self.sent[1]['reference_document_name'],'P|2026-09-27')
  def test_duplicate_is_noop_with_last_ping(self):
   self.last='2026-10-06 10:00:00';self.assertFalse(self.ping()['sent']);self.assertEqual(self.sent,[]);self.assertEqual(self.doc.comments,[])
  def test_stale_closed_draft_returned_inactive_own_and_membership_are_rejected(self):
