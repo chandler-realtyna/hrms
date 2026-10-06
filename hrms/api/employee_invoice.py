@@ -88,6 +88,8 @@ def _get_doc(name):
 	if doc.status == "Draft":
 		frappe.throw(_("Employee invoice drafts are private."), frappe.PermissionError)
 	if _is_hr() and _can_access_company(frappe.session.user, doc.company):
+		# Match native list/document user permissions for known invoice names.
+		doc.check_permission("read")
 		return doc
 	if _is_hr():
 		frappe.throw(_("You do not have access to this company."), frappe.PermissionError)
