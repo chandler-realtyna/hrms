@@ -160,7 +160,7 @@ class HRMSAdminReviews {
 		const status = $('<select class="form-control admin-reviews-filter"></select>').attr("aria-label", __(hr ? "Week status" : "Status")).appendTo(toolbar);
 		$('<option value=""></option>').text(__("All statuses")).appendTo(status);
 		if (hr) {
-			for (const [value, label] of [["Pending Project Approval", "Project review"], ["Correction Required", "Needs correction"], ["Pending HR Review", "HR review"], ["Closed", "Finalized"]])
+			for (const [value, label] of [["Pending Project Approval", "Awaiting project approvals"], ["Correction Required", "Needs employee correction"], ["Pending HR Review", "Ready for HR review"], ["Closed", "Finalized"]])
 				$('<option></option>').val(value).text(__(label)).appendTo(status);
 		} else (paging ? ["Draft", "Pending", "Returned", "Approved", "HR Review"] : [...new Set(rows.map(row => row.project_status).filter(Boolean))]).forEach(value => $('<option></option>').val(value).text(this.statusLabel(value)).appendTo(status));
 		let approve;
@@ -175,7 +175,7 @@ class HRMSAdminReviews {
 
 		const counter = $('<div class="admin-reviews-count text-muted"></div>').appendTo(this.content);
 		if (hr && rows.length >= 500) $('<p class="text-muted small"></p>').text(__("Showing the latest 500 weeks. Older records are available in Time History.")).appendTo(this.content);
-		const body = this.table(this.content, hr ? ["Employee", "Week", "Hours", "Week status", "Next action", "Action"] : ["", "Employee", "Project", "Week", "Total time", "Project review", "Next action", "Action"]);
+		const body = this.table(this.content, hr ? ["Employee", "Week", "Total time", "Week status", "Next action", "Action"] : ["", "Employee", "Project", "Week", "Total time", "Project review", "Next action", "Action"]);
 		const render = () => {
 			selected.clear(); if (approve) approve.prop("disabled", true); body.empty();
 			const query = search.val().toLowerCase();
@@ -348,7 +348,7 @@ class HRMSAdminReviews {
 		const updateTimes = () => timeCells.forEach(({ cell, value, dateOnly }) => cell.text(value ? (moment.tz ? moment.tz(value, sourceZone).tz(displayZone).format(dateOnly ? "D MMM YYYY" : "D MMM YYYY HH:mm") : dateOnly ? this.date(String(value).slice(0, 10)) : value) : ""));
 		zone.on("change", () => { displayZone = zone.val(); updateTimes(); });
 		const showCorrectionReason = logs.some(log => Boolean(log.return_reason));
-		const body = this.table(root, ["", "Project", "Date", "Start", "End", "Hours", "Activity Type", "Description", ...(showCorrectionReason ? ["Correction Reason"] : []), "Action"]);
+		const body = this.table(root, ["", "Project", "Date", "Start", "End", "Time", "Activity Type", "Description", ...(showCorrectionReason ? ["Correction Reason"] : []), "Action"]);
 		logs.forEach(log => {
 			const tr = $("<tr></tr>").appendTo(body);
 			const select = $("<td></td>").appendTo(tr);
