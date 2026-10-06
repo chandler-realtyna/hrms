@@ -18,6 +18,9 @@ class TestExpected(unittest.TestCase):
  def calc(self):return self.env['_expected_week_hours']('E','2026-10-04','2026-10-10')
  def test_missing_is_unknown_not_forty(self):self.missing=True;self.assertIsNone(self.calc()['hours'])
  def test_schedule_and_personal_holiday(self):self.assertEqual(self.calc()['hours'],40);self.holiday=True;self.assertEqual(self.calc()['hours'],32)
+ def test_omitted_days_are_off_as_in_schedule_detail(self):
+  self.schedule.schedule_days=self.schedule.schedule_days[:5]
+  self.assertEqual(self.calc()['hours'],40)
  def test_half_day_and_overnight_unknown(self):
   self.leaves=[N(half_day=1,half_day_date='2026-10-05')];self.assertEqual(self.calc()['hours'],4)
   self.schedule.schedule_days[0].end_time='08:00';self.assertIsNone(self.calc()['hours'])

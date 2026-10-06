@@ -1287,7 +1287,8 @@ def _expected_week_hours(employee, start, end):
 		zones.add(schedule.timezone or get_system_timezone())
 		rows = [row for row in schedule.schedule_days if cint(row.day_of_week) == day.weekday()]
 		if not rows:
-			return {"hours": None, "reason": _("The approved schedule does not cover every day of this week.")}
+			# Schedule views define an empty day as Off, including omitted weekends.
+			continue
 		hours = 0.0
 		for row in rows:
 			if (row.day_type or "").lower() != "working":
@@ -1551,7 +1552,7 @@ def get_hr_weekly_timesheet_queue(view: str = "ready", company: str | None = Non
 				"employee_name": week.employee_name,
 				"week_start": str(week.custom_week_start),
 				"week_end": str(week.custom_week_end),
-				"total_hours": round(flt(week.total_hours), 2),
+				"total_hours": sum(flt(row.hours) for row in doc.time_logs),
 				"modified": str(week.modified),
 				"ready_for_hr_close": ready,
 				"week_status": doc.custom_weekly_status,
