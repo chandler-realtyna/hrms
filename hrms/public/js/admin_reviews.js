@@ -273,7 +273,7 @@ class HRMSAdminReviews {
 			? "Finalized by HR. This week is locked."
 			: hr ? data.ready_for_hr_close
 				? "Project reviews complete. HR approval is still required."
-				: data.custom_weekly_status === "Correction Required" ? "The employee must correct and resubmit this week before HR can finalize it." : "Follow up with the project or team reviewers listed below. After their reviews are complete, the week can proceed to final HR approval."
+				: data.custom_weekly_status === "Correction Required" ? "The employee must correct and resubmit this week before HR can finalize it." : "Follow up with the project reviewers listed below for this employee’s own entries. Reviews of other employees’ entries are separate tasks and do not delay this week’s final HR approval."
 			: "Project approval does not finalize the week. Final approval is by HR.";
 		$('<p class="text-muted small"></p>').text(__(approvalNote)).appendTo(root);
 		const selected = new Set();
