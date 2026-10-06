@@ -9,6 +9,8 @@ from frappe import _
 from frappe.utils import add_days, cint, flt, get_datetime, getdate, now_datetime, nowdate, get_system_timezone
 
 
+from hrms.utils.review_query_permissions import check_hr_review_permission
+
 WEEKLY_DRAFT = "Draft"
 PENDING_PROJECT = "Pending Project Approval"
 CORRECTION_REQUIRED = "Correction Required"
@@ -834,6 +836,7 @@ def review_saved_project_entries(name: str, project: str, expected_modified: str
 		frappe.throw(_("HR intervention requires a reason. Use the exceptional review action."))
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write", project=project)
 	if _employee_user(doc.employee) == frappe.session.user:
 		frappe.throw(_("Your own project entries require another reviewer."), frappe.PermissionError)
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or doc.custom_weekly_status not in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR}:
@@ -890,6 +893,7 @@ def reset_project_review(name: str, project: str, expected_modified: str, reason
 		frappe.throw(_("A reason for requesting another project review is required."))
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write", project=project)
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or doc.custom_weekly_status == CLOSED:
 		frappe.throw(_("Finalized weeks cannot be changed through project review."))
 	if _employee_user(doc.employee) == frappe.session.user:
@@ -1230,6 +1234,7 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 	if not name:
 		frappe.throw(_("Weekly timesheet not found."))
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "read", project=project)
 	_refresh_review_routing(doc)
 	approval = next(
 		(item for item in doc.custom_project_approvals if item.project == project), None
@@ -1335,6 +1340,7 @@ def _expected_week_hours(employee, start, end):
 def get_timesheet_review_detail(name: str):
 	_require_hr()
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "read")
 	data = _serialize_weekly(doc)
 	data["review_blockers"] = _hr_review_blockers(doc)
 	data["expected_work"] = _expected_week_hours(doc.employee, doc.custom_week_start, doc.custom_week_end)
@@ -1354,6 +1360,7 @@ def return_timesheet_entries(name: str, entries, reason: str, stage: str = "proj
 	if not isinstance(entries, list) or not entries or any(not isinstance(item, str) for item in entries):
 		frappe.throw(_("Select at least one time entry."))
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write")
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0:
 		frappe.throw(_("Only open weekly timesheets can be returned."))
 	selected = [row for row in doc.time_logs if row.name in set(entries)]
@@ -1408,6 +1415,7 @@ def reopen_weekly_timesheet(name: str, expected_modified: str, reason: str):
 		frappe.throw(_("A reason for reopening the week is required."))
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write")
 	if not _is_hr():
 		_assert_employee_owns(doc)
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or doc.custom_weekly_status not in {PENDING_PROJECT, PENDING_HR, CORRECTION_REQUIRED} or not doc.custom_weekly_submitted_at:
@@ -1433,6 +1441,7 @@ def hr_return_weekly_timesheet(name: str, reason: str):
 		frappe.throw(_("A return reason is required."))
 
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write")
 	if not cint(doc.custom_is_weekly) or doc.custom_weekly_status != PENDING_HR:
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))
 
@@ -1460,6 +1469,7 @@ def hr_close_weekly_timesheet(name: str):
 	_require_hr()
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
+	check_hr_review_permission(doc, "write")
 	_refresh_review_routing(doc)
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or not doc.custom_weekly_submitted_at or doc.custom_weekly_status != PENDING_HR:
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))

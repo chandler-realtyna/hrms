@@ -5,6 +5,7 @@ from frappe import _
 from frappe.utils import add_days, flt, getdate, today
 
 from hrms.api.weekly_timesheet import _is_hr
+from hrms.utils.review_query_permissions import apply_hr_read_condition
 
 
 MAX_ENTRIES = 10000
@@ -33,6 +34,7 @@ def _date_range(from_date, to_date):
 
 def _read_entries(start, end, scope, project=None, employee=None, activity_type=None, company=None):
 	ts, detail = frappe.qb.DocType("Timesheet"), frappe.qb.DocType("Timesheet Detail")
+	project_table = frappe.qb.DocType("Project")
 	query = (
 		frappe.qb.from_(detail).join(ts).on(detail.parent == ts.name)
 		.select(detail.name, ts.name.as_("timesheet"), ts.employee, ts.employee_name,
@@ -41,6 +43,10 @@ def _read_entries(start, end, scope, project=None, employee=None, activity_type=
 		.where((ts.docstatus < 2) & (detail.parenttype == "Timesheet")
 			& (detail.from_time >= str(start)) & (detail.from_time < str(add_days(end, 1))))
 	)
+	query = apply_hr_read_condition(query, "Timesheet")
+	if _is_hr():
+		query = query.left_join(project_table).on(detail.project == project_table.name)
+		query = apply_hr_read_condition(query, "Project", allow_unassigned=detail.project)
 	if scope is not None:
 		query = query.where(detail.project.isin(sorted(scope)))
 	for column, value in ((detail.project, project), (ts.employee, employee), (detail.activity_type, activity_type), (ts.company, company)):
@@ -125,10 +131,10 @@ def get_daily_project_summary(week_start=None, company=None):
 	filters = {"company": company} if company else {}
 	if scope is not None:
 		filters["name"] = ("in", sorted(scope))
-	projects = frappe.get_all("Project", filters=filters, fields=["name", "project_name", "company", "status"], order_by="company asc, project_name asc", limit_page_length=0)
+	projects = (frappe.get_list if scope is None else frappe.get_all)("Project", filters=filters, fields=["name", "project_name", "company", "status"], order_by="company asc, project_name asc", limit_page_length=0)
 	if not projects:
 		return []
-	entries = _read_entries(start, end, {p.name for p in projects})
+	entries = _read_entries(start, end, {p.name for p in projects}, company=company)
 	approvals = frappe.get_all("Timesheet Project Approval", filters={"parent": ("in", sorted({r.timesheet for r in entries}))}, fields=["parent", "project", "status"], limit_page_length=0) if entries else []
 	states = {(a.parent, a.project): a.status for a in approvals}
 	grouped = defaultdict(dict)
