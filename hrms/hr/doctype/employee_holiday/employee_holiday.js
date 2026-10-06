@@ -13,13 +13,13 @@ frappe.ui.form.on("Employee Holiday", {
 		const isHR = frappe.user.has_role(["HR Manager", "HR User", "System Manager"])
 
 		// ── Employee: Submit button ──────────────────────────────────────────
-		if (frm.doc.status === "Draft" && !frm.is_new()) {
-			frm.add_custom_button(__("Submit for Approval"), () => {
-				if ((frm.doc.holidays || []).length !== 15) {
+		if (["Draft", "Rejected"].includes(frm.doc.status) && !frm.is_new()) {
+			frm.add_custom_button(frm.doc.status === "Rejected" ? __("Resubmit for Approval") : __("Submit for Approval"), () => {
+				if ((frm.doc.holidays || []).length < 1 || (frm.doc.holidays || []).length > 15) {
 					frappe.msgprint({
 						title: __("Cannot Submit"),
 						message: __(
-							"You must select exactly 15 holiday dates before submitting. Currently selected: {0}",
+							"Select between 1 and 15 holiday dates before submitting. Currently selected: {0}",
 							[frm.doc.holidays ? frm.doc.holidays.length : 0]
 						),
 						indicator: "red",
@@ -30,7 +30,8 @@ frappe.ui.form.on("Employee Holiday", {
 					__("Submit these {0} holidays for HR approval?", [
 						(frm.doc.holidays || []).length,
 					]),
-					() => {
+					async () => {
+						if (frm.is_dirty()) await frm.save()
 						frappe.call({
 							method: "hrms.api.submit_employee_holidays",
 							args: { name: frm.doc.name },
@@ -117,7 +118,7 @@ frappe.ui.form.on("Employee Holiday", {
 			!frappe.user.has_role(["HR Manager", "HR User", "System Manager"]) &&
 			frappe.user.name !== "Administrator"
 
-		if (frm.doc.status !== "Draft" && userIsEmployee) {
+		if (["Submitted", "Approved"].includes(frm.doc.status) && userIsEmployee) {
 			frm.disable_form()
 		}
 	},

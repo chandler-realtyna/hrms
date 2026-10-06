@@ -1441,7 +1441,7 @@ def save_employee_holiday_draft(year: str, dates: str) -> dict:
 
 @frappe.whitelist()
 def submit_employee_holidays(name: str) -> dict:
-	"""Submit an employee's Draft holiday request (locks it for HR review)."""
+	"""Submit an employee's Draft or Rejected holiday request (locks it for HR review)."""
 	doc = frappe.get_doc("Employee Holiday", name)
 
 	# Ownership check
@@ -1449,8 +1449,8 @@ def submit_employee_holidays(name: str) -> dict:
 	if doc.employee != employee and not _is_hr_or_admin():
 		frappe.throw(_("You can only submit your own holiday request."))
 
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft holiday requests can be submitted."))
+	if doc.status not in {"Draft", "Rejected"}:
+		frappe.throw(_("Only Draft or Rejected holiday requests can be submitted."))
 
 	if not (1 <= len(doc.holidays) <= 15):
 		frappe.throw(_("Select between 1 and 15 holiday dates before submitting."))
@@ -1466,7 +1466,9 @@ def approve_employee_holiday(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can approve holiday requests."))
 
-	doc = frappe.get_doc("Employee Holiday", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Holiday", name, "write")
 	if doc.status != "Submitted":
 		frappe.throw(_("Only Submitted holiday requests can be approved."))
 
@@ -1488,7 +1490,9 @@ def reject_employee_holiday(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can reject holiday requests."))
 
-	doc = frappe.get_doc("Employee Holiday", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Holiday", name, "write")
 	if doc.status not in ("Submitted", "Approved"):
 		frappe.throw(_("Only Submitted or Approved holiday requests can be rejected."))
 
@@ -1517,7 +1521,9 @@ def get_holiday_approval_detail(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can view holiday approval details."))
 
-	return frappe.get_doc("Employee Holiday", name).as_dict()
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	return get_personal_review_doc("Employee Holiday", name, "read").as_dict()
 
 
 # ── Employee Schedule API ─────────────────────────────────────────────────────
@@ -1646,7 +1652,9 @@ def approve_employee_schedule(name: str) -> dict:
 	"""Approve a Submitted schedule (HR only)."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can approve schedules."))
-	doc = frappe.get_doc("Employee Schedule", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Schedule", name, "write")
 	if doc.status != "Submitted":
 		frappe.throw(_("Only Submitted schedules can be approved."))
 	doc.status = "Approved"
@@ -1659,7 +1667,9 @@ def reject_employee_schedule(name: str) -> dict:
 	"""Reject a Submitted schedule (HR only)."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can reject schedules."))
-	doc = frappe.get_doc("Employee Schedule", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Schedule", name, "write")
 	if doc.status not in ("Submitted", "Approved"):
 		frappe.throw(_("Only Submitted or Approved schedules can be rejected."))
 	doc.status = "Rejected"
@@ -1685,7 +1695,9 @@ def get_schedule_approval_detail(name: str) -> dict:
 	"""Full schedule detail for HR review."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can view schedule details."))
-	return frappe.get_doc("Employee Schedule", name).as_dict()
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	return get_personal_review_doc("Employee Schedule", name, "read").as_dict()
 
 
 # ── Team Availability API ─────────────────────────────────────────────────────
