@@ -13,11 +13,11 @@ function form(call) {
     watch: (get, fn) => watches.push(fn), onMounted() {}, onUnmounted() {}, onIonViewWillEnter() {}, onIonViewWillLeave() {},
     call, toast() {}, console, Promise, Date,
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
-    document: { visibilityState: 'visible' }, window: { confirm: () => true, clearTimeout() {}, setTimeout: () => 1 },
+    document: { visibilityState: 'visible' }, window: { prompt: () => "Correct my entries", confirm: () => true, clearTimeout() {}, setTimeout: () => 1 },
     localStorage: { getItem: k => storage.get(k), setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) },
   }
   vm.createContext(ctx)
-  vm.runInContext(script+'\nthis.api={timesheet,loading,loadError,conflict,hasUnsavedChanges,lastServerModified,load,queueAutosave,scheduleAutosave,routeChanging,enter,additiveDraft,reviewLatest,isReadOnly,routeWatch:()=>'+
+  vm.runInContext(script+'\nthis.api={timesheet,loading,loadError,conflict,hasUnsavedChanges,lastServerModified,load,queueAutosave,scheduleAutosave,routeChanging,enter,additiveDraft,reviewLatest,isReadOnly,withdrawWeek,canWithdraw,routeWatch:()=>'+
     '0};', ctx)
   return { ...ctx.api, props, route, storage, routeWatch: watches.at(-1) }
 }
@@ -122,4 +122,26 @@ test('refresh started before our own successful save cannot produce a false conf
   assert.equal(c.timesheet.value.modified, 'two')
   assert.equal(c.timesheet.value.note, 'New note')
   assert.equal(c.conflict.value, false)
+})
+
+test('withdrawing a pending submission keeps entries and advances the save version', async () => {
+  const pending = { ...doc(), custom_weekly_status: 'Pending Project Approval', docstatus: 0, time_logs: [entry()] }
+  let sent
+  const c = form(async (method,args) => {
+    if (method.endsWith('get_weekly_timesheet')) return pending
+    sent=args
+    return { ...pending, custom_weekly_status: 'Draft', modified: 'reopened' }
+  })
+  await c.load(); assert.equal(c.canWithdraw.value,true)
+  await c.withdrawWeek()
+  assert.equal(sent.name,'TS-A');assert.equal(sent.expected_modified,'one')
+  assert.equal(c.isReadOnly.value,false);assert.equal(c.lastServerModified.value,'reopened')
+  assert.equal(c.timesheet.value.time_logs.length,1);assert.equal(c.hasUnsavedChanges.value,false)
+})
+test('closed weeks and conflicting drafts cannot withdraw a submission', async () => {
+  let count=0
+  const c=form(async ()=>{count++;return {...doc(),custom_weekly_status:'Closed',docstatus:1}})
+  await c.load();await c.withdrawWeek();assert.equal(count,1)
+  c.timesheet.value.custom_weekly_status='Pending HR Review';c.timesheet.value.docstatus=0;c.conflict.value=true
+  await c.withdrawWeek();assert.equal(count,1)
 })

@@ -78,8 +78,8 @@
 							</div>
 						</div>
 					</details>
-					<details v-if="!loading && (closedWeeks.length || data.legacy?.length)" class="border rounded-xl bg-white">
-						<summary class="cursor-pointer px-4 py-3 text-sm text-gray-600">{{ __("History") }} · {{ closedWeeks.length + (data.legacy?.length || 0) }}</summary>
+					<details v-if="!loading && (closedWeeks.length || legacyWeeks.length)" class="border rounded-xl bg-white">
+						<summary class="cursor-pointer px-4 py-3 text-sm text-gray-600">{{ __("History") }}</summary>
 						<div class="px-4 pb-4 space-y-4">
 							<section v-if="closedWeeks.length">
 								<h2 class="text-xs font-medium text-gray-500 mb-2">{{ __("Closed weeks") }}</h2>
@@ -90,28 +90,28 @@
 									</router-link>
 								</div>
 							</section>
-							<details v-if="data.legacy?.length">
-								<summary class="cursor-pointer text-xs text-gray-500 py-2">{{ __("Previous daily timesheets") }} · {{ data.legacy.length }}</summary>
-						<div class="bg-white border rounded-xl divide-y overflow-hidden">
-							<router-link
-								v-for="doc in data.legacy"
-								:key="doc.name"
-								:to="{ name: 'TimesheetDetailView', params: { id: doc.name } }"
-								class="flex items-center justify-between p-3.5 hover:bg-gray-50"
-							>
-								<div>
-									<div class="text-sm font-medium text-gray-800">
-										{{ formatWeek(doc.start_date, doc.end_date) }}
-									</div>
-									<div class="text-xs text-gray-500 mt-0.5">
-										{{ formatHours(doc.total_hours) }}
-									</div>
+							<section v-if="legacyWeeks.length">
+								<h2 class="text-xs font-medium text-gray-500 mb-2">{{ __("Earlier records") }}</h2>
+								<p class="text-xs text-gray-500 mb-3">{{ __("Records from the previous timesheet system, grouped by week. Open a week to view its original records.") }}</p>
+								<label for="archive-month" class="block text-xs text-gray-500 mb-1">{{ __("Filter by month") }}</label>
+								<div class="flex gap-2 mb-3">
+									<input id="archive-month" v-model="archiveMonth" type="month" class="border rounded-lg px-3 py-2 text-sm bg-white text-gray-900" />
+									<Button v-if="archiveMonth" variant="subtle" @click="archiveMonth = ''">{{ __("Clear") }}</Button>
 								</div>
-								<span class="text-xs text-gray-500">{{ __(doc.status || "Draft") }}</span>
-							</router-link>
-						</div>
-
-							</details>
+								<p v-if="!filteredLegacyWeeks.length" class="text-xs text-gray-500 py-3">{{ __("No earlier records for this month.") }}</p>
+								<details v-for="week in filteredLegacyWeeks" :key="week.key" class="border-b last:border-0">
+									<summary class="cursor-pointer flex flex-wrap items-center justify-between gap-2 py-3 text-sm text-gray-600">
+										<span>{{ week.start ? formatWeek(week.start, week.end) : __("Undated records") }}</span>
+										<span>{{ formatHours(week.hours) }} · {{ __("{0} records", [week.docs.length]) }}</span>
+									</summary>
+									<div class="divide-y pl-3">
+										<router-link v-for="doc in week.docs" :key="doc.name" :to="{ name: 'TimesheetDetailView', params: { id: doc.name } }" class="flex flex-wrap justify-between gap-2 py-3 text-sm text-gray-600 hover:text-gray-900">
+											<span>{{ formatWeek(doc.start_date, doc.end_date) || __("Undated record") }}</span>
+											<span>{{ formatHours(doc.total_hours) }} · {{ __(doc.status || "Draft") }}</span>
+										</router-link>
+									</div>
+								</details>
+							</section>
 						</div>
 					</details>
 				</main>
@@ -133,6 +133,26 @@ const router = useRouter()
 const loading = ref(true), loadError = ref("")
 const data = ref({ weekly: [], legacy: [], project_approvals: [] })
 const currentWeek = ref(null)
+const archiveMonth = ref("")
+const legacyWeeks = computed(() => {
+	const groups = new Map()
+	for (const doc of data.value.legacy || []) {
+		if (!(Number(doc.total_hours) > 0)) continue
+		const date = doc.start_date || doc.end_date
+		const start = date ? dayjs(date).startOf("day").subtract(dayjs(date).day(), "day") : null
+		const key = start ? start.format("YYYY-MM-DD") : "undated"
+		if (!groups.has(key)) groups.set(key, { key, start: start?.format("YYYY-MM-DD"), end: start?.add(6, "day").format("YYYY-MM-DD"), hours: 0, docs: [] })
+		const group = groups.get(key)
+		group.hours += Number(doc.total_hours)
+		group.docs.push(doc)
+	}
+	return [...groups.values()].sort((a, b) => (b.start || "").localeCompare(a.start || ""))
+})
+const filteredLegacyWeeks = computed(() => archiveMonth.value ? legacyWeeks.value.map(week => {
+	const docs = week.docs.filter(doc => [doc.start_date, doc.end_date].some(date => date?.startsWith(archiveMonth.value)))
+	return { ...week, docs, hours: docs.reduce((sum, doc) => sum + Number(doc.total_hours), 0) }
+}).filter(week => week.docs.length) : legacyWeeks.value)
+
 const today = dayjs().format("YYYY-MM-DD")
 const selectedWeekDate = ref(dayjs().subtract(7, "day").format("YYYY-MM-DD"))
 const editable = doc => ["Draft", "Correction Required"].includes(doc.custom_weekly_status || "Draft") && Number(doc.docstatus || 0) === 0

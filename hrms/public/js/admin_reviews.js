@@ -279,6 +279,13 @@ class HRMSAdminReviews {
 		const selected = new Set();
 		const toolbar = $('<div class="admin-reviews-toolbar"></div>').appendTo(root);
 		if (hr) $('<p class="text-muted small"></p>').text((data.review_blockers || []).join("; ")).appendTo(root);
+		if (hr && data.docstatus === 0 && ["Pending Project Approval", "Pending HR Review", "Correction Required"].includes(data.custom_weekly_status)) {
+			this.button(toolbar, "Reopen week for editing", () => this.reason("Reopen week for editing", async reason => {
+				await this.call("weekly_timesheet.reopen_weekly_timesheet", { name, expected_modified: data.modified, reason });
+				dialog.hide(); await this.show();
+			}));
+		}
+
 		const sourceZone = data.source_timezone || frappe.boot.time_zone?.system || "UTC";
 		let displayZone = moment.tz ? (frappe.boot.time_zone?.user || sourceZone) : sourceZone;
 		const zoneLabel = $("<label></label>").text(__("Time zone") + " ").appendTo(root);

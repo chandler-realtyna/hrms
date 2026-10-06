@@ -34,6 +34,10 @@
 					<p v-if="timesheet.overlap_warnings?.length" class="border-b py-3 text-sm text-amber-600" role="status">
 						{{ __("Saved with short overlaps of up to 5 minutes. Your time was not changed.") }}
 					</p>
+					<section v-if="canWithdraw" class="bg-white border rounded-xl p-4">
+						<p class="text-sm text-gray-600 mb-2">{{ __("Need to correct this submission? Reopen the week before HR finalizes it. Saved time stays intact; changed entries require another review.") }}</p>
+						<Button variant="subtle" :loading="submitting" :disabled="conflict || saving" @click="withdrawWeek">{{ __("Withdraw submission and edit") }}</Button>
+					</section>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="bg-white border rounded-xl p-4">
 							<div class="text-xs text-gray-500">{{ __("Total hours") }}</div>
@@ -182,6 +186,8 @@ let active = false, refreshing = false, poller, requestSequence = 0, skipDraftRe
 const loading = ref(true)
 const saving = ref(false)
 const submitting = ref(false)
+const canWithdraw = computed(() => Boolean(timesheet.value.name) && Number(timesheet.value.docstatus || 0) === 0 && ["Pending Project Approval", "Pending HR Review"].includes(timesheet.value.custom_weekly_status))
+
 const autosaveState = ref("idle")
 const hasUnsavedChanges = ref(false)
 const hasEverSaved = ref(false)
@@ -526,6 +532,32 @@ function retryAutosave() {
 	if (autosaveState.value !== "error") return
 	validationBlocked.value = false
 	scheduleAutosave(0, true)
+}
+
+async function withdrawWeek() {
+	if (!canWithdraw.value || submitting.value || conflict.value) return
+	const reason = window.prompt(__("Why are you reopening this week? Saved time and unchanged approvals will be kept."))?.trim()
+	if (!reason) return
+	submitting.value = true
+	try {
+		const fresh = await call("hrms.api.weekly_timesheet.reopen_weekly_timesheet", {
+			name: timesheet.value.name, expected_modified: lastServerModified.value, reason,
+		})
+		readyForAutosave = false
+		timesheet.value = fresh
+		lastServerModified.value = fresh.modified || ""
+		hasUnsavedChanges.value = false
+		autosaveState.value = "idle"
+		clearPersistedDraft()
+		await Promise.resolve()
+		toast({ title: __("Week reopened. Review your entries and submit again when complete."), icon: "check" })
+	} catch (error) {
+		toast({ title: __("Could not reopen the week"), text: error?.messages?.[0] || error?.message, icon: "alert-circle" })
+	} finally {
+		readyForAutosave = true
+		submitting.value = false
+		if (routeChanging.value) resetRoute()
+	}
 }
 
 async function submitWeek() {
