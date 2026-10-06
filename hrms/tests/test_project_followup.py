@@ -9,7 +9,7 @@ class Doc(N):
  def add_comment(self,*a):self.comments.append(a)
 class TestFollowup(unittest.TestCase):
  def setUp(self):
-  self.sent=[];self.last=None;self.hr=True;self.active=True;self.enabled=True
+  self.sent=[];self.last=None;self.hr=True;self.active=True;self.enabled=True;self.project_allowed=True
   self.doc=Doc(employee='worker',employee_name='Worker',allowed=True,modified='v1',docstatus=0,custom_is_weekly=1,custom_weekly_status='Pending Project Approval',custom_weekly_submitted_at='2026-10-01',custom_week_start='2026-09-27',custom_week_end='2026-10-03',custom_project_approvals=[N(project='P',status='Pending')],time_logs=[N(project='P')],comments=[])
   def throw(msg,*a):raise ValueError(msg)
   def require():
@@ -22,7 +22,10 @@ class TestFollowup(unittest.TestCase):
   def getdoc(dt,*args):
    if isinstance(dt,dict):return N(insert=lambda **kw:self.sent.append(dt))
    return self.doc
-  self.env={'escape':__import__('html').escape,'frappe':N(session=N(user='hr'),throw=throw,db=N(sql=lambda *a:None,get_value=value),get_doc=getdoc,bold=lambda s:s,PermissionError=ValueError),'_':lambda s:s,'_require_hr':require,'_employee_user':lambda e:'worker','_employee_has_active_account':lambda e:self.active,'_project_lead_user':lambda p:'lead','_project_manager_user':lambda p:'manager','_project_lead_employee':lambda p:'leader','PENDING_PROJECT':'Pending Project Approval','APPROVAL_PENDING':'Pending','get_datetime':datetime.fromisoformat,'now_datetime':lambda:datetime(2026,10,6,12),'add_to_date':lambda dt,hours:dt+timedelta(hours=hours)}
+  def check_scope(doc,permission,project):
+   doc.check_permission(permission)
+   if not self.project_allowed:throw("denied project read")
+  self.env={"check_hr_review_permission":check_scope,'escape':__import__('html').escape,'frappe':N(session=N(user='hr'),throw=throw,db=N(sql=lambda *a:None,get_value=value),get_doc=getdoc,bold=lambda s:s,PermissionError=ValueError),'_':lambda s:s,'_require_hr':require,'_employee_user':lambda e:'worker','_employee_has_active_account':lambda e:self.active,'_project_lead_user':lambda p:'lead','_project_manager_user':lambda p:'manager','_project_lead_employee':lambda p:'leader','PENDING_PROJECT':'Pending Project Approval','APPROVAL_PENDING':'Pending','get_datetime':datetime.fromisoformat,'now_datetime':lambda:datetime(2026,10,6,12),'add_to_date':lambda dt,hours:dt+timedelta(hours=hours)}
   path=Path(__file__).parents[1]/'api'/'project_review_followup.py';nodes=[n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef)]
   for n in nodes:n.decorator_list=[]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(path),'exec'),self.env)
@@ -41,6 +44,11 @@ class TestFollowup(unittest.TestCase):
   with self.assertRaises(ValueError):self.ping()
   self.hr=True;self.doc.allowed=False
   with self.assertRaises(ValueError):self.ping()
+ def test_project_permission_denial_prevents_notification(self):
+  self.project_allowed=False
+  with self.assertRaisesRegex(ValueError,'denied project'):self.ping()
+  self.assertEqual(self.sent,[])
+  self.assertEqual(self.doc.comments,[])
  def test_disabled_reviewer_never_receives_reminder(self):
   self.enabled=False
   with self.assertRaisesRegex(ValueError,'active project reviewer'):self.ping()

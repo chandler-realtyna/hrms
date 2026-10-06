@@ -4,6 +4,7 @@ from html import escape
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, get_datetime, now_datetime
+from hrms.utils.review_query_permissions import check_hr_review_permission
 from hrms.api.weekly_timesheet import (
 	_require_hr, _employee_user, _employee_has_active_account, _project_lead_user,
 	_project_lead_employee, PENDING_PROJECT, APPROVAL_PENDING,
@@ -33,7 +34,7 @@ def ping_project_reviewer(name: str, project: str, expected_modified: str, expec
 	_require_hr()
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
-	doc.check_permission("read")
+	check_hr_review_permission(doc, "read", project)
 	if not expected_modified or str(doc.modified) != str(expected_modified):
 		frappe.throw(_("This week changed. Refresh before sending a reminder."))
 	owner = _employee_user(doc.employee)
