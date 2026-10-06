@@ -87,7 +87,7 @@
 			{{ __("Add time entry") }}
 		</button>
 
-		<ion-modal :is-open="showModal" class="ion-disable-focus-trap" @did-dismiss="closeModal">
+		<ion-modal :is-open="showModal" class="ion-disable-focus-trap time-entry-modal" @did-dismiss="closeModal">
 			<ion-header>
 				<ion-toolbar>
 					<ion-title>{{
@@ -99,7 +99,8 @@
 				</ion-toolbar>
 			</ion-header>
 
-			<div class="overflow-y-auto flex flex-col gap-4 p-4 bg-white h-full">
+			<ion-content class="time-entry-content">
+				<div class="flex flex-col gap-4 p-4 bg-white">
 				<label v-if="isWeekly" class="flex flex-col gap-1.5 text-sm text-gray-700">
 					<span>{{ __("Entry time zone") }}</span>
 					<select :value="entryTimezone" @change="changeEntryTimezone($event.target.value)" class="max-w-full rounded-lg border bg-white px-3 py-2" :aria-label="__('Entry time zone')">
@@ -174,17 +175,23 @@
 
 				<p v-if="formError" class="text-sm text-red-600">{{ formError }}</p>
 
-				<Button variant="solid" class="w-full mt-2" @click="saveLog">
-					{{ editIndex === null ? __("Add") : __("Update") }}
-				</Button>
-			</div>
+				</div>
+			</ion-content>
+			<ion-footer class="bg-white border-t p-4">
+				<div class="flex gap-3">
+					<Button class="flex-1" @click="closeModal">{{ __("Cancel") }}</Button>
+					<Button variant="solid" class="flex-1" @click="saveLog">
+						{{ editIndex === null ? __("Add") : __("Update") }}
+					</Button>
+				</div>
+			</ion-footer>
 		</ion-modal>
 	</div>
 </template>
 
 <script setup>
 import { computed, inject, onMounted, ref } from "vue"
-import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton } from "@ionic/vue"
+import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter } from "@ionic/vue"
 import { FeatherIcon, Button } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
@@ -445,3 +452,13 @@ function formatLogTime(log) {
 	return `${from.substring(0, 10)} · ${from.substring(11, 16)}–${from.substring(0, 10) === to.substring(0, 10) ? "" : to.substring(0, 10) + " "}${to.substring(11, 16)}`
 }
 </script>
+
+<style scoped>
+.time-entry-modal {
+	--height: min(720px, calc(100% - 2rem));
+	--max-height: calc(100% - 2rem);
+}
+.time-entry-content {
+	--background: white;
+}
+</style>
