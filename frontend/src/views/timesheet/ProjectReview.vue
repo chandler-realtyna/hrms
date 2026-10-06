@@ -114,6 +114,7 @@
 								{{ __("Return") }}
 							</Button>
 						</div>
+						<p v-else class="px-4 pb-4 text-xs text-gray-600">{{ __(row.selection_reason || "This section is not ready for approval.") }}</p>
 					</article>
 					<Button v-if="cursor" :disabled="loading" @click="loadMore">{{ __("Load more") }}</Button>
 				</template>
@@ -140,29 +141,6 @@
 							{{ __("Returned") }}: {{ detail.return_reason }}
 						</p>
 					</div>
-					<div class="divide-y divide-gray-50">
-						<div v-for="(log, i) in detail.logs" :key="i" class="px-4 py-3">
-							<div class="flex items-baseline justify-between gap-2">
-								<span class="text-sm font-medium text-gray-900">{{ formatDateFull(log.date) }}</span>
-								<span class="text-sm font-semibold text-blue-600 tabular-nums">
-									{{ formatHours(log.duration) }}
-								</span>
-							</div>
-							<div class="text-xs text-gray-500 mt-0.5">
-								{{ log.from_time }}–{{ log.to_time }} · {{ activityLabel(log.activity_type) }}
-							</div>
-							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
-								{{ log.description }}
-							</div>
-							<p v-if="log.return_reason" class="mt-1 text-xs text-red-600">{{ log.return_reason }}</p>
-							<Button v-if="detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
-								{{ __("Return entry for correction") }}
-							</Button>
-						</div>
-						<div v-if="!detail.logs.length" class="px-4 py-6 text-center text-sm text-gray-400">
-							{{ __("No time logs in this section.") }}
-						</div>
-					</div>
 					<div v-if="detail.actionable" class="p-4 border-t flex gap-2">
 						<input
 							v-model="detailReason"
@@ -176,6 +154,34 @@
 							{{ __("Return") }}
 						</Button>
 					</div>
+					<div v-else class="p-4 border-b bg-gray-50 flex flex-wrap items-center gap-3">
+						<Button variant="solid" size="sm" disabled>{{ __("Approve") }}</Button>
+						<p class="text-xs text-gray-600">{{ __(detail.selection_reason || "This section is not ready for approval.") }}</p>
+					</div>
+					<div class="divide-y divide-gray-50">
+						<div v-for="(log, i) in detail.logs" :key="i" class="px-4 py-3">
+							<div class="flex items-baseline justify-between gap-2">
+								<span class="text-sm font-medium text-gray-900">{{ formatDateFull(log.date) }}</span>
+								<span class="text-sm font-semibold text-blue-600 tabular-nums">
+									{{ formatHours(log.duration) }}
+								</span>
+							</div>
+							<div class="text-xs text-gray-500 mt-0.5">
+								{{ log.from_time }}–{{ log.to_time }}<span v-if="activityLabel(log.activity_type)"> · {{ activityLabel(log.activity_type) }}</span>
+							</div>
+							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
+								{{ log.description }}
+							</div>
+							<p v-if="log.return_reason" class="mt-1 text-xs text-red-600">{{ log.return_reason }}</p>
+							<Button v-if="detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
+								{{ __("Return entry for correction") }}
+							</Button>
+						</div>
+						<div v-if="!detail.logs.length" class="px-4 py-6 text-center text-sm text-gray-400">
+							{{ __("No time logs in this section.") }}
+						</div>
+					</div>
+
 				</div>
 			</div>
 		</ion-content>
@@ -225,7 +231,7 @@ function formatDateFull(date) {
 // The server stores a literal "Unassigned" default: label it explicitly so it
 // never reads as a real activity type.
 function activityLabel(activityType) {
-	if (!activityType || activityType === "Unassigned") return __("Activity: Unassigned")
+	if (!activityType || activityType === "Unassigned") return ""
 	return activityType
 }
 

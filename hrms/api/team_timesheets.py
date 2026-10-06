@@ -91,7 +91,7 @@ def get_sections(view="current", cursor=None, filters=None):
 		a.return_reason, a.reviewed_by, a.reviewed_at,
 		SUM(d.hours) AS hours, COUNT(d.name) AS log_count
 		""" + base + group
-	actionable = "docstatus=0 AND hr_status='Pending Project Approval' AND project_status='Pending'"
+	actionable = "docstatus=0 AND submitted_at IS NOT NULL AND hr_status IN ('Pending Project Approval', 'Correction Required') AND project_status='Pending'"
 	if view == "current":
 		sort_fields = f"""
 			CASE WHEN {actionable} THEN 0 WHEN project_status='Draft' THEN 1
@@ -119,7 +119,7 @@ def get_sections(view="current", cursor=None, filters=None):
 	for row in rows:
 		row.activity_types = sorted(set(frappe.db.get_all("Timesheet Detail", filters={"parent": row.timesheet, "project": row.project}, pluck="activity_type")) - {None, ""})
 		row.is_own_section = False
-		row.actionable = view == "current" and row.docstatus == 0 and row.hr_status == "Pending Project Approval" and row.project_status == "Pending"
+		row.actionable = view == "current" and row.docstatus == 0 and bool(row.submitted_at) and row.hr_status in {"Pending Project Approval", "Correction Required"} and row.project_status == "Pending"
 		row.selection_reason = "Select for approval" if row.actionable else {
 			"Draft": "Employee must submit the week first.",
 			"Returned": "Waiting for correction and resubmission.",

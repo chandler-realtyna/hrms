@@ -1068,6 +1068,24 @@ def get_team_timesheet_sections(view="current", cursor=None, filters=None):
 	return get_sections(view, cursor, filters)
 
 
+def _project_section_actionable(doc, approval):
+	return bool(doc.docstatus == 0 and doc.custom_weekly_submitted_at
+		and doc.custom_weekly_status in {PENDING_PROJECT, CORRECTION_REQUIRED}
+		and approval and approval.status == APPROVAL_PENDING)
+
+
+def _project_section_review_hint(doc, approval):
+	if doc.docstatus == 1 or doc.custom_weekly_status == CLOSED:
+		return _("This week is final and read-only.")
+	if not doc.custom_weekly_submitted_at or doc.custom_weekly_status == WEEKLY_DRAFT:
+		return _("The employee must submit this week before you can approve it. Saved drafts can only be returned for correction.")
+	status = approval.status if approval else WEEKLY_DRAFT
+	return _({APPROVAL_RETURNED: "The employee must correct and resubmit this section before you can approve it.",
+		APPROVAL_APPROVED: "This project section is already approved. Final approval is by HR.",
+		APPROVAL_HR: "This section is routed to HR for final review."}.get(status,
+		"Review this submitted project section, then approve it or return it with a reason."))
+
+
 @frappe.whitelist()
 def get_project_review_detail(project: str, week_start: str, employee: str):
 	"""Time logs for one employee/project/week. Project Lead of the project
@@ -1112,7 +1130,8 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"project_status": approval.status if approval else WEEKLY_DRAFT,
 		"approval_name": approval.name if approval else None,
 		"return_reason": approval.return_reason if approval else None,
-		"actionable": doc.docstatus == 0 and doc.custom_weekly_status == PENDING_PROJECT and bool(approval) and approval.status == APPROVAL_PENDING,
+		"actionable": _project_section_actionable(doc, approval),
+		"selection_reason": _project_section_review_hint(doc, approval),
 		"can_return_entries": doc.docstatus == 0 and (
 			doc.custom_weekly_status == WEEKLY_DRAFT
 			or bool(approval) and approval.status in {APPROVAL_PENDING, APPROVAL_RETURNED}

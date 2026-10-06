@@ -386,3 +386,10 @@ returned older weeks. Closed weeks and legacy daily records are collapsed under
 History; Complete another week remains available as a collapsed date picker.
 Daily review acknowledgements, submission deadlines, new reminder schedules and
 missing-time recovery are not implemented by this display update.
+
+Team Timesheets explains why draft/returned/final sections cannot be approved,
+with a disabled Approve button and the employee's required next action in detail.
+Pending submitted project sections remain reviewable while another section of
+that week needs correction; list SQL and detail API use the same stage rules.
+Approve/Return actions are above the detail entries. This does not permit approval
+of unsubmitted drafts, returned sections awaiting resubmission, or finalized weeks.
