@@ -133,9 +133,6 @@
 						<span>{{ __("A local timer was kept separately; the shared timer was not replaced.") }}</span>
 						<button type="button" class="shrink-0 underline" @click="exportRecovery">{{ __("Download draft") }}</button>
 					</div>
-					<div v-if="browserFavorites" class="mb-3 text-sm text-gray-600">
-						<button type="button" class="underline" :disabled="controlsDisabled" @click="importFavorites">{{ __("Import favorites from this browser") }}</button>
-					</div>
 					<div class="mb-2 text-sm font-semibold text-gray-700">{{ __("Projects") }}</div>
 					<div class="flex flex-col gap-2">
 						<div v-for="project in timerProjects" :key="project.name" class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-3">
@@ -222,8 +219,8 @@ const isRunning = ref(false), isPaused = ref(false), pausedSince = ref(null), st
 const elapsed = ref(0), segments = ref([]), isSaving = ref(false)
 const form = ref({ project: "", activity_type: "", description: "" })
 const favoriteProjects = ref([]), availableProjects = ref([]), pickedProject = ref("")
-const connected = ref(false), error = ref(""), initialized = ref(false), revision = ref(-1), browserFavorites = ref(false)
 const adjustDir = ref(0), adjustMinutes = ref(15)
+const connected = ref(false), error = ref(""), initialized = ref(false), revision = ref(-1)
 const metadataConflict = ref(false)
 const serverError = ref("")
 const actionError = ref(null), saveConflicts = ref(null)
@@ -359,7 +356,6 @@ function clearActionError(operation) {
 }
 const legacyConflict = ref(false)
 async function migrateLegacy() {
-	browserFavorites.value = Boolean(localRead(FAVORITES_KEY)?.length)
 	const old = localRead(STORAGE_KEY)
 	if (!old || ![stateOwner(), employee.data?.name].includes(old.owner)) return
 	localWrite(recoveryKey(), { timer: old, favorites: localRead(FAVORITES_KEY) || [] })
@@ -367,13 +363,6 @@ async function migrateLegacy() {
 	const ok = await command("import", { timer: old, favorites: localRead(FAVORITES_KEY) || [] })
 	if (ok) {
 		localWrite(STORAGE_KEY, null); localWrite(FAVORITES_KEY, null); localWrite(recoveryKey(), null)
-		browserFavorites.value = false
-	}
-}
-async function importFavorites() {
-	if (!window.confirm(__("Add this browser's previous favorites to your account?"))) return
-	if (await command("import_favorites", { favorites: localRead(FAVORITES_KEY) || [] })) {
-		localWrite(FAVORITES_KEY, null); browserFavorites.value = false
 	}
 }
 function exportRecovery() {
