@@ -62,7 +62,10 @@ doctype_js = {
 	"Delivery Trip": "public/js/erpnext/delivery_trip.js",
 	"Bank Transaction": "public/js/erpnext/bank_transaction.js",
 }
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+	name: "public/js/review_company_filters.js"
+	for name in ("Leave Application", "Expense Claim", "Employee Invoice", "Employee Holiday", "Employee Schedule")
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
