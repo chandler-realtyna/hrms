@@ -185,17 +185,20 @@ class HRMSAdminReviews {
 				&& (paging || [row.employee_name, row.project_label, ...(row.project_labels || []), ...(row.activity_types || [])].join(" ").toLowerCase().includes(query)));
 			if (!paging) visible.sort((a, b) => String(a.week_start || "").localeCompare(String(b.week_start || "")) || String(a.employee_name || "").localeCompare(String(b.employee_name || "")));
 			counter.text(paging ? __("{0} of {1} sections", [visible.length, total]) : __(hr ? "{0} weeks" : "{0} sections", [visible.length]));
+			const selectable = !hr && visible.some(row => row.actionable && row.regular_reviewer);
+			if (!hr) body.closest("table").find("thead th").first().toggle(selectable);
+			if (approve) approve.toggle(selectable);
 		visible.sort((a, b) => String(a.company || "").localeCompare(String(b.company || "")));
 		let company = Symbol();
 		visible.forEach(row => {
 			if (row.company !== company) {
 				company = row.company;
-				$('<th scope="rowgroup"></th>').attr("colspan", hr ? 6 : 8).text(company || __("Company not specified")).appendTo($("<tr></tr>").appendTo(body));
+				$('<th scope="rowgroup"></th>').attr("colspan", hr ? 6 : selectable ? 8 : 7).text(company || __("Company not specified")).appendTo($("<tr></tr>").appendTo(body));
 			}
 			const tr = $("<tr></tr>").appendTo(body);
-			if (!hr) {
+			if (selectable) {
 				const cell = $("<td></td>").appendTo(tr);
-				$('<input type="checkbox">').prop("disabled", !row.actionable || !row.regular_reviewer).attr({ "aria-label": __("Select section for {0}", [row.employee_name]), title: __(row.selection_reason || (row.actionable ? "Select for approval" : "Only submitted sections awaiting project review can be approved")) }).appendTo(cell).on("change", event => {
+				if (row.actionable && row.regular_reviewer) $('<input type="checkbox">').attr({ "aria-label": __("Select section for {0}", [row.employee_name]), title: __("Select this saved section for approval") }).appendTo(cell).on("change", event => {
 					if (event.target.checked) selected.add(row.approval_name); else selected.delete(row.approval_name);
 					approve?.prop("disabled", !selected.size);
 				});
@@ -214,7 +217,16 @@ class HRMSAdminReviews {
 				this.statusCell($("<td></td>").appendTo(tr), row.week_status, null, true);
 				$("<td></td>").text(row.week_status === "Closed" ? __("Finalized and locked") : row.ready_for_hr_close ? __("HR can finalize") : __("Follow up") + ": " + ((row.review_blockers || []).join("; ") || __("Awaiting review"))).appendTo(tr);
 			}
-			if (!hr) $("<td></td>").text(row.project_status === "Returned" ? __("Waiting for employee correction") : row.actionable ? __("Review saved entries") + (row.reviewer_name ? " · " + row.reviewer_name : "") : row.selection_reason || "").appendTo(tr);
+			if (!hr) {
+				const next = $("<td></td>").appendTo(tr);
+				const message = row.project_status === "Returned" ? __("Waiting for employee correction")
+					: row.actionable && row.regular_reviewer ? __("Review saved entries")
+					: row.actionable && row.hr_status === "Draft" ? __("In progress · week not submitted")
+					: row.actionable ? __("Follow up with project reviewer") : row.selection_reason || "";
+				next.text(message);
+				if (row.actionable && !row.regular_reviewer && row.reviewer_name)
+					$("<div class='text-muted small'></div>").text(row.reviewer_name).appendTo(next);
+			}
 			this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail(row, hr));
 		});
 		};
@@ -513,6 +525,7 @@ class HRMSAdminReviews {
 		return __({ Draft: "Not submitted", "Pending Project Approval": "Submitted · awaiting project approvals", "Pending HR Review": "Submitted · ready for HR review", "Correction Required": "Needs employee correction", Closed: "Finalized and locked", Submitted: "Legacy submitted" }[status] || status || "");
 	}
 	statusCell(cell, status, reason, week = false) {
+		if (!week) cell.addClass("admin-reviews-project-status");
 		const color = status === "Correction Required" || status === "Returned" ? "red" : week && status === "Pending Project Approval" ? "orange" : week && status === "Pending HR Review" ? "green" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";
 		$('<span class="indicator-pill"></span>').addClass(color).text(week ? this.weekStatusLabel(status) : this.statusLabel(status)).appendTo(cell);
 		if (reason) $('<div class="text-muted small"></div>').text(__(reason === "self" ? "Own entries: final review by HR" : "No project lead: final review by HR")).appendTo(cell);

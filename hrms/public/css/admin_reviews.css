@@ -96,7 +96,16 @@
 .admin-reviews-checkbox { display: flex; align-items: center; gap: 8px; margin: 0; }
 .admin-reviews-count { margin: 0 0 12px; font-size: 12px; }
 .admin-reviews-number { text-align: right; white-space: nowrap !important; font-variant-numeric: tabular-nums; }
-.admin-reviews-table .indicator-pill { white-space: nowrap; }
+.admin-reviews-table .indicator-pill {
+	white-space: normal;
+	display: inline-block;
+	max-width: 170px;
+	height: auto;
+	line-height: 1.4;
+	padding-top: 4px;
+	padding-bottom: 4px;
+}
+.admin-reviews-table .admin-reviews-project-status .indicator-pill { max-width: 132px; }
 .admin-history-filters .form-section { border: 0; padding: 0; }
 .admin-history-filters .section-body { display: block; }
 .admin-history-filters .form-column { display: block; width: 100%; }
