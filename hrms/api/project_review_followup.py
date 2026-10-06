@@ -57,7 +57,8 @@ def ping_project_reviewer(name: str, project: str, expected_modified: str, expec
 	last = frappe.db.get_value("Notification Log", {"document_type": "Timesheet", "document_name": name, "for_user": recipient, "subject": subject}, "creation", order_by="creation desc")
 	if last and get_datetime(last) > add_to_date(now_datetime(), hours=-24):
 		return {"sent": False, "last_ping_at": str(last), "reviewer_name": frappe.db.get_value("User", recipient, "full_name") or recipient, "message": _("A reminder was already sent to this reviewer in the last 24 hours.")}
-	message = escape(_("HR requests review of {0}'s submitted week starting {1}, project {2}.").format(doc.employee_name, doc.custom_week_start, project))
+	project_label = frappe.db.get_value("Project", project, "project_name") or project
+	message = escape(_("HR requests review of {0}'s submitted week {1} to {2}, project {3}.").format(doc.employee_name, doc.custom_week_start, doc.custom_week_end, project_label))
 	frappe.get_doc({"doctype": "Notification Log", "subject": subject, "email_content": message, "for_user": recipient, "type": "Alert", "document_type": "Timesheet", "document_name": name}).insert(ignore_permissions=True)
 	# Every explicit reminder must reach the employee's HRMS bell; do not suppress
 	# it just because an older notification exists for the same weekly document.

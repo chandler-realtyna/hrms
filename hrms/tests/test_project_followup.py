@@ -10,12 +10,13 @@ class Doc(N):
 class TestFollowup(unittest.TestCase):
  def setUp(self):
   self.sent=[];self.last=None;self.hr=True;self.active=True;self.enabled=True
-  self.doc=Doc(employee='worker',employee_name='Worker',allowed=True,modified='v1',docstatus=0,custom_is_weekly=1,custom_weekly_status='Pending Project Approval',custom_weekly_submitted_at='2026-10-01',custom_week_start='2026-09-27',custom_project_approvals=[N(project='P',status='Pending')],time_logs=[N(project='P')],comments=[])
+  self.doc=Doc(employee='worker',employee_name='Worker',allowed=True,modified='v1',docstatus=0,custom_is_weekly=1,custom_weekly_status='Pending Project Approval',custom_weekly_submitted_at='2026-10-01',custom_week_start='2026-09-27',custom_week_end='2026-10-03',custom_project_approvals=[N(project='P',status='Pending')],time_logs=[N(project='P')],comments=[])
   def throw(msg,*a):raise ValueError(msg)
   def require():
    if not self.hr:throw('HR required')
   def value(dt,key,field,**kw):
    if dt=='Notification Log':return self.last
+   if dt=='Project' and field=='project_name':return 'HR System'
    if dt=='User':return self.enabled if field=='enabled' else 'Lead Person'
    if dt=='Employee':return 'leader' if self.active else None
   def getdoc(dt,*args):
@@ -27,7 +28,7 @@ class TestFollowup(unittest.TestCase):
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(path),'exec'),self.env)
  def ping(self):return self.env['ping_project_reviewer']('T','P','v1',self.env['_project_lead_user']('P'))
  def test_explicit_ping_sends_both_bells_and_audit(self):
-  self.assertTrue(self.ping()['sent']);self.assertEqual([n['doctype'] for n in self.sent],['Notification Log','PWA Notification']);self.assertEqual(self.sent[0]['for_user'],'lead');self.assertEqual(len(self.doc.comments),1)
+  self.assertTrue(self.ping()['sent']);self.assertEqual([n['doctype'] for n in self.sent],['Notification Log','PWA Notification']);self.assertEqual(self.sent[0]['for_user'],'lead');self.assertEqual(len(self.doc.comments),1);self.assertIn('HR System',self.sent[0]['email_content']);self.assertIn('2026-10-03',self.sent[0]['email_content'])
  def test_duplicate_is_noop_with_last_ping(self):
   self.last='2026-10-06 10:00:00';self.assertFalse(self.ping()['sent']);self.assertEqual(self.sent,[]);self.assertEqual(self.doc.comments,[])
  def test_stale_closed_draft_returned_inactive_own_and_membership_are_rejected(self):
@@ -61,7 +62,7 @@ class TestFollowup(unittest.TestCase):
  def test_usable_lead_does_not_touch_unusable_legacy_manager(self):
   original=self.env['frappe'].db.get_value
   def guarded(dt,*a,**k):
-   if dt=='Project':raise AssertionError('Manager fallback eagerly read')
+   if dt=='Project' and a[-1]=='custom_project_manager':raise AssertionError('Manager fallback eagerly read')
    return original(dt,*a,**k)
   self.env['frappe'].db.get_value=guarded
   self.assertTrue(self.ping()['sent'])
