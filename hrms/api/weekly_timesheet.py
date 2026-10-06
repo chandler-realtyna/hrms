@@ -1126,7 +1126,12 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 def get_timesheet_review_detail(name: str):
 	_require_hr()
 	doc = frappe.get_doc("Timesheet", name)
-	return _serialize_weekly(doc)
+	data = _serialize_weekly(doc)
+	data["review_blockers"] = _hr_review_blockers(doc)
+	data["source_timezone"] = frappe.utils.get_system_timezone()
+	for row in data["time_logs"]:
+		row["project_label"] = _project_display_name(row["project"])
+	return data
 
 
 @frappe.whitelist(methods=["POST"])
@@ -1243,17 +1248,47 @@ def hr_close_weekly_timesheet(name: str):
 	return _serialize_weekly(doc)
 
 
+def _project_display_name(project):
+	label = frappe.db.get_value("Project", project, "project_name") if project else None
+	return f"{label} · {project}" if label and label != project else project or ""
+
+
+def _hr_employee_image(employee):
+	from hrms.api.profile_photo import directory_image
+	return directory_image(employee, frappe.db.get_value("Employee", employee, "image"))
+
+
+def _hr_review_blockers(doc):
+	if doc.custom_weekly_status == CLOSED:
+		return []
+	items = []
+	if doc.custom_weekly_status == CORRECTION_REQUIRED:
+		items.append(_("Employee must correct and resubmit this week."))
+	for row in doc.custom_project_approvals:
+		if row.status in {APPROVAL_PENDING, APPROVAL_RETURNED}:
+			user = frappe.db.get_value("User", row.controller, "full_name") if row.controller else None
+			items.append(_("{0}: {1} · {2}").format(_project_display_name(row.project), _(row.status), user or _("Unassigned reviewer")))
+	for row in _team_review_blockers(doc):
+		items.append(_("Team review: {0} · {1} · {2}").format(row["employee_name"], _project_display_name(row["project"]), _(row["status"])))
+	if not _project_reviews_ready(doc) and not items:
+		items.append(_("Project review is incomplete. Check the assigned reviewer and project review records."))
+	return items
+
+
 @frappe.whitelist()
-def get_hr_weekly_timesheet_queue() -> list[dict]:
-	"""Return employee-week summaries awaiting final HR review."""
+def get_hr_weekly_timesheet_queue(view: str = "current") -> list[dict]:
+	"""HR oversight of submitted weeks; finalization remains independently guarded."""
 	_require_hr()
+	if view not in {"current", "history"}:
+		frappe.throw(_("Unknown timesheet view."))
 
 	weeks = frappe.get_list(
 		"Timesheet",
 		filters={
 			"custom_is_weekly": 1,
-			"custom_weekly_status": PENDING_HR,
-			"docstatus": 0,
+			"custom_weekly_status": CLOSED if view == "history" else ("in", [PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR]),
+			"custom_weekly_submitted_at": ("is", "set"),
+			"docstatus": 1 if view == "history" else 0,
 		},
 		fields=[
 			"name",
@@ -1271,7 +1306,7 @@ def get_hr_weekly_timesheet_queue() -> list[dict]:
 	result = []
 	for week in weeks:
 		doc = frappe.get_doc("Timesheet", week.name)
-		ready = _project_reviews_ready(doc) and not _team_review_blockers(doc)
+		ready = doc.docstatus == 0 and doc.custom_weekly_status == PENDING_HR and _project_reviews_ready(doc) and not _team_review_blockers(doc)
 		projects = {}
 		for log in doc.time_logs:
 			if not log.from_time:
@@ -1293,6 +1328,11 @@ def get_hr_weekly_timesheet_queue() -> list[dict]:
 				"total_hours": round(flt(week.total_hours), 2),
 				"modified": str(week.modified),
 				"ready_for_hr_close": ready,
+				"week_status": doc.custom_weekly_status,
+				"employee_image": _hr_employee_image(doc.employee),
+				"review_blockers": _hr_review_blockers(doc),
+				"project_labels": [_project_display_name(project) for project in projects],
+				"activity_types": sorted({log.activity_type for log in doc.time_logs if log.activity_type}),
 				"projects": [
 					{
 						"project": project["project"],

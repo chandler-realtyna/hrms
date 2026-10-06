@@ -362,3 +362,26 @@ Verify both a legitimate connection and rejection of an unrelated origin.
   must not approve, reject, return or pay real contractor documents.
 - Document remaining realtime delivery, device and user acceptance gaps. Service
   health, a successful build or mocked tests are not full-system acceptance.
+
+## HR weekly oversight update
+
+Desk HR Weekly Timesheet Review now separates Submitted weeks from Finalized
+weeks. The current queue includes submitted weeks awaiting project review,
+correction and HR review; saved unsubmitted drafts remain in Team entries.
+Week status and Next action are separate: a waiting week remains visible with
+its pending project/reviewer or team-review blockers, but final approval still
+requires every project review and team dependency to be complete. The home
+HR badge continues to count only weeks ready for final approval.
+
+Search includes contractor names, project labels and activity types. Weeks sort
+oldest first in the displayed queue. Finalized records are read-only history.
+Details show project names with IDs, omit missing activity labels, and place
+main actions before the entry table. Time zone defaults to the reviewer's
+configured zone, with source/site and other zones available for display only;
+underlying timestamps, dates defining a week and durations are not changed.
+
+My Timesheets highlights the current server-defined week and unfinished or
+returned older weeks. Closed weeks and legacy daily records are collapsed under
+History; Complete another week remains available as a collapsed date picker.
+Daily review acknowledgements, submission deadlines, new reminder schedules and
+missing-time recovery are not implemented by this display update.
