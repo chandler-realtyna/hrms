@@ -56,7 +56,8 @@ def get_sections(view="current", cursor=None, filters=None):
 		return dict(rows=[], total=0, next_cursor=None)
 	args = dict(employee=employee or "", final="Closed")
 	where = ["t.custom_is_weekly = 1", "t.docstatus < 2", "t.employee != %(employee)s", "d.project IS NOT NULL", "d.from_time IS NOT NULL"]
-	where.append("t.custom_weekly_status = %(final)s" if view == "history" else "COALESCE(t.custom_weekly_status, 'Draft') != %(final)s")
+	active_employee = "(e.status = 'Active' AND e.docstatus < 2 AND COALESCE(u.enabled, 0) = 1)"
+	where.append(f"(t.custom_weekly_status = %(final)s OR NOT COALESCE({active_employee}, 0) OR a.status IN ('Approved', 'HR Review'))" if view == "history" else f"COALESCE(t.custom_weekly_status, 'Draft') != %(final)s AND {active_employee} AND COALESCE(a.status, 'Draft') NOT IN ('Approved', 'HR Review')")
 	if not hr:
 		where.append("(p.custom_project_lead = %(employee)s OR p.custom_project_manager = %(employee)s)")
 	for field in ("employee", "project"):
@@ -77,6 +78,8 @@ def get_sections(view="current", cursor=None, filters=None):
 		FROM tabTimesheet t
 		JOIN `tabTimesheet Detail` d ON d.parent=t.name AND d.parenttype='Timesheet'
 		JOIN tabProject p ON p.name=d.project
+		LEFT JOIN tabEmployee e ON e.name=t.employee
+		LEFT JOIN tabUser u ON u.name=e.user_id
 		LEFT JOIN `tabTimesheet Project Approval` a ON a.parent=t.name AND a.project=d.project
 		WHERE """ + " AND ".join(where)
 	group = " GROUP BY t.name, d.project"
@@ -85,6 +88,7 @@ def get_sections(view="current", cursor=None, filters=None):
 	section_query = """SELECT t.name AS timesheet, t.employee, t.employee_name,
 		t.custom_week_start AS week_start, t.custom_week_end AS week_end,
 		t.custom_weekly_status AS hr_status, t.modified, t.docstatus,
+		NOT COALESCE((e.status = 'Active' AND e.docstatus < 2 AND COALESCE(u.enabled, 0) = 1), 0) AS inactive_employee,
 		t.custom_weekly_submitted_at AS submitted_at, d.project,
 		p.project_name AS project_label, p.custom_project_lead AS project_lead,
 		a.name AS approval_name, COALESCE(a.status, 'Draft') AS project_status,
@@ -127,7 +131,9 @@ def get_sections(view="current", cursor=None, filters=None):
 			"HR Review": "This section is routed to HR, not project approval.",
 		}.get(row.project_status, "This week is not ready for project approval.")
 		if view == "history":
-			row.selection_reason = "This week is final and read-only."
+			row.selection_reason = ("Employee account is inactive. This record is archived for HR follow-up." if row.inactive_employee
+				else "This week is final and read-only." if row.hr_status == "Closed"
+				else "Project review is complete. Final weekly approval is handled separately by HR.")
 		row.routed_to_hr_reason = ("self" if row.project_lead == row.employee else "no_lead" if not row.project_lead else None) if row.project_status == "HR Review" else None
 		for field in ("modified", "week_start", "week_end", "submitted_at", "reviewed_at"):
 			row[field] = str(row[field]) if row[field] else None

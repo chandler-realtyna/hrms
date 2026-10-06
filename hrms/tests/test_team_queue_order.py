@@ -61,7 +61,7 @@ class TestTeamQueueOrder(unittest.TestCase):
 				return rows
 
 	def expected_order(self, final=False):
-		rows = [row for row in self.expected if row["final"] == final]
+		rows = [row for row in self.expected if (row["final"] or row["project_status"] in {"Approved", "HR Review"}) == final]
 		rows.sort(key=lambda r: (r["timesheet"], r["project"]), reverse=True)
 		rows.sort(key=lambda r: r["modified"], reverse=True)
 		if final:
@@ -71,12 +71,24 @@ class TestTeamQueueOrder(unittest.TestCase):
 		pending.sort(key=lambda r: (r["week_start"], r["submitted_at"]))
 		return pending + [r for status in ("Draft", "Returned", "HR Review", "Approved") for r in rows if r["project_status"] == status]
 
+	def test_disabled_account_moves_unfinished_records_to_history(self):
+		self.seed()
+		user = frappe.db.get_value("Employee", self.employees[0], "user_id")
+		self.assertTrue(user)
+		frappe.db.set_value("User", user, "enabled", 0)
+		filters = {"employee": self.employees[0]}
+		self.assertEqual(queue.get_sections("current", filters=filters)["total"], 0)
+		history = queue.get_sections("history", filters=filters)
+		self.assertEqual(history["total"], len(self.expected))
+		self.assertTrue(all(row.inactive_employee and not row.actionable for row in history["rows"]))
+		self.assertTrue(all("inactive" in row.selection_reason for row in history["rows"]))
+
 	def test_mixed_order_all_pages_ties_and_filters(self):
 		self.seed()
 		rows = self.pages()
 		identity = lambda r: (r["timesheet"], r["project"])
 		self.assertEqual([identity(r) for r in rows], [identity(r) for r in self.expected_order()])
-		self.assertEqual(len({identity(r) for r in rows}), 160)
+		self.assertEqual(len({identity(r) for r in rows}), 112)
 		self.assertTrue(all(r.actionable for r in rows[:68]))
 		for status in ("Pending", "Draft", "Returned", "HR Review", "Approved"):
 			filtered = self.pages(filters={"status": status, "search": "Queue ordering"})
@@ -87,10 +99,10 @@ class TestTeamQueueOrder(unittest.TestCase):
 	def test_scope_applies_before_order_count_and_cursor(self):
 		self.seed()
 		frappe.db.set_value("Project", self.projects[1], "custom_project_lead", self.employees[0])
-		self.assertEqual(len(self.pages()), 80)
+		self.assertEqual(len(self.pages()), 56)
 		self.assertTrue(all(r.project == self.projects[0] for r in self.pages()))
 		frappe.set_user(self.users[2])
-		self.assertEqual(len(self.pages()), 160)
+		self.assertEqual(len(self.pages()), 112)
 		frappe.set_user(self.users[0])
 		self.assertEqual(queue.get_sections()["total"], 0)
 

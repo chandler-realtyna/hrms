@@ -4,7 +4,16 @@
 			<div class="flex flex-col min-h-full bg-gray-50">
 				<!-- Header (no back button: bottom tabs + sidebar own navigation) -->
 				<header class="flex items-center bg-white shadow-sm px-4 py-4 sticky top-0 z-10 gap-1">
-					<h1 class="text-xl font-semibold text-gray-900">{{ __("Time Tracker") }}</h1>
+					<h1 class="min-w-0 flex-1 text-xl font-semibold text-gray-900">{{ __("Time Tracker") }}</h1>
+					<div class="ml-auto flex shrink-0 items-center gap-2 md:hidden">
+						<router-link :to="{ name: 'Notifications' }" class="relative flex h-11 w-11 items-center justify-center" :aria-label="__('Notifications')">
+							<FeatherIcon name="bell" class="h-6 w-6" />
+							<span v-if="unreadNotificationsCount.data" class="absolute right-2 top-2 h-2 w-2 rounded-full border border-white bg-red-600"></span>
+						</router-link>
+						<router-link :to="{ name: 'Profile' }" class="flex h-11 w-11 items-center justify-center" :aria-label="__('Profile')">
+							<Avatar :image="user?.data?.user_image" :label="user?.data?.first_name || employee?.data?.employee_name" size="xl" />
+						</router-link>
+					</div>
 				</header>
 
 				<!-- Timer display -->
@@ -207,12 +216,14 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, inject } from "vue"
 import { IonPage, IonContent, onIonViewWillEnter, onIonViewWillLeave } from "@ionic/vue"
-import { FeatherIcon, call, toast } from "frappe-ui"
+import { Avatar, FeatherIcon, call, toast } from "frappe-ui"
+import { unreadNotificationsCount } from "@/data/notifications"
 import FormField from "@/components/FormField.vue"
 import { TIMER_STORAGE_KEY as STORAGE_KEY } from "@/data/session.js"
 
 const __ = inject("$translate")
 const employee = inject("$employee")
+const user = inject("$user")
 const socket = inject("$socket")
 const FAVORITES_KEY = "hrms_favorite_projects"
 const isRunning = ref(false), isPaused = ref(false), pausedSince = ref(null), startTime = ref(null)

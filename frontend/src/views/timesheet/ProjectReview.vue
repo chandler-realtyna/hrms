@@ -62,9 +62,11 @@
 						</Button>
 					</div>
 
+					<template v-for="(row, index) in orderedSections" :key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`">
+						<div v-if="view === 'current' && (index === 0 || Boolean(row.actionable) !== Boolean(orderedSections[index - 1].actionable))" class="pt-2 text-sm font-semibold text-gray-700">
+							{{ row.actionable ? __("To review") : __("Waiting on others") }}
+						</div>
 					<article
-						v-for="row in orderedSections"
-						:key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`"
 						class="border rounded-xl overflow-hidden"
 						:class="row.actionable ? 'bg-white' : 'bg-gray-50'"
 					>
@@ -117,6 +119,7 @@
 						</div>
 						<p v-else class="px-4 pb-4 text-xs text-gray-600">{{ __(row.selection_reason || "This section is not ready for approval.") }}</p>
 					</article>
+					</template>
 					<Button v-if="cursor" :disabled="loading" @click="loadMore">{{ __("Load more") }}</Button>
 				</template>
 

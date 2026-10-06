@@ -661,6 +661,12 @@ def refresh_project_timesheet_routing(project_doc):
 			_notify_project_report(controller, project_doc.name, doc.custom_week_start)
 
 
+def _employee_has_active_account(employee):
+	account = frappe.db.get_value("Employee", employee, ["status", "user_id", "docstatus"], as_dict=True)
+	return bool(account and account.status == "Active" and cint(account.docstatus) < 2
+		and account.user_id and cint(frappe.db.get_value("User", account.user_id, "enabled")))
+
+
 def _pending_team_reviews(doc):
 	projects = set(frappe.get_all("Project", filters={"custom_project_lead": doc.employee}, pluck="name"))
 	if not projects or not doc.custom_week_start:
@@ -672,6 +678,8 @@ def _pending_team_reviews(doc):
 	blockers = []
 	for week in weeks:
 		team = frappe.get_doc("Timesheet", week.name)
+		if not _employee_has_active_account(team.employee):
+			continue
 		logged = {row.project for row in team.time_logs}.intersection(projects)
 		_set_project_approvals(team)
 		approvals = {row.project: row.status for row in team.custom_project_approvals}
@@ -762,7 +770,7 @@ def get_project_approval_queue():
 		if approval.parent not in documents:
 			documents[approval.parent] = frappe.get_doc("Timesheet", approval.parent)
 		doc = documents[approval.parent]
-		if doc.docstatus != 0:
+		if doc.docstatus != 0 or not _employee_has_active_account(doc.employee):
 			continue
 		if reviewer_employee and doc.employee == reviewer_employee:
 			continue
@@ -830,6 +838,8 @@ def review_saved_project_entries(name: str, project: str, expected_modified: str
 	entries = frappe.parse_json(entries) if isinstance(entries, str) else entries
 	if entries is not None and (not isinstance(entries, list) or not entries or any(not isinstance(item, str) for item in entries)):
 		frappe.throw(_("Select saved entries belonging to this project."))
+	if not _is_hr() and not _employee_has_active_account(doc.employee):
+		frappe.throw(_("This employee account is inactive. The record is archived for HR follow-up."))
 	logs = [row for row in doc.time_logs if row.project == project and (entries is None or row.name in entries)]
 	if not logs or (entries is not None and (not isinstance(entries, list) or {row.name for row in logs} != set(entries))):
 		frappe.throw(_("Select saved entries belonging to this project."))
@@ -990,7 +1000,7 @@ def get_project_review_queue():
 	result = []
 	for approval in approvals:
 		doc = docs.get(approval.parent)
-		if doc is None or doc.docstatus != 0:
+		if doc is None or doc.docstatus != 0 or not _employee_has_active_account(doc.employee):
 			continue
 		if reviewer_employee and doc.employee == reviewer_employee:
 			continue
@@ -1061,7 +1071,7 @@ def get_project_review_queue():
 		order_by="modified desc",
 		limit_page_length=500,
 	)
-	draft_docs = [d for d in draft_docs if d.name not in parents_with_approvals and d.employee != reviewer_employee]
+	draft_docs = [d for d in draft_docs if d.name not in parents_with_approvals and d.employee != reviewer_employee and _employee_has_active_account(d.employee)]
 	if draft_docs:
 		if hr:
 			scoped_projects = None
@@ -1185,6 +1195,8 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 				"approved": _entry_reviews(doc, approval).get(row.name, {}).get("revision") == _entry_revision(row),
 			}
 		)
+	active_employee = _employee_has_active_account(doc.employee)
+	open_project_review = not approval or approval.status not in {APPROVAL_APPROVED, APPROVAL_HR}
 	return {
 		"timesheet": doc.name,
 		"modified": str(doc.modified),
@@ -1197,10 +1209,10 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"project_status": approval.status if approval else WEEKLY_DRAFT,
 		"approval_name": approval.name if approval else None,
 		"return_reason": approval.return_reason if approval else None,
-		"actionable": _project_section_actionable(doc, approval),
-		"selection_reason": _project_section_review_hint(doc, approval),
-		"can_review_entries": doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED} and _employee_user(doc.employee) != frappe.session.user,
-		"can_return_entries": doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR} and _employee_user(doc.employee) != frappe.session.user,
+		"actionable": active_employee and _project_section_actionable(doc, approval),
+		"selection_reason": _project_section_review_hint(doc, approval) if active_employee else _("Employee account is inactive. This record is archived for HR follow-up."),
+		"can_review_entries": active_employee and open_project_review and doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED} and _employee_user(doc.employee) != frappe.session.user,
+		"can_return_entries": active_employee and open_project_review and doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR} and _employee_user(doc.employee) != frappe.session.user,
 		"logs": logs,
 	}
 
