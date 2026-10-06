@@ -113,7 +113,7 @@ def get_admin_desk_sections() -> list[dict]:
 @frappe.whitelist()
 def get_admin_desk_counts() -> dict:
 	"""Count only visible review queues, under the caller's row permissions."""
-	from hrms.api.weekly_timesheet import _project_reviews_ready, _team_review_blockers, PENDING_HR
+	from hrms.api.weekly_timesheet import get_hr_weekly_timesheet_queue
 	from hrms.utils.personal_scope import _is_manager, APPROVER_FIELDS
 
 	counts = {}
@@ -127,12 +127,9 @@ def get_admin_desk_counts() -> dict:
 				counts[key] = None
 				continue
 			if key == "hr-timesheets":
-				names = frappe.get_list("Timesheet", filters={"custom_is_weekly": 1,
-					"custom_weekly_status": PENDING_HR, "docstatus": 0}, pluck="name", limit_page_length=0)
-				counts[key] = 0
-				for name in names:
-					doc = frappe.get_doc("Timesheet", name)
-					counts[key] += int(_project_reviews_ready(doc) and not _team_review_blockers(doc))
+				weeks = get_hr_weekly_timesheet_queue("current")
+				counts[key] = len(weeks)
+				counts["hr-timesheets-ready"] = sum(int(row["ready_for_hr_close"]) for row in weeks)
 			else:
 				filters = dict(REVIEW_COUNTS[key])
 				if key in APPROVER_FIELDS and not _is_manager(frappe.session.user):

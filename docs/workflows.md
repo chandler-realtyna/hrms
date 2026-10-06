@@ -371,7 +371,8 @@ correction and HR review; saved unsubmitted drafts remain in Team entries.
 Week status and Next action are separate: a waiting week remains visible with
 its pending project/reviewer or team-review blockers, but final approval still
 requires every project review and team dependency to be complete. The home
-HR badge continues to count only weeks ready for final approval.
+HR badge shows the submitted-week count and a separate ready-for-final-approval
+count, derived from the same queue and readiness rules.
 
 Search includes contractor names, project labels and activity types. Weeks sort
 oldest first in the displayed queue. Finalized records are read-only history.
