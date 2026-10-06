@@ -801,6 +801,7 @@ def get_project_approval_queue():
 			members.append(
 				{
 					"approval_name": approval.name,
+					"modified": str(doc.modified),
 					"employee_name": doc.employee_name,
 					"employee": doc.employee,
 					"status": approval.status,
@@ -915,57 +916,75 @@ def reset_project_review(name: str, project: str, expected_modified: str, reason
 	return {"status": doc.custom_weekly_status, "modified": str(doc.modified)}
 
 
-def _review_project_approval_row(approval, action: str, reason: str | None = None):
-	doc = frappe.get_doc("Timesheet", approval.parent)
-	review_saved_project_entries(doc.name, approval.project, str(doc.modified), action=action, reason=reason)
-	return frappe.get_doc("Timesheet", doc.name)
+def _review_project_approval_row(approval, action: str, expected_modified: str, reason: str | None = None):
+	review_saved_project_entries(approval.parent, approval.project, expected_modified, action=action, reason=reason)
+	return frappe.get_doc("Timesheet", approval.parent)
 
 
-@frappe.whitelist()
-def approve_project_week(project: str, week_start: str):
-	filters = {"project": project, "status": APPROVAL_PENDING}
+def _observed_project_sections(sections):
+	sections = frappe.parse_json(sections) if isinstance(sections, str) else sections
+	if not isinstance(sections, list) or not sections or len(sections) > 1000:
+		frappe.throw(_("Select project sections from the latest review page."))
+	observed = {}
+	for section in sections:
+		if not isinstance(section, dict) or not section.get("approval_name") or not section.get("expected_modified"):
+			frappe.throw(_("Refresh the page before approving project sections."))
+		name = section["approval_name"]
+		if name in observed:
+			frappe.throw(_("A project section was selected twice."))
+		observed[name] = str(section["expected_modified"])
+	return observed
+
+
+def _approve_observed_sections(observed):
+	# Deterministic locks and one request/transaction: a stale member rejects all.
+	approvals = [frappe.get_doc("Timesheet Project Approval", name) for name in sorted(observed)]
+	for parent in sorted({row.parent for row in approvals}):
+		frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", parent)
+	for approval in approvals:
+		doc = frappe.get_doc("Timesheet", approval.parent)
+		if str(doc.modified) != observed[approval.name]:
+			frappe.throw(_("A selected week changed. Refresh and review all selected sections again."))
+	for approval in approvals:
+		_review_project_approval_row(approval, "approve", str(frappe.get_doc("Timesheet", approval.parent).modified))
+	return {"approved": len(approvals)}
+
+
+@frappe.whitelist(methods=["POST"])
+def approve_project_reviews(sections):
+	"""Atomic approval of exactly the sections and revisions the reviewer saw."""
+	return _approve_observed_sections(_observed_project_sections(sections))
+
+
+@frappe.whitelist(methods=["POST"])
+def approve_project_week(project: str, week_start: str, sections=None):
+	observed = _observed_project_sections(sections)
 	if not _is_hr() and _project_lead_user(project) != frappe.session.user and _project_manager_user(project) != frappe.session.user:
-		filters["controller"] = frappe.session.user
-	pending = frappe.get_all(
-		"Timesheet Project Approval",
-		filters=filters,
-		fields=["name", "parent", "project", "controller", "status"],
-		limit_page_length=1000,
-	)
-	matching = []
+		frappe.throw(_("You cannot review entries for this project."), frappe.PermissionError)
+	pending = frappe.get_all("Timesheet Project Approval", filters={"project": project, "status": APPROVAL_PENDING}, fields=["name", "parent"], limit_page_length=1001)
+	matching = set()
 	for approval in pending:
 		doc = frappe.get_doc("Timesheet", approval.parent)
 		if doc.docstatus == 0 and str(doc.custom_week_start) == str(getdate(week_start)):
-			matching.append(approval)
-	if not matching:
-		frappe.throw(_("No pending rows were found for this project report."))
-	for approval in matching:
-		_review_project_approval_row(approval, "approve")
-	return {"approved": len(matching)}
+			matching.add(approval.name)
+	if matching != set(observed):
+		frappe.throw(_("The pending project sections changed. Refresh before approving this project week."))
+	return _approve_observed_sections(observed)
 
 
-@frappe.whitelist()
-def review_project_approval(approval_name: str, action: str, reason: str | None = None):
+@frappe.whitelist(methods=["POST"])
+def review_project_approval(approval_name: str, action: str, expected_modified: str | None = None, reason: str | None = None):
 	if action not in {"approve", "return"}:
 		frappe.throw(_("Invalid review action."))
-	if action == "return" and not (reason or "").strip():
-		frappe.throw(_("A return reason is required."))
-
 	approval = frappe.get_doc("Timesheet Project Approval", approval_name)
-	if action == "approve":
-		doc = frappe.get_doc("Timesheet", approval.parent)
-		return approve_project_week(approval.project, doc.custom_week_start)
-
-	doc = _review_project_approval_row(approval, action, reason)
+	doc = _review_project_approval_row(approval, action, expected_modified, reason)
 	return {"status": doc.custom_weekly_status}
 
 
-@frappe.whitelist()
-def approve_project_review(approval_name: str):
-	"""Approve a single project review section (Project Lead only)."""
-	approval = frappe.get_doc("Timesheet Project Approval", approval_name)
-	doc = _review_project_approval_row(approval, "approve")
-	return {"status": doc.custom_weekly_status}
+@frappe.whitelist(methods=["POST"])
+def approve_project_review(approval_name: str, expected_modified: str | None = None):
+	"""Approve only this section, guarded by the browser-observed revision."""
+	return review_project_approval(approval_name, "approve", expected_modified)
 
 
 def _lead_scoped_projects(user: str | None = None) -> tuple[set, str | None]:

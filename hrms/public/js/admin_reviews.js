@@ -167,7 +167,7 @@ class HRMSAdminReviews {
 		if (!hr && this.teamView !== "history" && rows.some(row => row.regular_reviewer)) approve = this.button(toolbar, "Approve selected sections", async () => {
 			if (!selected.size) return frappe.msgprint(__("Select pending sections first."));
 			frappe.confirm(__("Approve {0} selected project sections?", [selected.size]), async () => {
-				try { for (const approval_name of selected) await this.call("weekly_timesheet.approve_project_review", { approval_name }); }
+				try { await this.call("weekly_timesheet.approve_project_reviews", { sections: rows.filter(row => selected.has(row.approval_name)).map(row => ({approval_name: row.approval_name, expected_modified: row.modified})) }); }
 				finally { await this.show(); }
 			});
 		}, true);

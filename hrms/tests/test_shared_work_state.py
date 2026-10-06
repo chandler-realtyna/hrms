@@ -250,7 +250,7 @@ class TestSharedWorkState(unittest.TestCase):
 		with self.assertRaises(frappe.ValidationError): week.hr_close_weekly_timesheet(data["name"])
 		frappe.set_user(self.users[1])
 		approval = frappe.db.get_value("Timesheet Project Approval", {"parent": data["name"], "project": self.projects[0]}, "name")
-		week.approve_project_review(approval)
+		week.approve_project_review(approval, str(frappe.get_doc("Timesheet", data["name"]).modified))
 		frappe.set_user(self.users[2])
 		final = week.hr_close_weekly_timesheet(data["name"])
 		self.assertEqual(final["custom_weekly_status"], "Closed")

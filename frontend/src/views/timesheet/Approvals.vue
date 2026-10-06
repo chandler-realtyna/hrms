@@ -135,6 +135,7 @@ async function returnMember(member) {
 	}
 	await call("hrms.api.weekly_timesheet.review_project_approval", {
 		approval_name: member.approval_name,
+		expected_modified: member.modified,
 		action: "return",
 		reason,
 	})
@@ -147,6 +148,7 @@ async function approveReport(report) {
 	await call("hrms.api.weekly_timesheet.approve_project_week", {
 		project: report.project,
 		week_start: report.week_start,
+		sections: report.members.filter(member => member.status === "Pending").map(member => ({approval_name: member.approval_name, expected_modified: member.modified})),
 	})
 	toast({ title: __("Project week approved"), icon: "check" })
 	await load()
