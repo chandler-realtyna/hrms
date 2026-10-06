@@ -106,6 +106,7 @@
 	padding-bottom: 4px;
 }
 .admin-reviews-table .admin-reviews-project-status .indicator-pill { max-width: 132px; }
+.admin-reviews-table .admin-reviews-week-status .indicator-pill { max-width: 132px; }
 .admin-history-filters .form-section { border: 0; padding: 0; }
 .admin-history-filters .section-body { display: block; }
 .admin-history-filters .form-column { display: block; width: 100%; }

@@ -9,7 +9,7 @@ class HRMSAdminReviews {
 	constructor(wrapper) {
 		if (!document.getElementById("hrms-admin-reviews-style")) {
 			$('<link id="hrms-admin-reviews-style" rel="stylesheet">')
-				.attr("href", "/assets/hrms/css/admin_reviews.css?v=review-badges-20261002").appendTo(document.head);
+				.attr("href", "/assets/hrms/css/admin_reviews.css?v=compact-review-summary-20261006").appendTo(document.head);
 		}
 		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Admin Reviews"), single_column: true });
 		this.content = $('<div class="admin-reviews-page"></div>').appendTo(this.page.main);
@@ -60,8 +60,8 @@ class HRMSAdminReviews {
 				}
 			}
 			if (mode === "project-timesheets") {
-				const data = await this.call("weekly_timesheet.get_team_timesheet_sections", { view: this.teamView || "current", filters: { ...(this.teamFilters || {}), company: this.company || "" } });
-				if (version === this.version) this.queue(data.rows, mode, data);
+				const data = await this.call("weekly_timesheet.get_team_timesheet_sections", { view: this.teamView || "current", filters: { review_scope: (frappe.session?.user === "Administrator" || (frappe.user_roles || []).some(role => ["HR Manager", "HR User", "System Manager", "Company Desk Administrator"].includes(role))) ? "submitted" : "all", ...(this.teamFilters || {}), company: this.company || "" } });
+				if (version === this.version) { this.hrFollowup = data.can_hr_followup; this.queue(data.rows, mode, data); }
 				return;
 			}
 			if (mode === "project-reports") {
@@ -219,24 +219,37 @@ class HRMSAdminReviews {
 			}
 			if (!hr) {
 				const next = $("<td></td>").appendTo(tr);
-				const message = row.project_status === "Returned" ? __("Waiting for employee correction")
+				const reviewer = row.ping_reviewer_name || row.reviewer_name;
+				const message = row.project_status === "Returned" ? __("Employee correction")
 					: row.actionable && row.regular_reviewer ? __("Review saved entries")
-					: row.actionable && row.hr_status === "Draft" ? __("In progress · week not submitted")
-					: row.actionable ? __("Follow up with project reviewer") : row.selection_reason || "";
-				next.text(message);
-				if (row.actionable && !row.regular_reviewer && row.reviewer_name)
-					$("<div class='text-muted small'></div>").text(row.reviewer_name).appendTo(next);
+					: row.actionable && row.hr_status === "Draft" ? __("In progress")
+					: row.actionable ? reviewer || __("Project reviewer") : row.selection_reason || "";
+				const primary = $('<div></div>').appendTo(next).text(message);
+				const age = $('<div class="small admin-followup-age"></div>').appendTo(next);
+				const updateAge = () => age.attr("title", (row.waiting_since ? __("Since {0}", [row.waiting_since]) : "") + (row.last_ping_at ? " · " + __("Last reminder: {0}", [moment(row.last_ping_at).format("D MMM HH:mm")]) : ""));
+				if (row.waiting_days != null) age.addClass(row.waiting_days >= 7 ? "text-danger" : row.waiting_days >= 3 ? "text-warning" : "text-muted").text(__("Waiting {0} days", [row.waiting_days]));
+				updateAge();
+				if (row.can_ping) this.button(primary, "Remind", () => frappe.confirm(__("Send an in-app reminder to {0} to review {1}’s week {2}?", [reviewer || __("the current project reviewer"), row.employee_name, this.week(row.week_start, row.week_end)]), async () => {
+					const result = await this.call("project_review_followup.ping_project_reviewer", {name: row.timesheet, project: row.project, expected_modified: row.modified, expected_reviewer: row.ping_reviewer});
+					frappe.show_alert({message: result.message, indicator: result.sent ? "green" : "orange"});
+					row.last_ping_at = result.last_ping_at; updateAge();
+				})).addClass("ml-2");
 			}
 			this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail(row, hr));
 		});
 		};
 		if (paging) {
 			search.val(this.teamFilters?.search || ""); status.val(this.teamFilters?.status || "");
+			const scope = $('<select class="form-control admin-reviews-filter"></select>').attr("aria-label", __("Follow-up scope")).appendTo(toolbar);
+			for (const [value, label] of [["submitted", "Submitted weeks"], ["draft", "In-progress weeks"], ["all", "All saved sections"]]) $('<option></option>').val(value).text(__(label)).appendTo(scope);
+			scope.val(this.teamFilters?.review_scope || (this.hrFollowup ? "submitted" : "all"));
+			const week = $('<input type="date" class="form-control admin-reviews-filter">').attr({"aria-label": __("Week containing date"), title: __("Blank means all weeks. Any date selects its Sunday–Saturday week.")}).val(this.teamFilters?.week_start || "").appendTo(toolbar);
+			$('<span class="text-muted small"></span>').text(__("Week filter · blank means all weeks")).appendTo(toolbar);
 			let request = 0, debounce;
 			const more = this.button(this.content, "Load more", () => reload(false));
 			const reload = async (reset = true) => {
 				const version = ++request;
-				const filters = this.teamFilters = { search: search.val(), status: status.val(), company: this.company || "" };
+				const filters = this.teamFilters = { search: search.val(), status: status.val(), company: this.company || "", review_scope: scope.val(), week_start: week.val() };
 				try {
 					const page = await this.call("weekly_timesheet.get_team_timesheet_sections", {
 						view: this.teamView || "current", cursor: reset ? null : cursor, filters,
@@ -257,6 +270,8 @@ class HRMSAdminReviews {
 			};
 			search.on("input", () => { clearTimeout(debounce); debounce = setTimeout(reload, 300); });
 			status.on("change", () => reload());
+			scope.on("change", () => reload());
+			week.on("change", () => reload());
 			more.toggle(Boolean(cursor));
 		} else { search.on("input", render); status.on("change", render); }
 		render();
@@ -600,10 +615,10 @@ class HRMSAdminReviews {
 		return __({ Draft: "Not reviewed", Pending: "Awaiting project review", Returned: "Needs correction", Approved: "Project approved", "HR Review": "HR review required", "Pending HR Review": "HR review", "Pending Project Approval": "Project review", "Correction Required": "Returned", Closed: "Final", Submitted: "Submitted" }[status] || status || "");
 	}
 	weekStatusLabel(status) {
-		return __({ Draft: "Not submitted", "Pending Project Approval": "Submitted · awaiting project approvals", "Pending HR Review": "Submitted · ready for HR review", "Correction Required": "Needs employee correction", Closed: "Finalized and locked", Submitted: "Legacy submitted" }[status] || status || "");
+		return __({ Draft: "Not submitted", "Pending Project Approval": "Awaiting project review", "Pending HR Review": "Ready for HR review", "Correction Required": "Needs employee correction", Closed: "Finalized", Submitted: "Legacy submitted" }[status] || status || "");
 	}
 	statusCell(cell, status, reason, week = false) {
-		if (!week) cell.addClass("admin-reviews-project-status");
+		cell.addClass(week ? "admin-reviews-week-status" : "admin-reviews-project-status");
 		const color = status === "Correction Required" || status === "Returned" ? "red" : week && status === "Pending Project Approval" ? "orange" : week && status === "Pending HR Review" ? "green" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";
 		$('<span class="indicator-pill"></span>').addClass(color).text(week ? this.weekStatusLabel(status) : this.statusLabel(status)).appendTo(cell);
 		if (reason) $('<div class="text-muted small"></div>').text(__(reason === "self" ? "Own entries: final review by HR" : "No project lead: final review by HR")).appendTo(cell);
