@@ -10,7 +10,8 @@
   "status",
   "reviewed_by",
   "reviewed_at",
-  "return_reason"
+  "return_reason",
+  "entry_reviews"
  ],
  "fields": [
   {
@@ -55,6 +56,13 @@
    "fieldtype": "Small Text",
    "label": "Return Reason",
    "read_only": 1
+  },
+  {
+   "fieldname": "entry_reviews",
+   "fieldtype": "Long Text",
+   "label": "Entry Review Revisions",
+   "read_only": 1,
+   "hidden": 1
   }
  ],
  "index_web_pages_for_search": 0,

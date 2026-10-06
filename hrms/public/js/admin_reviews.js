@@ -313,11 +313,11 @@ class HRMSAdminReviews {
 			}), true);
 		} else if (!hr && data.actionable) {
 			this.button(toolbar, "Return entire project section", () => this.reason("Return entire project section", async reason => {
-				await this.call("weekly_timesheet.review_project_approval", { approval_name: data.approval_name, action: "return", reason });
+				await this.call("weekly_timesheet.review_saved_project_entries", { name, project: data.project, expected_modified: data.modified, action: "return", reason });
 				dialog.hide(); await this.show();
 			}));
 			this.button(toolbar, "Approve project section", async () => {
-				await this.call("weekly_timesheet.approve_project_review", { approval_name: data.approval_name });
+				await this.call("weekly_timesheet.review_saved_project_entries", { name, project: data.project, expected_modified: data.modified });
 				dialog.hide(); await this.show();
 			}, true);
 		}

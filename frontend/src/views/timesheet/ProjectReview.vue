@@ -101,9 +101,10 @@
 								{{ __("Returned") }}: {{ row.return_reason }}
 							</p>
 						</button>
+						<p v-if="row.actionable" class="px-4 pb-2 text-xs text-gray-600">{{ __("Approve saved entries now. Changes require another review; HR finalizes after the employee submits the week.") }}</p>
 						<div v-if="row.actionable" class="px-4 pb-4 flex gap-2">
 							<input
-								v-model="reasons[row.approval_name]"
+								v-model="reasons[row.timesheet + '|' + row.project]"
 								class="min-w-0 flex-1 border rounded-lg px-2.5 py-2 text-xs"
 								:placeholder="__('Return reason')"
 							/>
@@ -172,6 +173,10 @@
 							<div v-if="log.description" class="text-xs text-gray-600 mt-0.5">
 								{{ log.description }}
 							</div>
+							<p v-if="log.approved" class="mt-1 text-xs text-green-700">{{ __("Approved saved version") }}</p>
+							<Button v-else-if="detail.can_review_entries && !log.return_reason" variant="solid" size="sm" class="mt-2" @click="approveEntry(log)">
+								{{ __("Approve entry") }}
+							</Button>
 							<p v-if="log.return_reason" class="mt-1 text-xs text-red-600">{{ log.return_reason }}</p>
 							<Button v-if="detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
 								{{ __("Return entry for correction") }}
@@ -257,9 +262,12 @@ async function approveAll() {
 	approvingAll.value = true
 	try {
 		for (const row of rows) {
-			await call("hrms.api.weekly_timesheet.approve_project_review", {
-				approval_name: row.approval_name,
+			const result = await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+				name: row.timesheet, project: row.project, expected_modified: row.modified,
 			})
+			for (const sibling of rows) {
+				if (sibling.timesheet === row.timesheet) sibling.modified = result.modified
+			}
 		}
 		toastSaved(__("Project sections approved"))
 		detail.value = null
@@ -346,8 +354,8 @@ async function openDetail(row) {
 
 async function approveRow(row) {
 	try {
-		await call("hrms.api.weekly_timesheet.approve_project_review", {
-			approval_name: row.approval_name,
+		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+			name: row.timesheet, project: row.project, expected_modified: row.modified,
 		})
 		toastSaved(__("Project section approved"))
 		detail.value = null
@@ -358,7 +366,7 @@ async function approveRow(row) {
 }
 
 async function returnRow(row) {
-	const reason = (reasons[row.approval_name] || "").trim()
+	const reason = (reasons[row.timesheet + "|" + row.project] || "").trim()
 	if (!reason) {
 		toast({
 			title: __("A return reason is required"),
@@ -368,8 +376,8 @@ async function returnRow(row) {
 		return
 	}
 	try {
-		await call("hrms.api.weekly_timesheet.review_project_approval", {
-			approval_name: row.approval_name,
+		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+			name: row.timesheet, project: row.project, expected_modified: row.modified,
 			action: "return",
 			reason,
 		})
@@ -384,7 +392,7 @@ async function returnRow(row) {
 async function approveDetail() {
 	if (!detail.value) return
 	await approveRow({
-		approval_name: detail.value.approval_name,
+		timesheet: detail.value.timesheet, modified: detail.value.modified,
 		project: detail.value.project,
 	})
 }
@@ -401,8 +409,8 @@ async function returnDetail() {
 		return
 	}
 	try {
-		await call("hrms.api.weekly_timesheet.review_project_approval", {
-			approval_name: detail.value.approval_name,
+		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+			name: detail.value.timesheet, project: detail.value.project, expected_modified: detail.value.modified,
 			action: "return",
 			reason,
 		})
@@ -414,12 +422,24 @@ async function returnDetail() {
 	}
 }
 
+async function approveEntry(log) {
+	try {
+		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+			name: detail.value.timesheet, project: detail.value.project,
+			expected_modified: detail.value.modified, entries: [log.name],
+		})
+		toastSaved(__("Saved entry approved"))
+		await openDetail(detail.value)
+		await load()
+	} catch (error) { toastFailed(error) }
+}
+
 async function returnEntry(log) {
 	const reason = window.prompt(__("Correction reason for this time entry"))?.trim()
 	if (!reason) return
 	try {
-		await call("hrms.api.weekly_timesheet.return_timesheet_entries", {
-			name: detail.value.timesheet, entries: [log.name], reason, stage: "project",
+		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
+			name: detail.value.timesheet, project: detail.value.project, expected_modified: detail.value.modified, entries: [log.name], reason, action: "return",
 		})
 		toastSaved(__("Time entry returned for correction"))
 		await openDetail(detail.value)

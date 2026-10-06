@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, time
+import hashlib
+import json
 
 import frappe
 from frappe import _
@@ -532,43 +534,58 @@ def save_weekly_timesheet(payload, expected_modified=None):
 	return _serialize_weekly(doc)
 
 
+def _entry_revision(row):
+	"""Approval covers the saved business values, not a mutable row identifier."""
+	values = [row.project, row.activity_type or "Unassigned", row.description or "",
+		str(get_datetime(row.from_time)), str(get_datetime(row.to_time)),
+		round(flt(row.hours), 4), cint(row.is_billable)]
+	return hashlib.sha256(json.dumps(values, ensure_ascii=False).encode()).hexdigest()
+
+
+def _entry_reviews(doc, approval):
+	if not approval:
+		return {}
+	if approval.get("entry_reviews"):
+		return frappe.parse_json(approval.entry_reviews)
+	# Existing approved sections retain their original evidence. On the next
+	# write it is captured against the BEFORE image, never against edited rows.
+	if approval.status == APPROVAL_APPROVED:
+		return {row.name: {"revision": _entry_revision(row), "reviewed_by": approval.reviewed_by,
+			"reviewed_at": str(approval.reviewed_at or "")} for row in doc.time_logs if row.project == approval.project}
+	return {}
+
+
 def _set_project_approvals(doc):
 	projects = sorted({row.project for row in doc.time_logs})
+	old = doc.get_doc_before_save() if not doc.is_new() else None
 	existing = {row.project: row for row in doc.custom_project_approvals}
-	scope = _correction_scope(doc) if doc.custom_weekly_status == CORRECTION_REQUIRED else {"entries": [], "projects": []}
-	corrected_projects = {row.project for row in doc.time_logs if row.name in scope["entries"] or row.project in scope["projects"]}
-
-	for row in list(doc.custom_project_approvals):
-		if row.project not in projects and row.status == APPROVAL_RETURNED:
-			doc.remove(row)
-
+	old_approvals = {row.project: row for row in old.custom_project_approvals} if old else {}
+	for approval in list(doc.custom_project_approvals):
+		if approval.project not in projects:
+			doc.remove(approval)
 	for project in projects:
+		approval = existing.get(project)
+		if not approval:
+			approval = doc.append("custom_project_approvals", {"project": project, "status": APPROVAL_PENDING})
 		controller = _project_lead_user(project)
-		lead_employee = _project_lead_employee(project)
-		if not controller:
-			# No usable Project Lead: route straight to HR review. The review
-			# UI flags these sections as "No Project Lead" from the project.
-			status = APPROVAL_HR
-		elif lead_employee == doc.employee:
-			# Self-approval is not allowed: the employee's own section skips
-			# project approval and moves directly to HR review.
-			status = APPROVAL_HR
+		reviews = _entry_reviews(doc, approval) if approval.get("entry_reviews") else _entry_reviews(old or doc, old_approvals.get(project) or approval)
+		if approval.controller and approval.controller != controller:
+			reviews = {}
+		logs = [row for row in doc.time_logs if row.project == project]
+		reviews = {row.name: reviews[row.name] for row in logs
+			if row.name in reviews and reviews[row.name].get("revision") == _entry_revision(row)}
+		approval.controller = controller
+		approval.entry_reviews = json.dumps(reviews)
+		if not controller or _project_lead_employee(project) == doc.employee:
+			approval.status = APPROVAL_HR
+		elif any(row.get("custom_return_reason") for row in logs):
+			approval.status = APPROVAL_RETURNED
+		elif all(row.name in reviews for row in logs):
+			approval.status = APPROVAL_APPROVED
 		else:
-			status = APPROVAL_PENDING
-		if project in existing:
-			approval = existing[project]
-			if approval.status == APPROVAL_APPROVED and project not in corrected_projects:
-				continue
-			approval.controller = controller
-			approval.status = status
-			approval.reviewed_by = None
-			approval.reviewed_at = None
+			approval.status = APPROVAL_PENDING
+		if approval.status != APPROVAL_RETURNED:
 			approval.return_reason = None
-		else:
-			doc.append(
-				"custom_project_approvals",
-				{"project": project, "controller": controller, "status": status},
-			)
 
 
 @frappe.whitelist()
@@ -582,10 +599,10 @@ def submit_weekly_timesheet(name: str):
 	if not doc.time_logs:
 		frappe.throw(_("Add at least one time entry before submitting the week."))
 
-	_set_project_approvals(doc)
 	doc.custom_correction_scope = None
 	for row in doc.time_logs:
 		row.custom_return_reason = None
+	_set_project_approvals(doc)
 	statuses = {row.status for row in doc.custom_project_approvals}
 	doc.custom_weekly_status = PENDING_PROJECT if APPROVAL_PENDING in statuses or _team_review_blockers(doc) else PENDING_HR
 	doc.custom_weekly_submitted_at = doc.custom_weekly_submitted_at or now_datetime()
@@ -664,6 +681,9 @@ def _project_reviews_ready(doc):
 	for project in projects:
 		row = approvals[project]
 		if row.status == APPROVAL_APPROVED:
+			reviews = _entry_reviews(doc, row)
+			if any(reviews.get(log.name, {}).get("revision") != _entry_revision(log) for log in doc.time_logs if log.project == project):
+				return False
 			continue
 		if row.status != APPROVAL_HR:
 			return False
@@ -702,13 +722,13 @@ def get_project_approval_queue():
 		if approval.parent not in documents:
 			documents[approval.parent] = frappe.get_doc("Timesheet", approval.parent)
 		doc = documents[approval.parent]
-		if doc.docstatus != 0 or not doc.custom_weekly_submitted_at:
+		if doc.docstatus != 0:
 			continue
 		if reviewer_employee and doc.employee == reviewer_employee:
 			continue
 		key = (approval.project, str(doc.custom_week_start), str(doc.custom_week_end))
 		groups.setdefault(key, []).append((approval, doc))
-		if approval.status == APPROVAL_PENDING and doc.custom_weekly_status == PENDING_PROJECT:
+		if approval.status == APPROVAL_PENDING and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED}:
 			pending_groups.add(key)
 
 	result = []
@@ -753,62 +773,64 @@ def get_project_approval_queue():
 	return result
 
 
-def _review_project_approval_row(approval, action: str, reason: str | None = None):
-	if (
-		approval.controller != frappe.session.user
-		and not _is_hr()
-		and _project_lead_user(approval.project) != frappe.session.user
-		and _project_manager_user(approval.project) != frappe.session.user
-	):
-		frappe.throw(_("You are not the Project Lead for this project."), frappe.PermissionError)
-	if approval.status != APPROVAL_PENDING:
-		frappe.throw(_("This project review has already been completed."))
-
-	doc = frappe.get_doc("Timesheet", approval.parent)
-	if not _is_hr() and _employee_user(doc.employee) == frappe.session.user:
-		frappe.throw(_("Your own project entries require HR review."), frappe.PermissionError)
-	if doc.docstatus != 0 or doc.custom_weekly_status not in {PENDING_PROJECT, CORRECTION_REQUIRED}:
+@frappe.whitelist(methods=["POST"])
+def review_saved_project_entries(name: str, project: str, expected_modified: str, entries=None, action: str = "approve", reason: str | None = None):
+	if action not in {"approve", "return"}:
+		frappe.throw(_("Invalid review action."))
+	if not _is_hr() and frappe.session.user not in {_project_lead_user(project), _project_manager_user(project)}:
+		frappe.throw(_("You cannot review entries for this project."), frappe.PermissionError)
+	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
+	doc = frappe.get_doc("Timesheet", name)
+	if _employee_user(doc.employee) == frappe.session.user:
+		frappe.throw(_("Your own project entries require another reviewer."), frappe.PermissionError)
+	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or doc.custom_weekly_status not in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR}:
 		frappe.throw(_("This project review is no longer open."))
-	row = next(item for item in doc.custom_project_approvals if item.name == approval.name)
-	row.reviewed_by = frappe.session.user
-	row.reviewed_at = now_datetime()
-	row.return_reason = (reason or "").strip() or None
-	row.status = APPROVAL_APPROVED if action == "approve" else APPROVAL_RETURNED
-
+	if not expected_modified or str(doc.modified) != str(expected_modified):
+		frappe.throw(_("The time entries changed. Refresh and review the latest saved entries before approving."))
+	entries = frappe.parse_json(entries) if isinstance(entries, str) else entries
+	if entries is not None and (not isinstance(entries, list) or not entries or any(not isinstance(item, str) for item in entries)):
+		frappe.throw(_("Select saved entries belonging to this project."))
+	logs = [row for row in doc.time_logs if row.project == project and (entries is None or row.name in entries)]
+	if not logs or (entries is not None and (not isinstance(entries, list) or {row.name for row in logs} != set(entries))):
+		frappe.throw(_("Select saved entries belonging to this project."))
+	if action == "return" and not (reason or "").strip():
+		frappe.throw(_("A return reason is required."))
+	_set_project_approvals(doc)
+	approval = next(row for row in doc.custom_project_approvals if row.project == project)
+	reviews = _entry_reviews(doc, approval)
+	for log in logs:
+		if action == "approve":
+			if log.get("custom_return_reason"):
+				frappe.throw(_("Returned entries must be corrected before approval."))
+			reviews[log.name] = {"revision": _entry_revision(log), "reviewed_by": frappe.session.user, "reviewed_at": str(now_datetime())}
+		else:
+			reviews.pop(log.name, None)
+			log.custom_return_reason = reason.strip()
+	approval.entry_reviews = json.dumps(reviews)
+	approval.reviewed_by = frappe.session.user
+	approval.reviewed_at = now_datetime()
 	if action == "return":
-		_mark_correction(doc, [log for log in doc.time_logs if log.project == row.project], row.return_reason, [row.project])
-	else:
-		statuses = {item.status for item in doc.custom_project_approvals}
-		if not statuses.intersection({APPROVAL_PENDING, APPROVAL_RETURNED}) and _project_reviews_ready(doc) and not _team_review_blockers(doc):
-			doc.custom_weekly_status = PENDING_HR
-			doc.custom_weekly_return_reason = None
-
+		approval.return_reason = reason.strip()
+	if action == "return" and doc.custom_weekly_status != WEEKLY_DRAFT:
+		_mark_correction(doc, logs, reason.strip())
+	_set_project_approvals(doc)
+	if doc.custom_weekly_submitted_at and doc.custom_weekly_status != CORRECTION_REQUIRED:
+		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) and not _team_review_blockers(doc) else PENDING_PROJECT
 	doc.flags.weekly_action = "project_lead_review"
 	doc.save(ignore_permissions=True)
-	if action == "approve":
-		_refresh_ready_lead_weeks(doc.custom_week_start, doc.name, _project_lead_employee(approval.project))
-	doc.add_comment(
-		"Comment",
-		_("Project {0} was {1} by Project Lead {2}.").format(
-			approval.project, _("approved") if action == "approve" else _("returned"), frappe.session.user
-		),
-	)
-
+	doc.add_comment("Comment", _("Project {0}: {1} saved entries {2} by {3}.").format(project, len(logs), action, frappe.session.user))
+	_refresh_ready_lead_weeks(doc.custom_week_start, doc.name, _project_lead_employee(project))
 	if action == "return":
-		_notify(
-			[_employee_user(doc.employee)],
-			_("Weekly timesheet needs correction"),
-			_("Project {0} was returned: {1}").format(approval.project, row.return_reason),
-			doc.name,
-		)
+		_notify([_employee_user(doc.employee)], _("Time entries need correction"), reason.strip(), doc.name)
 	elif doc.custom_weekly_status == PENDING_HR:
-		_notify(
-			_hr_users(),
-			_("Weekly timesheet is ready for HR review"),
-			_("{0}'s weekly timesheet is ready for final review.").format(doc.employee_name),
-			doc.name,
-		)
-	return doc
+		_notify(_hr_users(), _("Weekly timesheet is ready for HR review"), doc.employee_name, doc.name)
+	return {"status": doc.custom_weekly_status, "reviewed": len(logs), "modified": str(doc.modified)}
+
+
+def _review_project_approval_row(approval, action: str, reason: str | None = None):
+	doc = frappe.get_doc("Timesheet", approval.parent)
+	review_saved_project_entries(doc.name, approval.project, str(doc.modified), action=action, reason=reason)
+	return frappe.get_doc("Timesheet", doc.name)
 
 
 @frappe.whitelist()
@@ -928,7 +950,7 @@ def get_project_review_queue():
 	result = []
 	for approval in approvals:
 		doc = docs.get(approval.parent)
-		if doc is None or doc.docstatus != 0 or not doc.custom_weekly_submitted_at:
+		if doc is None or doc.docstatus != 0:
 			continue
 		if reviewer_employee and doc.employee == reviewer_employee:
 			continue
@@ -970,7 +992,8 @@ def get_project_review_queue():
 				"reviewed_at": str(approval.reviewed_at) if approval.reviewed_at else None,
 				"submitted_at": str(doc.custom_weekly_submitted_at),
 				"modified": str(doc.modified),
-				"actionable": approval.status == APPROVAL_PENDING,
+				"timesheet": doc.name,
+				"actionable": _project_section_actionable(doc, approval),
 				"routed_to_hr_reason": route_reason,
 			}
 		)
@@ -1054,7 +1077,7 @@ def get_project_review_queue():
 					"submitted_at": None,
 					"modified": str(doc.modified),
 					"timesheet": doc.name,
-					"actionable": False,
+					"actionable": True,
 					"routed_to_hr_reason": None,
 				}
 			)
@@ -1069,21 +1092,22 @@ def get_team_timesheet_sections(view="current", cursor=None, filters=None):
 
 
 def _project_section_actionable(doc, approval):
-	return bool(doc.docstatus == 0 and doc.custom_weekly_submitted_at
-		and doc.custom_weekly_status in {PENDING_PROJECT, CORRECTION_REQUIRED}
-		and approval and approval.status == APPROVAL_PENDING)
+	return bool(doc.docstatus == 0
+		and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED}
+		and (not approval or approval.status == APPROVAL_PENDING))
 
 
 def _project_section_review_hint(doc, approval):
 	if doc.docstatus == 1 or doc.custom_weekly_status == CLOSED:
 		return _("This week is final and read-only.")
-	if not doc.custom_weekly_submitted_at or doc.custom_weekly_status == WEEKLY_DRAFT:
-		return _("The employee must submit this week before you can approve it. Saved drafts can only be returned for correction.")
 	status = approval.status if approval else WEEKLY_DRAFT
-	return _({APPROVAL_RETURNED: "The employee must correct and resubmit this section before you can approve it.",
-		APPROVAL_APPROVED: "This project section is already approved. Final approval is by HR.",
-		APPROVAL_HR: "This section is routed to HR for final review."}.get(status,
-		"Review this submitted project section, then approve it or return it with a reason."))
+	if status == APPROVAL_RETURNED:
+		return _("Returned entries must be corrected before approval. The employee still needs to submit the complete week.")
+	if status == APPROVAL_APPROVED:
+		return _("This saved project section is approved. Changes require another review; final approval is by HR after submission.")
+	if status == APPROVAL_HR:
+		return _("This section is routed to HR for final review.")
+	return _("Review saved entries now. Approval covers this version only; later changes require another review. The employee still submits the complete week.")
 
 
 @frappe.whitelist()
@@ -1117,10 +1141,12 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 				"activity_type": row.activity_type,
 				"description": row.description,
 				"return_reason": row.get("custom_return_reason"),
+				"approved": _entry_reviews(doc, approval).get(row.name, {}).get("revision") == _entry_revision(row),
 			}
 		)
 	return {
 		"timesheet": doc.name,
+		"modified": str(doc.modified),
 		"project": project,
 		"week_start": str(doc.custom_week_start),
 		"week_end": str(doc.custom_week_end),
@@ -1132,11 +1158,8 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"return_reason": approval.return_reason if approval else None,
 		"actionable": _project_section_actionable(doc, approval),
 		"selection_reason": _project_section_review_hint(doc, approval),
-		"can_return_entries": doc.docstatus == 0 and (
-			doc.custom_weekly_status == WEEKLY_DRAFT
-			or bool(approval) and approval.status in {APPROVAL_PENDING, APPROVAL_RETURNED}
-			and doc.custom_weekly_status in {PENDING_PROJECT, CORRECTION_REQUIRED}
-		),
+		"can_review_entries": doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED} and _employee_user(doc.employee) != frappe.session.user,
+		"can_return_entries": doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR} and _employee_user(doc.employee) != frappe.session.user,
 		"logs": logs,
 	}
 
@@ -1195,6 +1218,11 @@ def return_timesheet_entries(name: str, entries, reason: str, stage: str = "proj
 				approval.return_reason = reason
 				approval.reviewed_by = frappe.session.user
 				approval.reviewed_at = now_datetime()
+	for approval in doc.custom_project_approvals:
+		reviews = _entry_reviews(doc, approval)
+		for log in selected:
+			reviews.pop(log.name, None)
+		approval.entry_reviews = json.dumps(reviews)
 	doc.flags.weekly_action = "entry_return"
 	doc.save(ignore_permissions=True)
 	doc.add_comment("Comment", _("Time entries {0} returned for correction: {1}").format(
@@ -1215,6 +1243,7 @@ def hr_return_weekly_timesheet(name: str, reason: str):
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))
 
 	for row in doc.custom_project_approvals:
+		row.entry_reviews = "{}"
 		row.status = APPROVAL_RETURNED
 		row.return_reason = reason.strip()
 		row.reviewed_by = frappe.session.user
@@ -1236,7 +1265,7 @@ def hr_return_weekly_timesheet(name: str, reason: str):
 def hr_close_weekly_timesheet(name: str):
 	_require_hr()
 	doc = frappe.get_doc("Timesheet", name)
-	if not cint(doc.custom_is_weekly) or doc.custom_weekly_status != PENDING_HR:
+	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or not doc.custom_weekly_submitted_at or doc.custom_weekly_status != PENDING_HR:
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))
 
 	if not _project_reviews_ready(doc):
@@ -1246,6 +1275,7 @@ def hr_close_weekly_timesheet(name: str):
 
 	for row in doc.custom_project_approvals:
 		if row.status == APPROVAL_HR:
+			row.entry_reviews = json.dumps({log.name: {"revision": _entry_revision(log), "reviewed_by": frappe.session.user, "reviewed_at": str(now_datetime())} for log in doc.time_logs if log.project == row.project})
 			row.status = APPROVAL_APPROVED
 			row.reviewed_by = frappe.session.user
 			row.reviewed_at = now_datetime()
@@ -1437,6 +1467,18 @@ def notify_saved_team_entries(doc):
 	if not cint(getattr(doc, "custom_is_weekly", 0)) or doc.docstatus != 0:
 		return
 	old = doc.get_doc_before_save()
+	if old and doc.flags.get("weekly_action") in {None, "employee_save"}:
+		current = {row.name: row for row in doc.time_logs}
+		invalidated = []
+		for approval in old.custom_project_approvals:
+			for row in old.time_logs:
+				if row.project != approval.project or row.name not in _entry_reviews(old, approval):
+					continue
+				if row.name not in current or _entry_revision(current[row.name]) != _entry_revision(row):
+					invalidated.append({"entry": _row_payload(row), "review": _entry_reviews(old, approval)[row.name]})
+		if invalidated:
+			doc.add_comment("Comment", _("Previously reviewed entries changed or removed; their approvals no longer apply: {0}").format(
+				frappe.utils.escape_html(json.dumps(invalidated, default=str))))
 	previous = {row.project for row in old.time_logs} if old else set()
 	for project in sorted({row.project for row in doc.time_logs if row.project} - previous):
 		lead = _project_lead_user(project)
@@ -1469,8 +1511,8 @@ def validate_weekly_document(doc):
 		if old and not action and (
 			old.get("custom_correction_scope") != doc.get("custom_correction_scope")
 			or old.get("custom_weekly_return_reason") != doc.get("custom_weekly_return_reason")
-			or [(row.name, row.project, row.controller, row.status, row.return_reason) for row in old.custom_project_approvals]
-			!= [(row.name, row.project, row.controller, row.status, row.return_reason) for row in doc.custom_project_approvals]
+			or [(row.name, row.project, row.controller, row.status, row.return_reason, row.get("entry_reviews")) for row in old.custom_project_approvals]
+			!= [(row.name, row.project, row.controller, row.status, row.return_reason, row.get("entry_reviews")) for row in doc.custom_project_approvals]
 		):
 			frappe.throw(_("Review fields can only be changed through workflow actions."))
 		if old and not action:
@@ -1493,6 +1535,19 @@ def validate_weekly_document(doc):
 	if duplicate:
 		frappe.throw(_("Only one weekly timesheet is allowed per employee and week."))
 	_validate_time_rows(doc)
+	old = doc.get_doc_before_save() if not doc.is_new() else None
+	action = doc.flags.get("weekly_action")
+	if old and action not in {"project_lead_review", "entry_return", "hr_return", "hr_close", "employee_submit"}:
+		old_logs = {row.name: row for row in old.time_logs}
+		for row in doc.time_logs:
+			previous = old_logs.get(row.name)
+			if previous and _entry_revision(previous) != _entry_revision(row):
+				row.custom_return_reason = None
+		# Never accept review metadata supplied by an employee, including via
+		# generic document writes. Rebuild only from the saved BEFORE image.
+		doc.set("custom_project_approvals", [row.as_dict() for row in old.custom_project_approvals])
+	if doc.docstatus == 0 and action != "hr_close":
+		_set_project_approvals(doc)
 
 
 def before_weekly_submit(doc):
@@ -1500,6 +1555,8 @@ def before_weekly_submit(doc):
 		return
 	if doc.flags.get("weekly_action") != "hr_close" or not _is_hr():
 		frappe.throw(_("Only HR can close a fully approved weekly timesheet."), frappe.PermissionError)
+	if not doc.custom_weekly_submitted_at:
+		frappe.throw(_("The employee must submit the complete week before final HR approval."))
 	if doc.custom_weekly_status != CLOSED:
 		frappe.throw(_("Weekly timesheet must be in Closed status before final submission."))
 	if not _project_reviews_ready(doc):

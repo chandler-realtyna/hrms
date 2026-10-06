@@ -10,14 +10,15 @@ class TestActionability(unittest.TestCase):
   doc=NS(docstatus=0,custom_weekly_submitted_at='2026-10-06',custom_weekly_status='Correction Required')
   self.assertTrue(ns['_project_section_actionable'](doc,NS(status='Pending')))
   self.assertFalse(ns['_project_section_actionable'](doc,NS(status='Returned')))
- def test_drafts_finalized_and_hr_routed_sections_do_not_offer_project_approval(self):
-  for stage,submitted,status,docstatus in [('Draft',None,'Pending',0),('Pending Project Approval',None,'Pending',0),('Closed','saved','Approved',1),('Pending HR Review','saved','HR Review',0)]:
+ def test_finalized_and_hr_routed_sections_do_not_offer_project_approval(self):
+  for stage,submitted,status,docstatus in [('Closed','saved','Approved',1),('Pending HR Review','saved','HR Review',0)]:
    with self.subTest(stage=stage):
     doc=NS(docstatus=docstatus,custom_weekly_submitted_at=submitted,custom_weekly_status=stage)
     self.assertFalse(ns['_project_section_actionable'](doc,NS(status=status)))
  def test_draft_and_returned_hints_explain_employee_action(self):
   doc=NS(docstatus=0,custom_weekly_submitted_at=None,custom_weekly_status='Draft')
-  self.assertIn('submit',ns['_project_section_review_hint'](doc,None))
+  self.assertTrue(ns['_project_section_actionable'](doc,None))
+  self.assertIn('saved entries',ns['_project_section_review_hint'](doc,None))
   doc.custom_weekly_submitted_at='saved';doc.custom_weekly_status='Correction Required'
-  self.assertIn('resubmit',ns['_project_section_review_hint'](doc,NS(status='Returned')))
+  self.assertIn('corrected',ns['_project_section_review_hint'](doc,NS(status='Returned')))
 if __name__=='__main__':unittest.main()
