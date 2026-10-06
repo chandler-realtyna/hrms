@@ -124,10 +124,11 @@ class HRMSAdminReviews {
 		for (const [key, { badge, label }] of badges) {
 			const count = counts[key], known = Number.isInteger(count) && count >= 0;
 			const ready = counts["hr-timesheets-ready"];
-			const description = key === "hr-timesheets" ? __("Submitted weeks") : __("Awaiting review");
-			badge.text(known ? (key === "hr-timesheets" && Number.isInteger(ready) ? __("{0} weeks · {1} ready", [count, ready]) : String(count)) : "-").toggleClass("is-empty", known && count === 0)
+			const capped = key === "hr-timesheets" && counts["hr-timesheets-capped"];
+			const description = capped ? __("At least 500 submitted weeks. Ready count covers the latest 500 loaded weeks only.") : key === "hr-timesheets" ? __("Submitted weeks") : __("Awaiting review");
+			badge.text(known ? (key === "hr-timesheets" && Number.isInteger(ready) ? __(capped ? "{0}+ weeks · {1} ready among loaded" : "{0} weeks · {1} ready", [count, ready]) : String(count)) : "-").toggleClass("is-empty", known && count === 0)
 				.attr({ title: known ? description : __("Review count unavailable"),
-					"aria-label": known ? __("{0}: {1} items awaiting review", [label, count]) : __("Review count unavailable") });
+					"aria-label": known ? (capped ? label + ": " + description : __("{0}: {1} items awaiting review", [label, count])) : __("Review count unavailable") });
 		}
 	}
 	table(parent, headings) {

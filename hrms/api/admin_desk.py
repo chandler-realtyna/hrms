@@ -129,6 +129,8 @@ def get_admin_desk_counts() -> dict:
 			if key == "hr-timesheets":
 				weeks = get_hr_weekly_timesheet_queue("current")
 				counts[key] = len(weeks)
+				if len(weeks) >= 500:
+					counts["hr-timesheets-capped"] = True
 				counts["hr-timesheets-ready"] = sum(int(row["ready_for_hr_close"]) for row in weeks)
 			else:
 				filters = dict(REVIEW_COUNTS[key])

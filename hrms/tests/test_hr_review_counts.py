@@ -14,4 +14,6 @@ class TestCounts(unittest.TestCase):
   exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),ns)
   self.assertEqual(ns['get_admin_desk_counts'](),{'hr-timesheets':15,'hr-timesheets-ready':3});self.assertEqual(views,['current'])
   allowed=False;views.clear();self.assertEqual(ns['get_admin_desk_counts'](),{'hr-timesheets':None});self.assertEqual(views,[])
+  allowed=True;ns['get_hr_weekly_timesheet_queue']=lambda view:[{'ready_for_hr_close':i<12} for i in range(500)]
+  self.assertEqual(ns['get_admin_desk_counts'](),{'hr-timesheets':500,'hr-timesheets-ready':12,'hr-timesheets-capped':True})
 if __name__=='__main__':unittest.main()

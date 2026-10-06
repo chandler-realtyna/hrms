@@ -1247,7 +1247,7 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 				"to_datetime": str(row.to_time) if row.to_time else "",
 				"project_label": _project_display_name(row.project),
 				"to_time": str(row.to_time)[11:16] if row.to_time else "",
-				"duration": round(flt(row.hours), 2),
+				"duration": flt(row.hours),
 				"project": row.project,
 				"activity_type": row.activity_type,
 				"description": row.description,

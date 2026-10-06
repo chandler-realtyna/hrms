@@ -73,13 +73,12 @@ def _aggregate(entries, group_by):
 		group["entries"] += 1
 		group["status_hours"][status] += hours
 	for group in groups.values():
-		group["hours"] = round(group["hours"], 2)
-		group["status_hours"] = {key: round(value, 2) for key, value in group["status_hours"].items()}
+		group["status_hours"] = dict(group["status_hours"])
 	return {
 		"rows": sorted(groups.values(), key=lambda row: (row.get("company") or "", row["key"] if group_by == "month" else (-row["hours"], row["label"]))),
-		"totals": {"hours": round(sum(statuses.values()), 2), "entries": len(entries),
+		"totals": {"hours": sum(statuses.values()), "entries": len(entries),
 			"projects": len(projects - {None, ""}), "employees": len(employees - {None, ""}),
-			"status_hours": {key: round(value, 2) for key, value in statuses.items()}},
+			"status_hours": dict(statuses)},
 	}
 
 
