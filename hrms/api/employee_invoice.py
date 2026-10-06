@@ -587,6 +587,16 @@ def get_employee_invoice(name):
 	return _serialize(_get_doc(name))
 
 
+@frappe.whitelist()
+def get_employee_invoice_review_readiness(name):
+	"""Read current time sources without changing the invoice snapshot."""
+	_require_hr()
+	doc = _get_doc(name)
+	rows, ready = _timesheet_rows(doc.employee, doc.period_start, doc.period_end)
+	unfinalized = {row["timesheet"] for row in rows if row["approval_status"] != "Finalized"}
+	return {"ready": bool(ready), "unfinalized_count": len(unfinalized)}
+
+
 @frappe.whitelist(methods=["POST"])
 def create_employee_invoice(due_date=None):
 	employee = _configured_employee(_current_employee())
