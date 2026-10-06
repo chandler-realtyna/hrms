@@ -505,7 +505,7 @@ class HRMSAdminReviews {
 		return __({ Draft: "Not submitted", "Pending Project Approval": "Submitted · awaiting project approvals", "Pending HR Review": "Submitted · ready for HR review", "Correction Required": "Needs employee correction", Closed: "Finalized and locked", Submitted: "Legacy submitted" }[status] || status || "");
 	}
 	statusCell(cell, status, reason, week = false) {
-		const color = ["Returned", "Correction Required"].includes(status) ? "orange" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";
+		const color = status === "Correction Required" || status === "Returned" ? "red" : week && status === "Pending Project Approval" ? "orange" : week && status === "Pending HR Review" ? "green" : ["Approved", "Closed"].includes(status) ? "green" : status === "Draft" ? "gray" : "blue";
 		$('<span class="indicator-pill"></span>').addClass(color).text(week ? this.weekStatusLabel(status) : this.statusLabel(status)).appendTo(cell);
 		if (reason) $('<div class="text-muted small"></div>').text(__(reason === "self" ? "Own entries: final review by HR" : "No project lead: final review by HR")).appendTo(cell);
 	}
