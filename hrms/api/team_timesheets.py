@@ -6,9 +6,11 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import getdate
+from frappe.utils import getdate, get_datetime, now_datetime
 
-from hrms.api.weekly_timesheet import _is_hr, _hr_employee_image
+from hrms.api.weekly_timesheet import _is_hr, _hr_employee_image, _week_bounds
+from hrms.api.project_review_followup import _reminder_recipient, _reminder_subject
+from hrms.utils.review_query_permissions import hr_read_condition
 
 
 class TeamCursorResetRequired(frappe.ValidationError):
@@ -16,7 +18,7 @@ class TeamCursorResetRequired(frappe.ValidationError):
 
 
 def _cursor_context(view, filters):
-	effective = {key: filters[key] for key in ("employee", "project", "company", "status", "search", "from_date", "to_date") if filters.get(key)}
+	effective = {key: filters[key] for key in ("employee", "project", "company", "status", "search", "from_date", "to_date", "review_scope", "week_start") if filters.get(key)}
 	return hashlib.sha256(json.dumps([frappe.session.user, view, effective], sort_keys=True).encode()).hexdigest()
 
 
@@ -50,6 +52,10 @@ def get_sections(view="current", cursor=None, filters=None):
 	filters = frappe.parse_json(filters) or {}
 	if not isinstance(filters, dict):
 		frappe.throw(_("Invalid timesheet filters."))
+	if filters.get("review_scope") not in {None, "", "all", "submitted", "draft"}:
+		frappe.throw(_("Unknown project follow-up scope."))
+	if filters.get("week_start"):
+		filters["week_start"] = str(_week_bounds(filters["week_start"])[0])
 	employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
 	hr = _is_hr()
 	if not hr and not employee:
@@ -60,10 +66,22 @@ def get_sections(view="current", cursor=None, filters=None):
 	where.append(f"(t.custom_weekly_status = %(final)s OR NOT COALESCE({active_employee}, 0) OR a.status IN ('Approved', 'HR Review'))" if view == "history" else f"COALESCE(t.custom_weekly_status, 'Draft') != %(final)s AND {active_employee} AND COALESCE(a.status, 'Draft') NOT IN ('Approved', 'HR Review')")
 	if not hr:
 		where.append("(p.custom_project_lead = %(employee)s OR p.custom_project_manager = %(employee)s)")
+	if hr:
+		for doctype, alias in (("Timesheet", "t"), ("Project", "p")):
+			condition = hr_read_condition(doctype, alias)
+			if condition:
+				where.append(condition)
 	for field in ("employee", "project"):
 		if filters.get(field):
 			args["filter_"+field] = filters[field]
 			where.append(f"{'t' if field == 'employee' else 'd'}.{field} = %(filter_{field})s")
+	if filters.get("review_scope") == "submitted":
+		where.append("t.custom_weekly_submitted_at IS NOT NULL")
+	elif filters.get("review_scope") == "draft":
+		where.append("t.custom_weekly_submitted_at IS NULL")
+	if filters.get("week_start"):
+		args["week_start"] = filters["week_start"]
+		where.append("t.custom_week_start = %(week_start)s")
 	if filters.get("company"):
 		args["company"] = filters["company"]
 		where.append("t.company = %(company)s")
@@ -90,7 +108,7 @@ def get_sections(view="current", cursor=None, filters=None):
 	total = frappe.db.sql("SELECT COUNT(*) FROM (SELECT t.name " + base + group + ") scoped", args)[0][0]
 	section_query = """SELECT t.name AS timesheet, t.employee, t.employee_name,
 		t.custom_week_start AS week_start, t.custom_week_end AS week_end,
-		t.custom_weekly_status AS hr_status, t.company, t.modified, t.docstatus,
+		t.custom_weekly_status AS hr_status, t.company, t.modified, t.docstatus, e.user_id AS owner_user,
 		NOT COALESCE((e.status = 'Active' AND e.docstatus < 2 AND COALESCE(u.enabled, 0) = 1), 0) AS inactive_employee,
 		t.custom_weekly_submitted_at AS submitted_at, d.project,
 		p.project_name AS project_label, p.custom_project_lead AS project_lead, p.custom_project_manager AS project_manager,
@@ -134,6 +152,15 @@ def get_sections(view="current", cursor=None, filters=None):
 		row.reviewer_name = reviewers.get(lead)
 		row.activity_types = sorted(set(frappe.db.get_all("Timesheet Detail", filters={"parent": row.timesheet, "project": row.project}, pluck="activity_type")) - {None, ""})
 		row.is_own_section = False
+		row.waiting_since = str(row.reviewed_at or row.modified) if row.project_status == "Returned" else str(row.submitted_at or row.modified) if row.project_status in {"Draft", "Pending"} else None
+		row.waiting_days = max(0, (now_datetime() - get_datetime(row.waiting_since)).days) if row.waiting_since else None
+		row.can_ping = bool(hr and row.owner_user != frappe.session.user and not row.inactive_employee and row.docstatus == 0 and row.hr_status == "Pending Project Approval" and row.submitted_at and row.project_status == "Pending" and row.project_lead != row.employee)
+		if row.can_ping:
+			recipient = _reminder_recipient(row.project, row.owner_user)
+			row.can_ping = bool(recipient and recipient != frappe.session.user and frappe.has_permission("Timesheet", "read", doc=row.timesheet))
+			row.ping_reviewer = recipient if row.can_ping else None
+			row.ping_reviewer_name = frappe.db.get_value("User", recipient, "full_name") if recipient else None
+			row.last_ping_at = str(frappe.db.get_value("Notification Log", {"document_type": "Timesheet", "document_name": row.timesheet, "for_user": recipient, "subject": _reminder_subject(row.project)}, "creation", order_by="creation desc") or "") if recipient else ""
 		row.regular_reviewer = bool(employee and employee in {row.project_lead, row.project_manager})
 		row.actionable = view == "current" and row.docstatus == 0 and row.hr_status in {"Draft", "Pending Project Approval", "Correction Required"} and row.project_status in {"Draft", "Pending"}
 		row.selection_reason = "Approve saved entries now; changes will require another review." if row.actionable else {
@@ -153,4 +180,4 @@ def get_sections(view="current", cursor=None, filters=None):
 		for field, _direction in ordering:
 			if field.startswith("_"):
 				row.pop(field, None)
-	return dict(rows=rows, total=total, next_cursor=next_cursor)
+	return dict(rows=rows, total=total, next_cursor=next_cursor, can_hr_followup=hr)
