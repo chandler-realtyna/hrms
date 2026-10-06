@@ -6,7 +6,7 @@ HR_ROLES = {"HR Manager", "HR User", "System Manager", "Administrator"}
 COMPANY_DIRECTOR_ROLE = "Company Desk Administrator"
 REVIEW_COUNTS = {
 	"hr-timesheets": None,
-	"Leave Application": {"status": "Open", "docstatus": 0},
+	"Leave Application": {"status": ["in", ["Open", "Approved", "Rejected"]], "docstatus": 0},
 	"Expense Claim": {"approval_status": "Draft", "docstatus": 0},
 	"Employee Holiday": {"status": "Submitted"},
 	"Employee Schedule": {"status": "Submitted"},
@@ -65,7 +65,7 @@ def _admin_desk_sections() -> list[dict]:
 		and frappe.has_permission("Leave Application", "write")
 	):
 		sections[1]["items"].append(
-			{"label": _("Leave Requests"), "route": "/desk/leave-application", "doctype": "Leave Application", "filters": {"status": "Open", "docstatus": 0}}
+			{"label": _("Leave Requests"), "route": "/desk/leave-application", "doctype": "Leave Application", "filters": {"status": ["in", ["Open", "Approved", "Rejected"]], "docstatus": 0}}
 		)
 	if is_hr or is_company_director or (
 		_is_approver("expense_approvers", "expense_approver")

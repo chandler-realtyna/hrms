@@ -115,9 +115,12 @@ class EmployeeHoliday(Document):
 		"""Create (or rebuild) a per-employee Holiday List and link it here."""
 		from hrms.hr.leave_policy_setup import _weekend_dates
 
-		hl_name = f"{self.employee_name} - {self.year}"
+		from hrms.utils.employee_holiday_calendar import personal_calendar_name, ensure_calendar_not_shared
+
+		hl_name = personal_calendar_name(self.employee, self.year)
 
 		if frappe.db.exists("Holiday List", hl_name):
+			ensure_calendar_not_shared(hl_name, self.employee)
 			hl = frappe.get_doc("Holiday List", hl_name)
 			hl.set("holidays", [])
 		else:

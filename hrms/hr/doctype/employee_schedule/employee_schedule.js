@@ -9,46 +9,32 @@ frappe.ui.form.on("Employee Schedule", {
 	set_action_buttons(frm) {
 		frm.clear_custom_buttons()
 		const isHR = frappe.user.has_role(["HR Manager", "HR User", "System Manager"])
-
-		if (frm.doc.status === "Draft" && !frm.is_new()) {
-			frm.add_custom_button(__("Submit for Approval"), () => {
-				frappe.confirm(__("Submit this schedule for HR approval?"), () => {
-					frappe.call({
-						method: "hrms.api.submit_employee_schedule",
-						args: { name: frm.doc.name },
-						callback(r) {
-							if (!r.exc) {
-								frm.reload_doc()
-								frappe.show_alert({ message: __("Schedule submitted"), indicator: "green" })
-							}
-						},
-					})
-				})
-			}).addClass("btn-primary")
+		const submitForApproval = async () => {
+			if (frm.is_dirty()) {
+				const previousStatus = frm.doc.status
+				if (previousStatus === "Approved") await frm.set_value("status", "Submitted")
+				if (previousStatus === "Rejected") await frm.set_value("status", "Draft")
+				try {
+					await frm.save()
+				} catch (error) {
+					await frm.set_value("status", previousStatus)
+					throw error
+				}
+			}
+			if (frm.doc.status !== "Submitted") {
+				await frappe.call({method: "hrms.api.submit_employee_schedule", args: {name: frm.doc.name}})
+			}
+			await frm.reload_doc()
+			frappe.show_alert({message: __("Schedule submitted"), indicator: "green"})
 		}
 
-		// Employees can edit after first submit: a Rejected schedule can be
-		// resubmitted, and an Approved one resubmitted as a change request.
-		if ((frm.doc.status === "Rejected" || frm.doc.status === "Approved") && !frm.is_new()) {
-			frm.add_custom_button(
-				frm.doc.status === "Approved"
-					? __("Request Change Approval")
-					: __("Resubmit for Approval"),
-				() => {
-					frappe.confirm(__("Submit this schedule for HR approval?"), () => {
-						frappe.call({
-							method: "hrms.api.submit_employee_schedule",
-							args: { name: frm.doc.name },
-							callback(r) {
-								if (!r.exc) {
-									frm.reload_doc()
-									frappe.show_alert({ message: __("Schedule submitted"), indicator: "green" })
-								}
-							},
-						})
-					})
-				}
-			).addClass("btn-primary")
+		if (["Draft", "Rejected", "Approved"].includes(frm.doc.status) && !frm.is_new()) {
+			const label = frm.doc.status === "Approved"
+				? __("Request Change Approval")
+				: frm.doc.status === "Rejected" ? __("Resubmit for Approval") : __("Submit for Approval")
+			frm.add_custom_button(label, () => {
+				frappe.confirm(__("Submit this schedule for HR approval?"), submitForApproval)
+			}).addClass("btn-primary")
 		}
 
 		if (frm.doc.status === "Submitted" && isHR) {
