@@ -1276,17 +1276,17 @@ def _hr_review_blockers(doc):
 
 
 @frappe.whitelist()
-def get_hr_weekly_timesheet_queue(view: str = "current") -> list[dict]:
+def get_hr_weekly_timesheet_queue(view: str = "ready") -> list[dict]:
 	"""HR oversight of submitted weeks; finalization remains independently guarded."""
 	_require_hr()
-	if view not in {"current", "history"}:
+	if view not in {"current", "history", "ready"}:
 		frappe.throw(_("Unknown timesheet view."))
 
 	weeks = frappe.get_list(
 		"Timesheet",
 		filters={
 			"custom_is_weekly": 1,
-			"custom_weekly_status": CLOSED if view == "history" else ("in", [PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR]),
+			"custom_weekly_status": CLOSED if view == "history" else PENDING_HR if view == "ready" else ("in", [PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR]),
 			"custom_weekly_submitted_at": ("is", "set"),
 			"docstatus": 1 if view == "history" else 0,
 		},

@@ -20,24 +20,26 @@ class TestOversight(unittest.TestCase):
   self.ns={'frappe':NS(get_list=listing,get_doc=lambda dt,name:next(d for d in self.docs if d.name==name),throw=throw,db=NS(get_value=lambda *a:'QA Lead')), '_':lambda s:s,'_require_hr':lambda:None,'_project_reviews_ready':lambda d:d.custom_weekly_status!='Pending Project Approval','_team_review_blockers':lambda d:[], '_serialize_row':lambda r:{'project':r.project},'get_datetime':__import__('datetime').datetime.fromisoformat,'flt':lambda n:float(n or 0),'_project_display_name':lambda p:'Project '+p,'_hr_employee_image':lambda e:'', 'cint':int, 'PENDING_PROJECT':'Pending Project Approval','CORRECTION_REQUIRED':'Correction Required','PENDING_HR':'Pending HR Review','CLOSED':'Closed','APPROVAL_PENDING':'Pending','APPROVAL_RETURNED':'Returned','APPROVAL_HR':'HR Review','APPROVAL_APPROVED':'Approved'}
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(path),'exec'),self.ns)
  def test_project_waiting_week_visible_but_not_finalizable(self):
-  rows=self.ns['get_hr_weekly_timesheet_queue']()
+  rows=self.ns['get_hr_weekly_timesheet_queue']('current')
   self.assertEqual([r['name'] for r in rows],['WAIT'])
   self.assertFalse(rows[0]['ready_for_hr_close'])
   self.assertIn('QA Lead',rows[0]['review_blockers'][0])
   self.assertEqual(rows[0]['activity_types'],['Support'])
   with self.assertRaises(ValueError):self.ns['hr_close_weekly_timesheet']('WAIT')
+ def test_legacy_call_keeps_hr_stage_only(self):
+  self.assertEqual(self.ns['get_hr_weekly_timesheet_queue'](),[])
  def test_history_is_separate_and_locked(self):
   rows=self.ns['get_hr_weekly_timesheet_queue']('history')
   self.assertEqual([r['name'] for r in rows],['FINAL'])
   self.assertFalse(rows[0]['ready_for_hr_close']);self.assertEqual(rows[0]['review_blockers'],[])
  def test_ready_requires_both_stage_and_completed_reviews(self):
   self.docs[0].custom_weekly_status='Pending HR Review';self.docs[0].custom_project_approvals=[]
-  self.assertTrue(self.ns['get_hr_weekly_timesheet_queue']()[0]['ready_for_hr_close'])
+  self.assertTrue(self.ns['get_hr_weekly_timesheet_queue']('current')[0]['ready_for_hr_close'])
   self.ns['_team_review_blockers']=lambda d:[{'employee_name':'Member','project':'P','status':'Draft'}]
-  self.assertFalse(self.ns['get_hr_weekly_timesheet_queue']()[0]['ready_for_hr_close'])
+  self.assertFalse(self.ns['get_hr_weekly_timesheet_queue']('current')[0]['ready_for_hr_close'])
   with self.assertRaises(ValueError):self.ns['hr_close_weekly_timesheet']('WAIT')
  def test_permissions_and_invalid_views_are_enforced(self):
   with self.assertRaises(ValueError):self.ns['get_hr_weekly_timesheet_queue']('invalid')
   self.ns['_require_hr']=lambda:(_ for _ in ()).throw(PermissionError())
-  with self.assertRaises(PermissionError):self.ns['get_hr_weekly_timesheet_queue']()
+  with self.assertRaises(PermissionError):self.ns['get_hr_weekly_timesheet_queue']('current')
 if __name__=='__main__': unittest.main()
