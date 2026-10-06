@@ -829,6 +829,8 @@ def review_saved_project_entries(name: str, project: str, expected_modified: str
 		frappe.throw(_("Invalid review action."))
 	if not _is_hr() and frappe.session.user not in {_project_lead_user(project), _project_manager_user(project)}:
 		frappe.throw(_("You cannot review entries for this project."), frappe.PermissionError)
+	if _is_hr() and frappe.session.user not in {_project_lead_user(project), _project_manager_user(project)} and not (reason or "").strip():
+		frappe.throw(_("HR intervention requires a reason. Use the exceptional review action."))
 	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
 	if _employee_user(doc.employee) == frappe.session.user:
@@ -870,13 +872,47 @@ def review_saved_project_entries(name: str, project: str, expected_modified: str
 		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) else PENDING_PROJECT
 	doc.flags.weekly_action = "project_lead_review"
 	doc.save(ignore_permissions=True)
-	doc.add_comment("Comment", _("Project {0}: {1} saved entries {2} by {3}.").format(project, len(logs), action, frappe.session.user))
+	doc.add_comment("Comment", _("Project {0}: {1} saved entries {2} by {3}.").format(project, len(logs), action, frappe.session.user) + (" " + reason.strip() if reason else ""))
 	_refresh_ready_lead_weeks(doc.custom_week_start, doc.name, _project_lead_employee(project))
 	if action == "return":
 		_notify([_employee_user(doc.employee)], _("Time entries need correction"), reason.strip(), doc.name)
 	elif doc.custom_weekly_status == PENDING_HR:
 		_notify(_hr_users(), _("Weekly timesheet is ready for HR review"), doc.employee_name, doc.name)
 	return {"status": doc.custom_weekly_status, "reviewed": len(logs), "modified": str(doc.modified)}
+
+
+@frappe.whitelist(methods=["POST"])
+def reset_project_review(name: str, project: str, expected_modified: str, reason: str):
+	"""HR revokes this section's approval without requesting employee edits."""
+	_require_hr()
+	if not (reason or "").strip():
+		frappe.throw(_("A reason for requesting another project review is required."))
+	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
+	doc = frappe.get_doc("Timesheet", name)
+	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or doc.custom_weekly_status == CLOSED:
+		frappe.throw(_("Finalized weeks cannot be changed through project review."))
+	if _employee_user(doc.employee) == frappe.session.user:
+		frappe.throw(_("Your own entries require another reviewer."), frappe.PermissionError)
+	if not expected_modified or str(doc.modified) != str(expected_modified):
+		frappe.throw(_("This week changed. Refresh before requesting another review."))
+	if not _project_lead_user(project) or _project_lead_employee(project) == doc.employee:
+		frappe.throw(_("This section requires HR review rather than Project Lead review."))
+	_set_project_approvals(doc)
+	approval = next((row for row in doc.custom_project_approvals if row.project == project), None)
+	if not approval or not _entry_reviews(doc, approval):
+		frappe.throw(_("This project section has no approval to revoke."))
+	approval.entry_reviews = "{}"
+	approval.status = APPROVAL_PENDING
+	approval.reviewed_by = None
+	approval.reviewed_at = None
+	_set_project_approvals(doc)
+	if doc.custom_weekly_submitted_at and doc.custom_weekly_status != CORRECTION_REQUIRED:
+		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) else PENDING_PROJECT
+	doc.flags.weekly_action = "project_lead_review"
+	doc.save(ignore_permissions=True)
+	doc.add_comment("Comment", _("HR revoked project approval for {0} and requested Project Lead review. Reason: {1}").format(project, reason.strip()))
+	_notify_project_report(_project_lead_user(project), project, doc.custom_week_start)
+	return {"status": doc.custom_weekly_status, "modified": str(doc.modified)}
 
 
 def _review_project_approval_row(approval, action: str, reason: str | None = None):
@@ -1202,6 +1238,9 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		)
 	active_employee = _employee_has_active_account(doc.employee)
 	open_project_review = not approval or approval.status not in {APPROVAL_APPROVED, APPROVAL_HR}
+	regular_reviewer = frappe.session.user in {_project_lead_user(project), _project_manager_user(project)}
+	hr_exception = _is_hr() and not regular_reviewer and _employee_user(doc.employee) != frappe.session.user and doc.docstatus == 0 and doc.custom_weekly_status != CLOSED
+
 	return {
 		"timesheet": doc.name,
 		"source_timezone": get_system_timezone(),
@@ -1216,6 +1255,9 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 		"approval_name": approval.name if approval else None,
 		"return_reason": approval.return_reason if approval else None,
 		"actionable": active_employee and _project_section_actionable(doc, approval),
+		"regular_reviewer": regular_reviewer,
+		"hr_exception": hr_exception,
+		"can_reset_review": hr_exception and bool(_entry_reviews(doc, approval)) and bool(_project_lead_user(project)) and _project_lead_employee(project) != doc.employee,
 		"selection_reason": _project_section_review_hint(doc, approval) if active_employee else _("Employee account is inactive. This record is archived for HR follow-up."),
 		"can_review_entries": active_employee and open_project_review and doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED} and _employee_user(doc.employee) != frappe.session.user,
 		"can_return_entries": active_employee and open_project_review and doc.docstatus == 0 and doc.custom_weekly_status in {WEEKLY_DRAFT, PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR} and _employee_user(doc.employee) != frappe.session.user,
@@ -1408,7 +1450,7 @@ def _hr_review_blockers(doc):
 
 
 @frappe.whitelist()
-def get_hr_weekly_timesheet_queue(view: str = "ready") -> list[dict]:
+def get_hr_weekly_timesheet_queue(view: str = "ready", company: str | None = None) -> list[dict]:
 	"""HR oversight of submitted weeks; finalization remains independently guarded."""
 	_require_hr()
 	if view not in {"current", "history", "ready"}:
@@ -1421,6 +1463,7 @@ def get_hr_weekly_timesheet_queue(view: str = "ready") -> list[dict]:
 			"custom_weekly_status": CLOSED if view == "history" else ("in", [PENDING_PROJECT, CORRECTION_REQUIRED, PENDING_HR]),
 			"custom_weekly_submitted_at": ("is", "set"),
 			"docstatus": 1 if view == "history" else 0,
+			**({"company": company} if company else {}),
 		},
 		fields=[
 			"name",
@@ -1456,6 +1499,7 @@ def get_hr_weekly_timesheet_queue(view: str = "ready") -> list[dict]:
 		result.append(
 			{
 				"name": week.name,
+				"company": doc.company,
 				"employee": week.employee,
 				"employee_name": week.employee_name,
 				"week_start": str(week.custom_week_start),

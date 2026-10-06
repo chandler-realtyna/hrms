@@ -12,7 +12,7 @@ for n in nodes: n.decorator_list = []
 class TestOversight(unittest.TestCase):
  def setUp(self):
   self.filters = None
-  self.docs = [NS(name='WAIT',custom_is_weekly=1,employee='E',employee_name='QA',custom_week_start='2026-09-27',custom_week_end='2026-10-03',total_hours=1,modified='2026-10-01',docstatus=0,custom_weekly_status='Pending Project Approval',custom_weekly_submitted_at='2026-10-01',time_logs=[NS(project='P',from_time='2026-09-28 09:00:00',hours=1,activity_type='Support')],custom_project_approvals=[NS(project='P',status='Pending',controller='lead')]), NS(name='FINAL',custom_is_weekly=1,employee='E',employee_name='QA',custom_week_start='2026-09-20',custom_week_end='2026-09-26',total_hours=1,modified='2026-10-02',docstatus=1,custom_weekly_status='Closed',custom_weekly_submitted_at='2026-09-27',time_logs=[],custom_project_approvals=[])]
+  self.docs = [NS(name='WAIT',company='Company A',custom_is_weekly=1,employee='E',employee_name='QA',custom_week_start='2026-09-27',custom_week_end='2026-10-03',total_hours=1,modified='2026-10-01',docstatus=0,custom_weekly_status='Pending Project Approval',custom_weekly_submitted_at='2026-10-01',time_logs=[NS(project='P',from_time='2026-09-28 09:00:00',hours=1,activity_type='Support')],custom_project_approvals=[NS(project='P',status='Pending',controller='lead')]), NS(name='FINAL',company='Company A',custom_is_weekly=1,employee='E',employee_name='QA',custom_week_start='2026-09-20',custom_week_end='2026-09-26',total_hours=1,modified='2026-10-02',docstatus=1,custom_weekly_status='Closed',custom_weekly_submitted_at='2026-09-27',time_logs=[],custom_project_approvals=[])]
   def listing(doctype,filters,**kwargs):
    self.filters=filters
    status=filters['custom_weekly_status']

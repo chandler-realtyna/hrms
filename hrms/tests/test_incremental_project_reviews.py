@@ -19,10 +19,30 @@ class TestIncrementalReviews(unittest.TestCase):
   def throw(message,*args): raise ValueError(message)
   self.doc=Record(name='week',employee='worker',employee_name='Worker',docstatus=0,custom_is_weekly=1,custom_weekly_status='Draft',custom_weekly_submitted_at=None,custom_week_start='2026-10-04',modified='v1',time_logs=[self.log('one'),self.log('two')],custom_project_approvals=[],flags=Record())
   self.env=dict(hashlib=hashlib,json=json,frappe=NS(parse_json=json.loads,session=NS(user='lead'),db=NS(sql=lambda *a:None),get_doc=lambda *a:self.doc,throw=throw,PermissionError=ValueError), _=lambda s:s,flt=lambda x:float(x or 0),cint=lambda x:int(x or 0),get_datetime=datetime.fromisoformat,now_datetime=lambda:datetime(2026,10,6),_project_lead_user=lambda p:'lead',_project_lead_employee=lambda p:'lead-employee',_project_manager_user=lambda p:'manager',_employee_user=lambda e:'worker',_is_hr=lambda:False,_employee_has_active_account=lambda e:True,_team_review_blockers=lambda d:[],_refresh_ready_lead_weeks=lambda *a:None,_notify=lambda *a:None,_hr_users=lambda:[],_serialize_weekly=lambda d:d,_mark_correction=lambda d,*a:setattr(d,'custom_weekly_status','Correction Required'),WEEKLY_DRAFT='Draft',PENDING_PROJECT='Pending Project Approval',CORRECTION_REQUIRED='Correction Required',PENDING_HR='Pending HR Review',CLOSED='Closed',APPROVAL_PENDING='Pending',APPROVAL_APPROVED='Approved',APPROVAL_RETURNED='Returned',APPROVAL_HR='HR Review')
-  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns','submit_weekly_timesheet'}
+  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns','submit_weekly_timesheet','reset_project_review'}
   nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in names]
   for n in nodes:n.decorator_list=[]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
+ def test_hr_exception_requires_reason(self):
+  self.env['_is_hr']=lambda:True
+  self.env['frappe'].session.user='hr'
+  with self.assertRaisesRegex(ValueError,'requires a reason'): self.approve()
+  self.env['review_saved_project_entries']('week','P','v1',reason='Lead unavailable')
+  self.assertTrue(self.doc.saved)
+ def test_hr_reset_preserves_other_sections_and_entries(self):
+  self.doc.time_logs.append(self.log('other','Q'))
+  self.approve();self.env['review_saved_project_entries']('week','Q','v1')
+  self.doc.custom_weekly_submitted_at='submitted';self.doc.custom_weekly_status='Pending HR Review'
+  self.env['_require_hr']=lambda:None
+  self.env['_notify_project_report']=lambda *a:None
+  self.env['frappe'].session.user='hr'
+  self.env['reset_project_review']('week','P','v1','Lead must recheck')
+  states={a.project:a.status for a in self.doc.custom_project_approvals}
+  self.assertEqual(states,{'P':'Pending','Q':'Approved'})
+  self.assertEqual(len(self.doc.time_logs),3)
+  self.assertEqual(self.doc.custom_weekly_status,'Pending Project Approval')
+  self.doc.docstatus=1
+  with self.assertRaisesRegex(ValueError,'Finalized'):self.env['reset_project_review']('week','Q','v1','Recheck')
  def log(self,name,project='P'):
   return Record(name=name,project=project,activity_type='Support',description='work',from_time='2026-10-05 09:00:00',to_time='2026-10-05 10:00:00',hours=1,is_billable=1)
  def approve(self,entries=None):return self.env['review_saved_project_entries']('week','P','v1',entries=entries)

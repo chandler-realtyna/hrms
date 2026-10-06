@@ -15,7 +15,7 @@ class TestTeamLifecycle(unittest.TestCase):
    CREATE TABLE tabEmployee(name TEXT,status TEXT,user_id TEXT,docstatus INT);
    CREATE TABLE tabUser(name TEXT,enabled INT);
    CREATE TABLE tabProject(name TEXT,project_name TEXT,custom_project_lead TEXT,custom_project_manager TEXT);
-   CREATE TABLE tabTimesheet(name TEXT,employee TEXT,employee_name TEXT,custom_is_weekly INT,docstatus INT,custom_weekly_status TEXT,custom_week_start TEXT,custom_week_end TEXT,modified TEXT,custom_weekly_submitted_at TEXT);
+   CREATE TABLE tabTimesheet(name TEXT,employee TEXT,employee_name TEXT,custom_is_weekly INT,docstatus INT,custom_weekly_status TEXT,custom_week_start TEXT,custom_week_end TEXT,modified TEXT,custom_weekly_submitted_at TEXT,company TEXT);
    CREATE TABLE "tabTimesheet Detail"(name TEXT,parent TEXT,parenttype TEXT,project TEXT,from_time TEXT,hours REAL,activity_type TEXT);
    CREATE TABLE "tabTimesheet Project Approval"(name TEXT,parent TEXT,project TEXT,status TEXT,return_reason TEXT,reviewed_by TEXT,reviewed_at TEXT);
    INSERT INTO tabEmployee VALUES('worker','Active','worker-user',0);
@@ -23,7 +23,7 @@ class TestTeamLifecycle(unittest.TestCase):
    INSERT INTO tabProject VALUES('P','Project','lead',NULL);
   ''')
   for name,status in [('pending','Pending'),('approved','Approved'),('returned','Returned')]:
-   self.db.execute('INSERT INTO tabTimesheet VALUES(?,?,?,?,?,?,?,?,?,?)',(name,'worker','Worker',1,0,'Pending Project Approval','2026-09-27','2026-10-03','2026-10-01 10:00:00','2026-10-01 09:00:00'))
+   self.db.execute('INSERT INTO tabTimesheet VALUES(?,?,?,?,?,?,?,?,?,?,?)',(name,'worker','Worker',1,0,'Pending Project Approval','2026-09-27','2026-10-03','2026-10-01 10:00:00','2026-10-01 09:00:00','Company A'))
    self.db.execute('INSERT INTO "tabTimesheet Detail" VALUES(?,?,?,?,?,?,?)',(name+'-log',name,'Timesheet','P','2026-09-28 09:00:00',1,'Support'))
    self.db.execute('INSERT INTO "tabTimesheet Project Approval" VALUES(?,?,?,?,?,?,?)',(name+'-approval',name,'P',status,None,None,None))
   def sql(query,args,as_dict=False):

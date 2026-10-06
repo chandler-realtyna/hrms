@@ -16,7 +16,7 @@ class TeamCursorResetRequired(frappe.ValidationError):
 
 
 def _cursor_context(view, filters):
-	effective = {key: filters[key] for key in ("employee", "project", "status", "search", "from_date", "to_date") if filters.get(key)}
+	effective = {key: filters[key] for key in ("employee", "project", "company", "status", "search", "from_date", "to_date") if filters.get(key)}
 	return hashlib.sha256(json.dumps([frappe.session.user, view, effective], sort_keys=True).encode()).hexdigest()
 
 
@@ -64,6 +64,9 @@ def get_sections(view="current", cursor=None, filters=None):
 		if filters.get(field):
 			args["filter_"+field] = filters[field]
 			where.append(f"{'t' if field == 'employee' else 'd'}.{field} = %(filter_{field})s")
+	if filters.get("company"):
+		args["company"] = filters["company"]
+		where.append("t.company = %(company)s")
 	if filters.get("status"):
 		args["status"] = filters["status"]
 		where.append("COALESCE(a.status, 'Draft') = %(status)s")
@@ -87,10 +90,10 @@ def get_sections(view="current", cursor=None, filters=None):
 	total = frappe.db.sql("SELECT COUNT(*) FROM (SELECT t.name " + base + group + ") scoped", args)[0][0]
 	section_query = """SELECT t.name AS timesheet, t.employee, t.employee_name,
 		t.custom_week_start AS week_start, t.custom_week_end AS week_end,
-		t.custom_weekly_status AS hr_status, t.modified, t.docstatus,
+		t.custom_weekly_status AS hr_status, t.company, t.modified, t.docstatus,
 		NOT COALESCE((e.status = 'Active' AND e.docstatus < 2 AND COALESCE(u.enabled, 0) = 1), 0) AS inactive_employee,
 		t.custom_weekly_submitted_at AS submitted_at, d.project,
-		p.project_name AS project_label, p.custom_project_lead AS project_lead,
+		p.project_name AS project_label, p.custom_project_lead AS project_lead, p.custom_project_manager AS project_manager,
 		a.name AS approval_name, COALESCE(a.status, 'Draft') AS project_status,
 		a.return_reason, a.reviewed_by, a.reviewed_at,
 		SUM(d.hours) AS hours, COUNT(d.name) AS log_count
@@ -131,6 +134,7 @@ def get_sections(view="current", cursor=None, filters=None):
 		row.reviewer_name = reviewers.get(lead)
 		row.activity_types = sorted(set(frappe.db.get_all("Timesheet Detail", filters={"parent": row.timesheet, "project": row.project}, pluck="activity_type")) - {None, ""})
 		row.is_own_section = False
+		row.regular_reviewer = bool(employee and employee in {row.project_lead, row.project_manager})
 		row.actionable = view == "current" and row.docstatus == 0 and row.hr_status in {"Draft", "Pending Project Approval", "Correction Required"} and row.project_status in {"Draft", "Pending"}
 		row.selection_reason = "Approve saved entries now; changes will require another review." if row.actionable else {
 			"Draft": "Employee must submit the week first.",
