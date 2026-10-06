@@ -23,6 +23,9 @@ function server() {
         if (t.startTime) t.segments.push({ project: t.form.project, from: t.startTime, to: state.server_now, seconds: 60 })
         t.form = { project: payload.project, activity_type: "", description: "" }
         t.startTime = state.server_now; t.isPaused = false
+      } else if (action === "metadata") {
+        t.form.activity_type = payload.activity_type || ""
+        t.form.description = payload.description || ""
       } else if (action === "pause") {
         t.segments.push({ project: t.form.project, from: t.startTime, to: state.server_now, seconds: 60 })
         t.startTime = null; t.isPaused = true
@@ -57,7 +60,7 @@ function client(backend, offset = 0) {
     STORAGE_KEY: "legacy", toast(message) { toasts.push(message) }, call: backend.call,
   }
   vm.createContext(context)
-  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,error,actionError,saveConflicts,activate:()=>{active=true},pending:()=>pending};", context)
+  vm.runInContext(script + "\nthis.api={form,segments,startTime,isRunning,isPaused,connected,revision,pickedProject,command,hydrate,saveProject,toggleProjectTimer,toggleFavorite,projectSeconds,refresh,retry,migrateLegacy,legacyConflict,metadataConflict,persistState,setTimerMetadata,error,actionError,saveConflicts,activate:()=>{active=true},pending:()=>pending};", context)
   context.api.hydrate(JSON.parse(JSON.stringify(backend.state))); context.api.connected.value = true
   context.api.activate()
   return { ...context.api, storage, navigator, toasts }
@@ -185,4 +188,19 @@ test("save validation survives refresh and metadata; Retry really attempts the s
   deny = false; await c.retry(); assert.equal(attempts, 3)
   assert.equal(c.actionError.value, null); assert.equal(c.saveConflicts.value, null)
   assert.equal(c.error.value, '')
+})
+
+
+test("activity and description survive polling and persist without a change event", async () => {
+  const backend = server(), c = client(backend)
+  await c.toggleProjectTimer("Alpha")
+  c.setTimerMetadata("activity_type", "Support")
+  c.setTimerMetadata("description", "Still typing")
+  await c.refresh()
+  assert.equal(c.form.value.activity_type, "Support")
+  assert.equal(c.form.value.description, "Still typing")
+  await c.command("metadata", {project:"Alpha", activity_type:c.form.value.activity_type, description:c.form.value.description})
+  await c.refresh()
+  assert.equal(c.form.value.activity_type, "Support")
+  assert.equal(c.form.value.description, "Still typing")
 })

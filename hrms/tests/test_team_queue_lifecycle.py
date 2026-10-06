@@ -31,7 +31,7 @@ class TestTeamLifecycle(unittest.TestCase):
    return [Row(zip([c[0] for c in rows.description],values)) if as_dict else values for values in rows.fetchall()]
   def throw(message,*args): raise ValueError(message)
   frappe=NS(ValidationError=ValueError,session=NS(user='Admin'),parse_json=lambda v:json.loads(v) if isinstance(v,str) else v,throw=throw,db=NS(sql=sql,get_value=lambda *a:None,get_all=lambda *a,**k:['Support']))
-  self.env=dict(frappe=frappe,_=lambda s:s,_is_hr=lambda:True,getdate=lambda v:date.fromisoformat(v),base64=base64,hashlib=hashlib,json=json)
+  self.env=dict(frappe=frappe,_=lambda s:s,_is_hr=lambda:True,_hr_employee_image=lambda employee:None,getdate=lambda v:date.fromisoformat(v),base64=base64,hashlib=hashlib,json=json)
   path=Path(__file__).parents[1]/'api'/'team_timesheets.py'
   nodes=[n for n in ast.parse(path.read_text()).body if not isinstance(n,(ast.Import,ast.ImportFrom))]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(path),'exec'),self.env)

@@ -167,11 +167,34 @@
 							<button class="rounded border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40" :disabled="controlsDisabled || projectSeconds(project.name) <= 0" @click="saveProject(project.name)">
 								<FeatherIcon name="save" class="h-3 w-3 inline mr-1" />{{ __("Save") }}
 							</button>
-							<details v-if="projectSeconds(project.name) > 0" class="relative">
+							<details v-if="projectSeconds(project.name) > 0 && form.project !== project.name" class="relative">
 								<summary class="list-none cursor-pointer p-2" :aria-label="__('More actions')" :title="__('More actions')"><FeatherIcon name="more-vertical" class="h-4 w-4 text-gray-500" /></summary>
 								<button class="absolute right-0 top-full z-20 border rounded bg-white px-3 py-2 text-xs text-red-600 whitespace-nowrap" :disabled="controlsDisabled" @click="discardProject(project.name)">{{ __("Discard unsaved time") }}</button>
 							</details>
 							</div>
+							<details v-if="form.project === project.name" class="basis-full w-full border-t pt-2">
+								<summary class="cursor-pointer list-none flex items-center gap-2 py-2 text-xs text-gray-600" :aria-label="__('Timer details and actions')"><FeatherIcon name="more-horizontal" class="h-4 w-4" />{{ __("Details and actions") }}</summary>
+								<div class="flex flex-col gap-3 pt-2">
+									<FormField
+										fieldtype="Link"
+										fieldname="activity_type"
+										:label="__('Activity Type')"
+										options="Activity Type"
+										:model-value="form.activity_type"
+										@update:modelValue="setTimerMetadata('activity_type', $event)"
+										:read-only="controlsDisabled"
+									/>
+									<FormField
+										fieldtype="Small Text"
+										fieldname="description"
+										:label="__('Description')"
+										:model-value="form.description"
+										@update:modelValue="setTimerMetadata('description', $event)"
+										:read-only="controlsDisabled"
+									/>
+								<button v-if="projectSeconds(project.name) > 0" class="self-start rounded border border-red-200 px-3 py-2 text-xs text-red-600" :disabled="controlsDisabled" @click="discardProject(project.name)">{{ __("Discard unsaved time") }}</button>
+								</div>
+							</details>
 						</div>
 					</div>
 				</div>
@@ -186,26 +209,7 @@
 						linkQuery="hrms.api.search_employee_projects"
 						v-model="pickedProject"
 					/>
-					<div v-if="form.project" class="font-semibold text-sm text-gray-800">{{ activeProjectLabel }}</div>
-					<FormField
-						v-if="form.project"
-						fieldtype="Link"
-						fieldname="activity_type"
-						:label="__('Activity Type')"
-						options="Activity Type"
-						v-model="form.activity_type"
-						:read-only="controlsDisabled"
-						@change="persistState"
-					/>
-					<FormField
-						fieldtype="Small Text"
-						v-if="form.project"
-						fieldname="description"
-						:label="__('Description')"
-						v-model="form.description"
-						:read-only="controlsDisabled"
-						@change="persistState"
-					/>
+
 				</div>
 
 			</div>
@@ -383,6 +387,11 @@ function exportRecovery() {
 	const link = document.createElement("a")
 	link.href = url; link.download = "timer-recovery.json"; link.click()
 	URL.revokeObjectURL(url)
+}
+function setTimerMetadata(field, value) {
+	if (!["activity_type", "description"].includes(field)) return
+	form.value[field] = value || ""
+	persistState()
 }
 function persistState() {
 	metadataDirty = true

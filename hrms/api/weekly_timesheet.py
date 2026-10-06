@@ -6,7 +6,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, cint, flt, get_datetime, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, get_datetime, getdate, now_datetime, nowdate, get_system_timezone
 
 
 WEEKLY_DRAFT = "Draft"
@@ -221,6 +221,7 @@ def _serialize_weekly(doc):
 		"modified": str(doc.modified) if doc.modified else None,
 		"employee": doc.employee,
 		"employee_name": doc.employee_name,
+		"source_timezone": get_system_timezone(),
 		"company": doc.company,
 		"docstatus": doc.docstatus,
 		"start_date": str(doc.start_date) if doc.start_date else None,
@@ -263,6 +264,7 @@ def _blank_weekly(employee, week_start, week_end):
 		"name": None,
 		"employee": employee.name,
 		"employee_name": employee.employee_name,
+		"source_timezone": get_system_timezone(),
 		"company": employee.company,
 		"docstatus": 0,
 		"start_date": str(week_start),
@@ -1186,6 +1188,9 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 				"name": row.name,
 				"date": str(get_datetime(row.from_time).date()),
 				"from_time": str(row.from_time)[11:16],
+				"from_datetime": str(row.from_time),
+				"to_datetime": str(row.to_time) if row.to_time else "",
+				"project_label": _project_display_name(row.project),
 				"to_time": str(row.to_time)[11:16] if row.to_time else "",
 				"duration": round(flt(row.hours), 2),
 				"project": row.project,
@@ -1199,6 +1204,7 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 	open_project_review = not approval or approval.status not in {APPROVAL_APPROVED, APPROVAL_HR}
 	return {
 		"timesheet": doc.name,
+		"source_timezone": get_system_timezone(),
 		"modified": str(doc.modified),
 		"project": project,
 		"week_start": str(doc.custom_week_start),

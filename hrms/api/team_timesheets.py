@@ -8,7 +8,7 @@ import frappe
 from frappe import _
 from frappe.utils import getdate
 
-from hrms.api.weekly_timesheet import _is_hr
+from hrms.api.weekly_timesheet import _is_hr, _hr_employee_image
 
 
 class TeamCursorResetRequired(frappe.ValidationError):
@@ -120,7 +120,15 @@ def get_sections(view="current", cursor=None, filters=None):
 	if has_more:
 		next_cursor = base64.urlsafe_b64encode(json.dumps(dict(v=2, view=view, context=context,
 			keys=[str(rows[-1][field]) for field, _direction in ordering])).encode()).decode()
+	images, reviewers = {}, {}
 	for row in rows:
+		if row.employee not in images:
+			images[row.employee] = _hr_employee_image(row.employee)
+		row.employee_image = images[row.employee]
+		lead = row.project_lead
+		if lead and lead not in reviewers:
+			reviewers[lead] = frappe.db.get_value("Employee", lead, "employee_name")
+		row.reviewer_name = reviewers.get(lead)
 		row.activity_types = sorted(set(frappe.db.get_all("Timesheet Detail", filters={"parent": row.timesheet, "project": row.project}, pluck="activity_type")) - {None, ""})
 		row.is_own_section = False
 		row.actionable = view == "current" and row.docstatus == 0 and row.hr_status in {"Draft", "Pending Project Approval", "Correction Required"} and row.project_status in {"Draft", "Pending"}

@@ -148,3 +148,13 @@
 	width: 100%;
 	text-align: left;
 }
+
+.admin-reviews-detail .admin-reviews-table-scroll { max-height: 55vh; overflow: auto; }
+.admin-reviews-detail .admin-reviews-table th { position: sticky; top: 0; z-index: 2; }
+.admin-review-action-card { border: 1px solid var(--border-color); border-left: 4px solid #d99a00; background: var(--subtle-fg); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.admin-review-action-card[data-state="green"] { border-left-color: #218547; }
+.admin-review-action-card[data-state="red"] { border-left-color: #ce4040; }
+.admin-review-action-card p { margin: 6px 0; }
+.admin-review-guide { margin-bottom: 12px; }
+.admin-review-guide summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
+.admin-reviews-toolbar details:not([open]) > .dropdown-menu { display: none !important; }
