@@ -1265,12 +1265,59 @@ def get_project_review_detail(project: str, week_start: str, employee: str):
 	}
 
 
+def _expected_week_hours(employee, start, end):
+	"""Approved schedule only; unknown stays unknown, never a default 40-hour week."""
+	from hrms.api.calendar import _parse_hhmm, _is_personal_holiday
+	start, end = getdate(start), getdate(end)
+	schedules = {}
+	baseline = expected = 0.0
+	zones = set()
+	holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+	if not holiday_list:
+		company = frappe.db.get_value("Employee", employee, "company")
+		holiday_list = frappe.db.get_value("Company", company, "default_holiday_list") if company else None
+	for offset in range((end - start).days + 1):
+		day = getdate(add_days(start, offset))
+		if day.year not in schedules:
+			name = frappe.db.get_value("Employee Schedule", {"employee": employee, "year": day.year, "status": "Approved"}, "name")
+			if not name:
+				return {"hours": None, "reason": _("No approved schedule for this week.")}
+			schedules[day.year] = frappe.get_doc("Employee Schedule", name)
+		schedule = schedules[day.year]
+		zones.add(schedule.timezone or get_system_timezone())
+		rows = [row for row in schedule.schedule_days if cint(row.day_of_week) == day.weekday()]
+		if not rows:
+			return {"hours": None, "reason": _("The approved schedule does not cover every day of this week.")}
+		hours = 0.0
+		for row in rows:
+			if (row.day_type or "").lower() != "working":
+				continue
+			a, b = _parse_hhmm(row.start_time), _parse_hhmm(row.end_time)
+			if not a or not b:
+				return {"hours": None, "reason": _("The approved schedule has incomplete work times.")}
+			minutes = (b.hour * 60 + b.minute - a.hour * 60 - a.minute) % 1440
+			if not minutes or b <= a:
+				return {"hours": None, "reason": _("Overnight schedule needs review before expected hours can be calculated.")}
+			hours += minutes / 60
+		baseline += hours
+		if _is_personal_holiday(employee, day) or (holiday_list and frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": str(day)})):
+			continue
+		leaves = frappe.get_all("Leave Application", filters={"employee": employee, "status": "Approved", "docstatus": 1, "from_date": ("<=", str(day)), "to_date": (">=", str(day))}, fields=["half_day", "half_day_date"])
+		if any(not cint(leave.half_day) or not leave.half_day_date or getdate(leave.half_day_date) != day for leave in leaves):
+			hours = 0.0
+		elif leaves:
+			hours /= 2
+		expected += hours
+	return {"hours": expected, "scheduled_hours": baseline, "timezones": sorted(zones), "reason": _("Approved schedule, excluding approved leave and holidays. Overnight schedules require manual review.")}
+
+
 @frappe.whitelist()
 def get_timesheet_review_detail(name: str):
 	_require_hr()
 	doc = frappe.get_doc("Timesheet", name)
 	data = _serialize_weekly(doc)
 	data["review_blockers"] = _hr_review_blockers(doc)
+	data["expected_work"] = _expected_week_hours(doc.employee, doc.custom_week_start, doc.custom_week_end)
 	data["source_timezone"] = frappe.utils.get_system_timezone()
 	for row in data["time_logs"]:
 		row["project_label"] = _project_display_name(row["project"])

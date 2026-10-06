@@ -272,7 +272,9 @@ class HRMSAdminReviews {
 				member.daily_hours.forEach(value => $('<td class="admin-reviews-number"></td>').toggleClass("text-muted", !Number(value)).text(Number(value) ? this.duration(value) : "-").appendTo(tr));
 				$('<td class="admin-reviews-number font-weight-bold"></td>').text(this.duration(member.weekly_total)).appendTo(tr);
 				this.statusCell($("<td></td>").appendTo(tr), member.status);
-				this.button($("<td></td>").appendTo(tr), "Review entries", () => this.detail({ ...member, project: report.project, week_start: report.week_start }, false));
+				const action = $("<td></td>").appendTo(tr);
+				if (member.includes_legacy_entries) $('<span class="text-muted small"></span>').text(__("Includes legacy daily records · details in Time History")).appendTo(action);
+				else this.button(action, "Review entries", () => this.detail({ ...member, project: report.project, week_start: report.week_start }, false));
 			});
 			if (!report.members.length) $('<p class="text-muted"></p>').text(__("No time recorded for this week")).appendTo(band);
 		});
@@ -316,6 +318,11 @@ class HRMSAdminReviews {
 		$('<p class="text-muted small"></p>').text(__(approvalNote)).appendTo(guide);
 		const selected = new Set();
 		const toolbar = $('<div class="admin-reviews-toolbar"></div>').appendTo(root);
+		if (hr) {
+			const totals = $('<div class="admin-reviews-count"></div>').appendTo(toolbar);
+			$('<strong></strong>').text(__("Recorded time") + ": " + this.duration(logs.reduce((sum, log) => sum + Number(log.hours ?? log.duration ?? 0), 0))).appendTo(totals);
+			$('<span></span>').text(" · " + __("Expected work time") + ": " + (data.expected_work?.hours == null ? __("Not available") : this.duration(data.expected_work.hours))).attr("title", data.expected_work?.reason || "").appendTo(totals);
+		}
 		let secondaryActions = toolbar;
 		let secondaryMenu;
 		if (hr && (canReturn || (data.docstatus === 0 && ["Pending Project Approval", "Pending HR Review", "Correction Required"].includes(data.custom_weekly_status)))) {

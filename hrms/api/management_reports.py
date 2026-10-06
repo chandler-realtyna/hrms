@@ -36,7 +36,7 @@ def _read_entries(start, end, scope, project=None, employee=None, activity_type=
 	query = (
 		frappe.qb.from_(detail).join(ts).on(detail.parent == ts.name)
 		.select(detail.name, ts.name.as_("timesheet"), ts.employee, ts.employee_name,
-			ts.docstatus, ts.company, ts.custom_weekly_status, detail.project, detail.activity_type,
+			ts.docstatus, ts.company, ts.custom_is_weekly, ts.custom_weekly_status, detail.project, detail.activity_type,
 			detail.from_time, detail.to_time, detail.hours, detail.custom_return_reason)
 		.where((ts.docstatus < 2) & (detail.parenttype == "Timesheet")
 			& (detail.from_time >= str(start)) & (detail.from_time < str(add_days(end, 1))))
@@ -136,6 +136,8 @@ def get_daily_project_summary(week_start=None, company=None):
 	days = [str(add_days(start, offset)) for offset in range(7)]
 	for row in entries:
 		member = grouped[row.project].setdefault(row.employee, {"employee": row.employee, "employee_name": row.employee_name, "daily_hours": [0.0] * 7, "weekly_total": 0.0, "activity_types": set(), "status": states.get((row.timesheet, row.project), "Draft")})
+		if not row.custom_is_weekly:
+			member["includes_legacy_entries"] = True
 		day = str(row.from_time)[:10]
 		if day in days:
 			member["daily_hours"][days.index(day)] += flt(row.hours)
