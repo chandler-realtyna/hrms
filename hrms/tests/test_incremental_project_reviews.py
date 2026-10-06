@@ -19,7 +19,7 @@ class TestIncrementalReviews(unittest.TestCase):
   def throw(message,*args): raise ValueError(message)
   self.doc=Record(name='week',employee='worker',employee_name='Worker',docstatus=0,custom_is_weekly=1,custom_weekly_status='Draft',custom_weekly_submitted_at=None,custom_week_start='2026-10-04',modified='v1',time_logs=[self.log('one'),self.log('two')],custom_project_approvals=[],flags=Record())
   self.env=dict(hashlib=hashlib,json=json,frappe=NS(parse_json=json.loads,session=NS(user='lead'),db=NS(sql=lambda *a:None),get_doc=lambda *a:self.doc,throw=throw,PermissionError=ValueError), _=lambda s:s,flt=lambda x:float(x or 0),cint=lambda x:int(x or 0),get_datetime=datetime.fromisoformat,now_datetime=lambda:datetime(2026,10,6),_project_lead_user=lambda p:'lead',_project_lead_employee=lambda p:'lead-employee',_project_manager_user=lambda p:'manager',_employee_user=lambda e:'worker',_is_hr=lambda:False,_team_review_blockers=lambda d:[],_refresh_ready_lead_weeks=lambda *a:None,_notify=lambda *a:None,_hr_users=lambda:[],_serialize_weekly=lambda d:d,_mark_correction=lambda d,*a:setattr(d,'custom_weekly_status','Correction Required'),WEEKLY_DRAFT='Draft',PENDING_PROJECT='Pending Project Approval',CORRECTION_REQUIRED='Correction Required',PENDING_HR='Pending HR Review',CLOSED='Closed',APPROVAL_PENDING='Pending',APPROVAL_APPROVED='Approved',APPROVAL_RETURNED='Returned',APPROVAL_HR='HR Review')
-  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns'}
+  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns','submit_weekly_timesheet'}
   nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in names]
   for n in nodes:n.decorator_list=[]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
@@ -29,6 +29,14 @@ class TestIncrementalReviews(unittest.TestCase):
  def test_approve_draft_keeps_employee_submission_separate(self):
   self.approve();self.assertEqual(self.doc.custom_weekly_status,'Draft');self.assertIsNone(self.doc.custom_weekly_submitted_at)
   self.assertTrue(self.env['_project_reviews_ready'](self.doc))
+ def test_personal_submission_does_not_wait_for_other_employees(self):
+  self.env['ALLOWED_EMPLOYEE_STATES']={'Draft','Correction Required'}
+  self.env['_employee_user']=lambda e:'lead'
+  self.env['_project_lead_employee']=lambda p:'worker'
+  self.env['_team_review_blockers']=lambda d:(_ for _ in ()).throw(AssertionError('Unrelated team work queried'))
+  self.env['submit_weekly_timesheet']('week')
+  self.assertEqual(self.doc.custom_weekly_status,'Pending HR Review')
+  self.assertIsNotNone(self.doc.custom_weekly_submitted_at)
  def test_partial_approval_only_covers_selected_entry(self):
   self.approve(['one']);self.assertEqual(self.doc.custom_project_approvals[0].status,'Pending')
   self.assertEqual(set(json.loads(self.doc.custom_project_approvals[0].entry_reviews)),{'one'})
@@ -64,19 +72,20 @@ class TestIncrementalReviews(unittest.TestCase):
   self.doc.custom_weekly_status='Pending Project Approval';self.doc.custom_weekly_submitted_at='submitted'
   self.env['_set_project_approvals'](self.doc)
   self.env['_project_lead_user']=lambda p:'worker';self.env['_project_lead_employee']=lambda p:'worker'
+  self.env['_team_review_blockers']=lambda d:(_ for _ in ()).throw(AssertionError('Team work blocked own routing'))
   self.env['_refresh_review_routing'](self.doc)
   self.assertEqual(self.doc.custom_project_approvals[0].status,'HR Review')
   self.assertEqual(self.doc.custom_weekly_status,'Pending HR Review')
   self.assertFalse(self.doc.saved)
  def test_completed_team_review_does_not_wait_for_team_submission(self):
   self.approve()
-  nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='_team_review_blockers']
+  nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='_pending_team_reviews']
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
   self.env['frappe'].get_all=lambda dt,**kw:['P'] if dt=='Project' else [NS(name='week',employee_name='Worker')]
   lead_week=Record(employee='lead-employee',custom_week_start='2026-10-04')
-  self.assertEqual(self.env['_team_review_blockers'](lead_week),[])
+  self.assertEqual(self.env['_pending_team_reviews'](lead_week),[])
   self.doc.time_logs[0].description='changed since approval'
-  self.assertEqual(len(self.env['_team_review_blockers'](lead_week)),1)
+  self.assertEqual(len(self.env['_pending_team_reviews'](lead_week)),1)
  def test_owner_withdrawal_preserves_saved_entries_and_approvals(self):
   self.approve();self.doc.custom_weekly_status='Pending HR Review';self.doc.custom_weekly_submitted_at='submitted'
   reviews=self.doc.custom_project_approvals[0].entry_reviews
@@ -97,6 +106,7 @@ class TestIncrementalReviews(unittest.TestCase):
   self.assertEqual(self.env['reopen_weekly_timesheet']('week','v1','HR requested correction').custom_weekly_status,'Draft')
  def test_permission_self_closed_stale_and_cross_project_rejections(self):
   self.env['_employee_user']=lambda e:'lead'
+  self.env['_project_lead_employee']=lambda p:'worker'
   with self.assertRaises(ValueError):self.approve()
   self.env['_employee_user']=lambda e:'worker';self.env['frappe'].session.user='outsider'
   with self.assertRaises(ValueError):self.approve()

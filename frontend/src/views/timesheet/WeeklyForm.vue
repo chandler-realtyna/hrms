@@ -62,11 +62,12 @@
 						</div>
 					</div>
 
-					<section v-if="timesheet.team_review_blockers?.length" class="border-b py-3">
+					<section v-if="timesheet.team_review_tasks?.length" class="border-b py-3">
 						<router-link :to="{ name: 'ProjectTimesheets' }" class="font-semibold text-blue-600">
-							{{ __("Team reviews outstanding") }} · {{ timesheet.team_review_blockers.length }}
+							{{ __("Team reviews to follow up") }} · {{ timesheet.team_review_tasks.length }}
 						</router-link>
-						<div v-for="item in timesheet.team_review_blockers" :key="`${item.employee_name}|${item.project}`" class="text-sm text-gray-600 mt-1">
+						<p class="text-xs text-gray-500 mt-1">{{ __("A separate team task. These reviews do not delay approval of your own week.") }}</p>
+						<div v-for="item in timesheet.team_review_tasks" :key="`${item.employee_name}|${item.project}`" class="text-sm text-gray-600 mt-1">
 							{{ item.employee_name }} · {{ projectDisplayName(item.project) }}
 						</div>
 					</section>

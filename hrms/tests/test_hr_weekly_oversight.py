@@ -2,10 +2,11 @@
 import ast
 from pathlib import Path
 from types import SimpleNamespace as NS
+from unittest.mock import Mock
 import unittest
 path = Path(__file__).parents[1] / 'api' / 'weekly_timesheet.py'
 tree = ast.parse(path.read_text())
-names = {'get_hr_weekly_timesheet_queue', 'hr_close_weekly_timesheet', '_hr_review_blockers'}
+names = {'get_hr_weekly_timesheet_queue', 'hr_close_weekly_timesheet', '_hr_review_blockers', 'before_weekly_submit'}
 nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
 for n in nodes: n.decorator_list = []
 class TestOversight(unittest.TestCase):
@@ -32,10 +33,20 @@ class TestOversight(unittest.TestCase):
   rows=self.ns['get_hr_weekly_timesheet_queue']('history')
   self.assertEqual([r['name'] for r in rows],['FINAL'])
   self.assertFalse(rows[0]['ready_for_hr_close']);self.assertEqual(rows[0]['review_blockers'],[])
- def test_ready_requires_both_stage_and_completed_reviews(self):
-  self.docs[0].custom_weekly_status='Pending HR Review';self.docs[0].custom_project_approvals=[]
-  self.assertTrue(self.ns['get_hr_weekly_timesheet_queue']('current')[0]['ready_for_hr_close'])
-  self.ns['_team_review_blockers']=lambda d:[{'employee_name':'Member','project':'P','status':'Draft'}]
+ def test_own_ready_week_ignores_returned_team_work_at_every_hr_gate(self):
+  doc=self.docs[0];doc.custom_weekly_status='Pending HR Review';doc.custom_project_approvals=[]
+  self.ns['_team_review_blockers']=lambda d:(_ for _ in ()).throw(AssertionError('Personal approval queried team work'))
+  self.ns['_pending_team_reviews']=lambda d:[{'employee_name':'Member','project':'P','status':'Returned'}]
+  row=self.ns['get_hr_weekly_timesheet_queue']('current')[0]
+  self.assertTrue(row['ready_for_hr_close']);self.assertEqual(row['review_blockers'],[])
+  doc.flags=NS(weekly_action='hr_close');doc.flags.get=lambda key:getattr(doc.flags,key,None);doc.save=Mock();doc.submit=Mock();doc.add_comment=Mock()
+  self.ns.update(_is_hr=lambda:True,now_datetime=lambda:'now',_notify=lambda *a:None,_hr_users=lambda:[],_employee_user=lambda e:'employee',_serialize_weekly=lambda d:d,cint=int)
+  self.ns['hr_close_weekly_timesheet']('WAIT')
+  self.assertEqual(doc.custom_weekly_status,'Closed');doc.save.assert_called_once();doc.submit.assert_called_once()
+  self.ns['before_weekly_submit'](doc)
+ def test_own_unreviewed_entries_still_block_final_approval(self):
+  doc=self.docs[0];doc.custom_weekly_status='Pending HR Review'
+  self.ns['_project_reviews_ready']=lambda d:False
   self.assertFalse(self.ns['get_hr_weekly_timesheet_queue']('current')[0]['ready_for_hr_close'])
   with self.assertRaises(ValueError):self.ns['hr_close_weekly_timesheet']('WAIT')
  def test_permissions_and_invalid_views_are_enforced(self):

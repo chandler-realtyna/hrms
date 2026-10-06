@@ -215,6 +215,7 @@ def _serialize_weekly(doc):
 		scope = _correction_scope(doc)
 		editable_projects, editable_entries = scope["projects"], scope["entries"]
 
+	team_review_tasks = _pending_team_reviews(doc)
 	return {
 		"name": doc.name,
 		"modified": str(doc.modified) if doc.modified else None,
@@ -241,9 +242,11 @@ def _serialize_weekly(doc):
 		"time_logs": [_serialize_row(row) for row in doc.time_logs],
 		"editable_projects": editable_projects,
 		"editable_entries": editable_entries,
-		"team_review_blockers": _team_review_blockers(doc) if doc.docstatus == 0 else [],
+		"team_review_tasks": team_review_tasks,
+		# Kept for older clients; these are tasks, never approval gates.
+		"team_review_blockers": team_review_tasks,
 		"ready_for_hr_close": doc.docstatus == 0 and doc.custom_weekly_status == PENDING_HR
-			and _project_reviews_ready(doc) and not _team_review_blockers(doc),
+			and _project_reviews_ready(doc),
 		"project_approvals": [
 			{
 				"project": row.project,
@@ -606,8 +609,7 @@ def submit_weekly_timesheet(name: str):
 	for row in doc.time_logs:
 		row.custom_return_reason = None
 	_set_project_approvals(doc)
-	statuses = {row.status for row in doc.custom_project_approvals}
-	doc.custom_weekly_status = PENDING_PROJECT if APPROVAL_PENDING in statuses or _team_review_blockers(doc) else PENDING_HR
+	doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) else PENDING_PROJECT
 	doc.custom_weekly_submitted_at = doc.custom_weekly_submitted_at or now_datetime()
 	doc.custom_weekly_return_reason = None
 	doc.flags.weekly_action = "employee_submit"
@@ -636,7 +638,7 @@ def _refresh_review_routing(doc):
 		return
 	_set_project_approvals(doc)
 	if doc.custom_weekly_submitted_at and doc.custom_weekly_status in {PENDING_PROJECT, PENDING_HR}:
-		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) and not _team_review_blockers(doc) else PENDING_PROJECT
+		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) else PENDING_PROJECT
 
 
 def refresh_project_timesheet_routing(project_doc):
@@ -659,7 +661,7 @@ def refresh_project_timesheet_routing(project_doc):
 			_notify_project_report(controller, project_doc.name, doc.custom_week_start)
 
 
-def _team_review_blockers(doc):
+def _pending_team_reviews(doc):
 	projects = set(frappe.get_all("Project", filters={"custom_project_lead": doc.employee}, pluck="name"))
 	if not projects or not doc.custom_week_start:
 		return []
@@ -680,9 +682,14 @@ def _team_review_blockers(doc):
 	return blockers
 
 
+def _team_review_blockers(doc):
+	"""Compatibility alias: pending team tasks do not block personal weeks."""
+	return _pending_team_reviews(doc)
+
+
 def _refresh_ready_lead_weeks(week_start, exclude, lead_employee):
-	# Personal submission remains possible even when two leads work on each
-	# other's projects. Only the handoff to final HR review waits for the team.
+	# Recover previously staged personal weeks using only their own reviews.
+	# Team review tasks must never delay another person's weekly approval.
 	if not lead_employee:
 		return
 	weeks = frappe.get_all("Timesheet", filters={
@@ -692,12 +699,12 @@ def _refresh_ready_lead_weeks(week_start, exclude, lead_employee):
 	}, pluck="name", limit_page_length=0)
 	for name in weeks:
 		doc = frappe.get_doc("Timesheet", name)
-		if not _project_reviews_ready(doc) or _team_review_blockers(doc):
+		if not _project_reviews_ready(doc):
 			continue
 		doc.custom_weekly_status = PENDING_HR
 		doc.flags.weekly_action = "project_lead_review"
 		doc.save(ignore_permissions=True)
-		doc.add_comment("Comment", _("Project and team reviews completed; ready for final HR review."))
+		doc.add_comment("Comment", _("Personal project reviews completed; ready for final HR review."))
 		_notify(_hr_users(), _("Weekly timesheet is ready for HR review"),
 			_("{0}'s weekly timesheet is ready for final review.").format(doc.employee_name), doc.name)
 
@@ -848,7 +855,7 @@ def review_saved_project_entries(name: str, project: str, expected_modified: str
 		_mark_correction(doc, logs, reason.strip())
 	_set_project_approvals(doc)
 	if doc.custom_weekly_submitted_at and doc.custom_weekly_status != CORRECTION_REQUIRED:
-		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) and not _team_review_blockers(doc) else PENDING_PROJECT
+		doc.custom_weekly_status = PENDING_HR if _project_reviews_ready(doc) else PENDING_PROJECT
 	doc.flags.weekly_action = "project_lead_review"
 	doc.save(ignore_permissions=True)
 	doc.add_comment("Comment", _("Project {0}: {1} saved entries {2} by {3}.").format(project, len(logs), action, frappe.session.user))
@@ -1332,8 +1339,6 @@ def hr_close_weekly_timesheet(name: str):
 
 	if not _project_reviews_ready(doc):
 		frappe.throw(_("All project sections must complete Project Lead review before HR can close the week."))
-	if _team_review_blockers(doc):
-		frappe.throw(_("This Project Lead must complete their team's reviews for the same week before final HR approval."))
 
 	for row in doc.custom_project_approvals:
 		if row.status == APPROVAL_HR:
@@ -1379,8 +1384,6 @@ def _hr_review_blockers(doc):
 		if row.status in {APPROVAL_PENDING, APPROVAL_RETURNED}:
 			user = frappe.db.get_value("User", row.controller, "full_name") if row.controller else None
 			items.append(_("{0}: {1} · {2}").format(_project_display_name(row.project), _(row.status), user or _("Unassigned reviewer")))
-	for row in _team_review_blockers(doc):
-		items.append(_("Team review: {0} · {1} · {2}").format(row["employee_name"], _project_display_name(row["project"]), _(row["status"])))
 	if not _project_reviews_ready(doc) and not items:
 		items.append(_("Project review is incomplete. Check the assigned reviewer and project review records."))
 	return items
@@ -1418,7 +1421,7 @@ def get_hr_weekly_timesheet_queue(view: str = "ready") -> list[dict]:
 	for week in weeks:
 		doc = frappe.get_doc("Timesheet", week.name)
 		_refresh_review_routing(doc)
-		ready = doc.docstatus == 0 and doc.custom_weekly_status == PENDING_HR and _project_reviews_ready(doc) and not _team_review_blockers(doc)
+		ready = doc.docstatus == 0 and doc.custom_weekly_status == PENDING_HR and _project_reviews_ready(doc)
 		if view == "ready" and doc.custom_weekly_status != PENDING_HR:
 			continue
 		projects = {}
@@ -1626,8 +1629,6 @@ def before_weekly_submit(doc):
 		frappe.throw(_("Weekly timesheet must be in Closed status before final submission."))
 	if not _project_reviews_ready(doc):
 		frappe.throw(_("All project sections must be approved before final submission."))
-	if _team_review_blockers(doc):
-		frappe.throw(_("The Project Lead's team reviews must be completed before final submission."))
 
 
 def before_weekly_cancel(doc):

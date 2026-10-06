@@ -85,22 +85,22 @@ class TestReviewReadiness(unittest.TestCase):
 			with self.assertRaises(frappe.ValidationError):
 				workflow.before_weekly_submit(doc)
 
-	def test_lead_team_drafts_block_final_handoff_not_initial_submission(self):
+	def test_team_drafts_remain_separate_follow_up_tasks(self):
 		team = week("Pending", employee="OTHER")
 		team.custom_weekly_submitted_at = None
 		with patch.object(frappe, "get_all", side_effect=[["Alpha"], [frappe._dict(name="OTHER-WEEK", employee_name="Other employee")]]), patch.object(frappe, "get_doc", return_value=team):
 			self.assertEqual(len(workflow._team_review_blockers(week())), 1)
 
-	def test_personal_submission_is_staged_when_team_is_not_ready(self):
+	def test_personal_submission_is_independent_of_team_tasks(self):
 		doc = week("HR Review")
 		doc.custom_weekly_status = workflow.WEEKLY_DRAFT
 		doc.custom_weekly_submitted_at = None
 		doc.save = Mock()
 		doc.add_comment = Mock()
-		with patch.object(frappe, "get_doc", return_value=doc), patch.object(workflow, "_assert_employee_owns"), patch.object(workflow, "_set_project_approvals"), patch.object(workflow, "_team_review_blockers", return_value=[{"employee_name": "Other lead"}]), patch.object(workflow, "_serialize_weekly", side_effect=lambda value: value.custom_weekly_status), patch.object(workflow, "_notify") as notify:
-			self.assertEqual(workflow.submit_weekly_timesheet(doc.name), workflow.PENDING_PROJECT)
+		with patch.object(frappe, "get_doc", return_value=doc), patch.object(workflow, "_assert_employee_owns"), patch.object(workflow, "_set_project_approvals"), patch.object(workflow, "_project_reviews_ready", return_value=True), patch.object(workflow, "_hr_users", return_value=[]), patch.object(workflow, "_team_review_blockers", side_effect=AssertionError("Unrelated team work queried")), patch.object(workflow, "_serialize_weekly", side_effect=lambda value: value.custom_weekly_status), patch.object(workflow, "_notify") as notify:
+			self.assertEqual(workflow.submit_weekly_timesheet(doc.name), workflow.PENDING_HR)
 		self.assertIsNotNone(doc.custom_weekly_submitted_at)
-		notify.assert_not_called()
+		notify.assert_called()
 
 	def test_approved_project_is_ready_even_if_other_project_needs_correction(self):
 		team = week(employee="OTHER")
@@ -109,13 +109,15 @@ class TestReviewReadiness(unittest.TestCase):
 		with patch.object(frappe, "get_all", side_effect=[["Alpha"], [frappe._dict(name="OTHER-WEEK", employee_name="Other employee")]]), patch.object(frappe, "get_doc", return_value=team):
 			self.assertEqual(workflow._team_review_blockers(week()), [])
 
-	def test_team_blocker_prevents_hr_close_before_mutation(self):
+	def test_team_tasks_do_not_prevent_hr_close(self):
 		doc = week()
 		doc.save = Mock()
-		with patch.object(workflow, "_require_hr"), patch.object(frappe, "get_doc", return_value=doc), patch.object(workflow, "_team_review_blockers", return_value=[{"employee_name": "Other"}]):
-			with self.assertRaises(frappe.ValidationError):
-				workflow.hr_close_weekly_timesheet(doc.name)
-		doc.save.assert_not_called()
+		doc.submit = Mock()
+		doc.add_comment = Mock()
+		with patch.object(workflow, "_require_hr"), patch.object(frappe.db, "sql"), patch.object(frappe, "get_doc", return_value=doc), patch.object(workflow, "_refresh_review_routing"), patch.object(workflow, "_project_reviews_ready", return_value=True), patch.object(workflow, "_team_review_blockers", side_effect=AssertionError("Unrelated team work queried")), patch.object(workflow, "_notify"), patch.object(workflow, "_serialize_weekly", return_value={}):
+			workflow.hr_close_weekly_timesheet(doc.name)
+		doc.save.assert_called_once()
+		doc.submit.assert_called_once()
 
 	def test_lead_week_advances_after_team_review_without_auto_approving(self):
 		doc = week()
