@@ -62,7 +62,7 @@
 					</div>
 				</div>
 
-				<!-- ── Calendar (editable when Draft, Approved, or no submission) ── -->
+				<!-- ── Calendar (editable when Draft, Rejected, Approved, or no submission) ── -->
 				<div v-if="isEditable" class="mx-4 mt-5">
 					<!-- Month Navigation -->
 					<div class="flex items-center justify-between mb-3">
@@ -150,7 +150,7 @@
 					</p>
 				</div>
 
-				<!-- ── Read-only Date List (Submitted / Rejected) ── -->
+				<!-- ── Read-only Date List (Submitted) ── -->
 				<div v-else class="mx-4 mt-5">
 					<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
 						{{ __("Selected Holiday Dates") }}
@@ -220,6 +220,9 @@
 						<span v-else-if="submission?.status === 'Approved'">
 							{{ __("Save holiday changes") }}
 						</span>
+						<span v-else-if="submission?.status === 'Rejected'">
+							{{ __("Submit revised request") }}
+						</span>
 						<span v-else>
 							{{ __("Submit for Approval") }}
 						</span>
@@ -241,8 +244,9 @@ import {
 	IonContent,
 	IonSpinner,
 	toastController,
+	onIonViewWillEnter,
 } from "@ionic/vue"
-import { ref, computed, inject, onMounted } from "vue"
+import { ref, computed, inject } from "vue"
 import { createResource, FeatherIcon } from "frappe-ui"
 
 const __ = inject("$translate")
@@ -258,9 +262,9 @@ const initialized = ref(false) // true once the first API load completes
 
 // ── Derived ──────────────────────────────────────────────────────────────────
 
-// Calendar is shown for new, Draft, and Approved records. Submitted records wait for HR review.
+// Calendar is shown for new, Draft, Rejected, and Approved records. Submitted records wait for HR review.
 const isEditable = computed(
-	() => initialized.value && (!submission.value || ["Draft", "Approved"].includes(submission.value.status))
+	() => initialized.value && (!submission.value || ["Draft", "Rejected", "Approved"].includes(submission.value.status))
 )
 
 const sortedSelectedDates = computed(() => [...selectedDates.value].sort())
@@ -290,7 +294,7 @@ const statusStyle = computed(() => {
 			text: "text-red-700",
 			icon: "x-circle",
 			label: __("Rejected"),
-			sub: __("Your request was rejected. Please contact HR."),
+			sub: __("Your request was rejected. Change your selected dates and submit a new request for HR approval."),
 		}
 	return {}
 })
@@ -345,7 +349,7 @@ const calendarDays = computed(() => {
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 function toggleDate(dateStr) {
-	if (submission.value && !["Draft", "Approved"].includes(submission.value.status)) return
+	if (submission.value && !["Draft", "Rejected", "Approved"].includes(submission.value.status)) return
 
 	const idx = selectedDates.value.indexOf(dateStr)
 	if (idx !== -1) {
@@ -464,7 +468,7 @@ async function showToast(message, color = "primary") {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-onMounted(() => {
+onIonViewWillEnter(() => {
 	holidayRecord.reload()
 })
 </script>
