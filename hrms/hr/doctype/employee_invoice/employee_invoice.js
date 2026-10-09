@@ -53,7 +53,7 @@ frappe.ui.form.on("Employee Invoice", {
 			frm.add_custom_button(__("Save HR Changes"), () => frappe.prompt([
 				{ fieldname: "reason", label: __("Reason for Changes"), fieldtype: "Small Text", reqd: 1 },
 			], ({ reason }) => {
-				const fields = ["due_date", "period_start", "period_end", "due_hours", "payee_name", "payee_address", "preferred_payment_method", "payment_details", "bank_name", "bank_account_no", "iban", "employee_note", "monthly_amount", "hourly_rate", "currency", "hr_note", "adjustments"];
+				const fields = ["due_date", "period_start", "period_end", "due_hours", "use_hours_override", "employee_total_hours", "hours_override_reason", "payee_name", "payee_address", "preferred_payment_method", "payment_details", "bank_name", "bank_account_no", "iban", "employee_note", "monthly_amount", "hourly_rate", "currency", "hr_note", "adjustments"];
 				const values = Object.fromEntries(fields.map(field => [field, frm.doc[field]]));
 				return invoke("hr_update_employee_invoice", { values, reason });
 			}, __("Save HR Changes")), __("Review"));
@@ -106,9 +106,10 @@ function employee_invoice_render_review(frm, readiness) {
 			<div class="mb-2"><span class="indicator-pill ${color}">${escape(__(doc.status || "Draft"))}</span></div>
 			<p class="mb-2"><strong>${escape(__("Next action"))}:</strong> ${escape(action)}</p>
 			<div class="text-muted">${escape(doc.employee_name || doc.employee || "")} · ${escape(doc.company || "")} · ${escape(period)}</div>
-			<div class="mt-2"><strong>${escape(__("Invoice total"))}: ${total}</strong> · ${escape(__("Worked time"))}: ${escape(employee_invoice_duration(doc.worked_hours))}</div>
+			<div class="mt-2"><strong>${escape(__("Invoice total"))}: ${total}</strong> · ${escape(__("Worked time"))}: ${escape(employee_invoice_duration(doc.worked_hours))} · ${escape(__("Paid holidays"))}: ${escape(employee_invoice_duration(doc.paid_holiday_hours))} · ${escape(__("System total"))}: ${escape(employee_invoice_duration(doc.system_total_hours))}</div>
+			${Number(doc.use_hours_override) ? `<div class="mt-2"><strong>${escape(__("Employee proposed total"))}: ${escape(employee_invoice_duration(doc.employee_total_hours))}</strong><br>${escape(doc.hours_override_reason)}</div>` : ""}
 		</div>`);
-	for (const field of ["worked_hours", "paid_leave_hours", "sick_leave_hours", "unpaid_leave_hours", "payable_hours"]) {
+	for (const field of ["worked_hours", "paid_holiday_hours", "system_total_hours", "employee_total_hours", "paid_leave_hours", "sick_leave_hours", "unpaid_leave_hours", "payable_hours"]) {
 		frm.set_df_property(field, "formatter", employee_invoice_duration);
 		frm.refresh_field(field);
 	}

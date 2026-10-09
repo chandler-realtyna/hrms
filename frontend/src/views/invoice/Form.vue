@@ -84,7 +84,8 @@
 											class="field"
 									/></Field>
 								</div>
-								<Field label="Due hours"
+								<p v-if="form.period_start !== doc.period_start || form.period_end !== doc.period_end" class="text-sm text-amber-700">{{ __("Changing the period changes the timesheet hours included. Save to recalculate this period.") }}</p>
+								<Field v-if="doc.calculation_method === 'Fixed Monthly'" label="Scheduled hours for monthly leave deduction"
 									><input
 										v-model.number="form.due_hours"
 										:disabled="!effectiveEdit"
@@ -97,7 +98,7 @@
 							<div class="bg-white border rounded-xl p-5 space-y-3">
 								<h2 class="font-semibold text-gray-900">{{ __("Calculation") }}</h2>
 								<Row label="Method" :value="doc.calculation_method" /><Row
-									label="Worked hours"
+									label="Recorded timesheet hours"
 									:value="formatHours(doc.worked_hours)"
 								/><Row
 									label="Paid leave hours"
@@ -108,7 +109,18 @@
 								/><Row
 									label="Unpaid leave hours"
 									:value="formatHours(doc.unpaid_leave_hours)"
-								/><Row label="Payable hours" :value="formatHours(doc.payable_hours)" /><Row
+								/><Row label="Paid holiday hours" :value="formatHours(doc.paid_holiday_hours)" />
+                                <Row label="System total hours" :value="formatHours(doc.system_total_hours)" />
+                                <label class="flex gap-2 items-center text-sm"><input v-model="form.use_hours_override" type="checkbox" :disabled="!effectiveEdit" />{{ __("Propose a different total") }}</label>
+                                <template v-if="form.use_hours_override">
+                                    <Field label="Proposed total hours"><input v-model.number="form.employee_total_hours" type="number" min="0" step="0.01" class="field" :disabled="!effectiveEdit" /></Field>
+                                    <p class="text-xs text-gray-500">{{ __("Include worked time, paid holidays and paid leave. Enter decimal hours: 1.5 = 1 hour 30 minutes. HR reviews this proposal; recorded timesheets remain unchanged.") }}</p>
+                                    <Field label="Reason for proposed total"><textarea v-model="form.hours_override_reason" class="field" :disabled="!effectiveEdit" /></Field>
+                                    <Row label="Proposed total" :value="formatHours(form.employee_total_hours)" />
+                                </template>
+                                <p v-if="doc.calculation_method === 'Fixed Monthly'" class="text-xs text-gray-500">{{ __("Hours do not change the fixed monthly amount. Unpaid leave is deducted using scheduled hours.") }}</p>
+                                <details v-if="doc.holiday_summary" class="text-sm"><summary>{{ __("Paid holiday details") }}</summary><p class="whitespace-pre-line">{{ doc.holiday_summary }}</p></details>
+                                <Row label="Payable hours" :value="formatHours(doc.payable_hours)" /><Row
 									:label="
 										doc.calculation_method === 'Hourly' ? __('Hourly rate') : __('Monthly amount')
 									"
@@ -415,6 +427,9 @@ const editableFields = [
 	"period_start",
 	"period_end",
 	"due_hours",
+	"use_hours_override",
+	"employee_total_hours",
+	"hours_override_reason",
 	"payee_name",
 	"payee_address",
 	"preferred_payment_method",

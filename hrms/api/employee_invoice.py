@@ -15,6 +15,9 @@ EMPLOYEE_EDITABLE_FIELDS = {
 	"period_start",
 	"period_end",
 	"due_hours",
+	"use_hours_override",
+	"employee_total_hours",
+	"hours_override_reason",
 	"payee_name",
 	"payee_address",
 	"preferred_payment_method",
@@ -222,7 +225,7 @@ def _timesheet_rows(employee, period_start, period_end):
 	return result, all_final
 
 
-def _leave_rows(employee, period_start, period_end):
+def _leave_rows(employee, period_start, period_end, holiday_dates=()):
 	from hrms.hr.doctype.leave_application.leave_application import get_number_of_leave_days
 
 	leaves = frappe.get_all(
@@ -265,6 +268,19 @@ def _leave_rows(employee, period_start, period_end):
 			hourly_start_time=row.hourly_start_time,
 			hourly_end_time=row.hourly_end_time,
 		)
+		# A paid holiday is credited separately, even when a leave type includes holidays.
+		if holiday_dates:
+			from datetime import timedelta
+			days = 0
+			day = from_date
+			while day <= to_date:
+				if str(day) not in holiday_dates:
+					days += flt(get_number_of_leave_days(employee, row.leave_type, day, day,
+						half_day=cint(half_day and getdate(row.half_day_date) == day),
+						half_day_date=row.half_day_date if half_day else None,
+						is_hourly_leave=row.is_hourly_leave, hourly_start_time=row.hourly_start_time,
+						hourly_end_time=row.hourly_end_time))
+				day += timedelta(days=1)
 		hours = flt(flt(days) * LEAVE_HOURS_PER_DAY, 2)
 		if hours <= 0:
 			continue
@@ -279,6 +295,50 @@ def _leave_rows(employee, period_start, period_end):
 			}
 		)
 	return result
+
+
+def _paid_holiday_rows(employee, period_start, period_end):
+	"""Approved personal/assigned public holidays: eight paid hours per unique date.
+
+	Weekly days off are not paid holiday credits. Respect dated list assignments.
+	"""
+	from datetime import timedelta
+	from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
+
+	start, end = getdate(period_start), getdate(period_end)
+	dates = {}
+	parents = frappe.get_all("Employee Holiday", filters={"employee": employee, "status": "Approved"}, pluck="name")
+	if parents:
+		for row in frappe.get_all("Employee Holiday Date", filters={"parent": ("in", parents), "parenttype": "Employee Holiday", "date": ("between", [start, end])}, fields=["date", "description"]):
+			dates[str(row.date)] = row.description or "Holiday"
+	lists = {}
+	day = start
+	while day <= end:
+		name = get_holiday_list_for_employee(employee, raise_exception=False, as_on=day)
+		if name and name not in lists:
+			lists[name] = {str(row.holiday_date): row.description or "Holiday" for row in frappe.get_all("Holiday", filters={"parent": name, "parenttype": "Holiday List", "weekly_off": 0, "holiday_date": ("between", [start, end])}, fields=["holiday_date", "description"])}
+		if name and str(day) in lists[name]:
+			dates.setdefault(str(day), lists[name][str(day)])
+		day += timedelta(days=1)
+	return [{"date": date, "description": dates[date], "hours": LEAVE_HOURS_PER_DAY} for date in sorted(dates)]
+
+
+def _effective_total_hours(doc):
+	system_total = flt(doc.worked_hours) + flt(doc.paid_leave_hours) + flt(doc.sick_leave_hours) + flt(doc.get("paid_holiday_hours"))
+	if not cint(doc.get("use_hours_override")):
+		return flt(system_total, 2)
+	value = doc.get("employee_total_hours")
+	try:
+		import math
+		number = float(value)
+		valid = math.isfinite(number) and number >= 0
+	except (TypeError, ValueError):
+		valid = False
+	if not valid:
+		frappe.throw(_("Proposed total hours must be a non-negative number."))
+	if not (doc.get("hours_override_reason") or "").strip():
+		frappe.throw(_("Explain why the proposed total differs from the system calculation."))
+	return flt(number, 2)
 
 
 def _leave_totals(rows):
@@ -309,6 +369,8 @@ def _calculate_amounts(
 	paid_leave_hours=0,
 	sick_leave_hours=0,
 	unpaid_leave_hours=0,
+	paid_holiday_hours=0,
+	total_hours_override=None,
 ):
 	if calculation_method == "Fixed Monthly":
 		base_amount = flt(monthly_amount, 2)
@@ -320,8 +382,13 @@ def _calculate_amounts(
 		)
 	else:
 		payable_hours = flt(worked_hours) + flt(paid_leave_hours) + flt(sick_leave_hours)
+		payable_hours += flt(paid_holiday_hours)
+		if total_hours_override is not None:
+			payable_hours = flt(total_hours_override)
 		base_amount = flt(payable_hours * flt(hourly_rate), 2)
 		unpaid_leave_deduction = 0
+	if calculation_method == "Fixed Monthly" and total_hours_override is not None:
+		payable_hours = flt(total_hours_override)
 	additions = deductions = 0
 	for row in adjustments:
 		if flt(row.quantity) <= 0 or flt(row.unit_amount) < 0 or not row.note:
@@ -356,6 +423,14 @@ def _material_payload(doc):
 		"due_date": str(doc.due_date),
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
+		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
+		"system_total_hours": flt(doc.get("system_total_hours"), 2),
+		"use_hours_override": cint(doc.get("use_hours_override")),
+		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
+		"hours_override_reason": doc.get("hours_override_reason") or "",
+		"holiday_source_hash": doc.get("holiday_source_hash"),
+		"holiday_summary": doc.get("holiday_summary") or "",
+
 		"paid_leave_hours": flt(doc.paid_leave_hours, 2),
 		"sick_leave_hours": flt(doc.sick_leave_hours, 2),
 		"unpaid_leave_hours": flt(doc.unpaid_leave_hours, 2),
@@ -399,13 +474,19 @@ def _recalculate(doc):
 	doc.worked_hours = flt(sum(row["hours"] for row in rows), 2)
 	doc.time_approval_ready = cint(all_final)
 	doc.time_source_hash = _hash(rows)
-	leave_rows = _leave_rows(doc.employee, doc.period_start, doc.period_end)
+	holiday_rows = _paid_holiday_rows(doc.employee, doc.period_start, doc.period_end)
+	leave_rows = _leave_rows(doc.employee, doc.period_start, doc.period_end, {row["date"] for row in holiday_rows})
 	leave_totals = _leave_totals(leave_rows)
 	doc.paid_leave_hours = leave_totals["Paid Leave"]
 	doc.sick_leave_hours = leave_totals["Sick Leave"]
 	doc.unpaid_leave_hours = leave_totals["Unpaid Leave"]
 	doc.leave_source_hash = _hash(leave_rows)
 	doc.leave_summary = _leave_summary(leave_rows)
+	doc.paid_holiday_hours = flt(sum(row["hours"] for row in holiday_rows), 2)
+	doc.holiday_source_hash = _hash(holiday_rows)
+	doc.holiday_summary = "\n".join(f"{row['date']}: {row['description']} ({row['hours']} hours)" for row in holiday_rows)
+	doc.system_total_hours = flt(doc.worked_hours + doc.paid_leave_hours + doc.sick_leave_hours + doc.paid_holiday_hours, 2)
+	effective_hours = _effective_total_hours(doc)
 
 	(
 		doc.base_amount,
@@ -424,6 +505,8 @@ def _recalculate(doc):
 		doc.paid_leave_hours,
 		doc.sick_leave_hours,
 		doc.unpaid_leave_hours,
+		doc.paid_holiday_hours,
+		effective_hours if cint(doc.get("use_hours_override")) else None,
 	)
 	return doc
 
@@ -451,6 +534,14 @@ def _serialize(doc):
 		"period_end": str(doc.period_end),
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
+		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
+		"system_total_hours": flt(doc.get("system_total_hours"), 2),
+		"use_hours_override": cint(doc.get("use_hours_override")),
+		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
+		"hours_override_reason": doc.get("hours_override_reason") or "",
+		"holiday_source_hash": doc.get("holiday_source_hash"),
+		"holiday_summary": doc.get("holiday_summary") or "",
+
 		"paid_leave_hours": flt(doc.paid_leave_hours, 2),
 		"sick_leave_hours": flt(doc.sick_leave_hours, 2),
 		"unpaid_leave_hours": flt(doc.unpaid_leave_hours, 2),
