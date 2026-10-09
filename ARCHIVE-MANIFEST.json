@@ -1,0 +1,22 @@
+{
+  "created_utc": "2026-10-09T15:04:43.260057+00:00",
+  "purpose": "Recoverable archive of superseded feature branch refs. This tag is not a deployable release. Restore an original branch from its exact listed SHA.",
+  "branches": {
+    "codex/admin-desk-live": "7258c3bf6ebf62d3e5067e08d09d4c6952a74542",
+    "codex/holiday-rejection-fix": "ed79a2979568acaed266c9930d3b2d9d0995aa90",
+    "codex/my-timesheets-clarity": "c76dbdffab13ef7e6a40eb1602c584077432f871",
+    "codex/persistent-sidebar": "1c958ba6035cedf6ee4c78115e3726e387b25f51",
+    "codex/production-consolidation": "7b48e2a3a13578fa93c7358350771764106879b8",
+    "codex/team-review-actions": "e90a19f773c90e4cffcd08339679ea6cda671e75",
+    "codex/weekly-conflict-recovery": "45b546225d608f4248bf6f5d5bdedf7cd106889b",
+    "lucasn-stack/meeting-finder-fix": "5032eac72e578ff0912e25aadc0777689ba290a7"
+  },
+  "prior_production": "fd1c0b7adb658331b47615b19aa5fb7483ebf594",
+  "active_live_release": "ed79a2979568acaed266c9930d3b2d9d0995aa90",
+  "deferred_candidate": "7b48e2a3a13578fa93c7358350771764106879b8",
+  "deferred_features": [
+    "Single-use booking transaction ordering requires repair before activation.",
+    "Approval-hours field metadata requires isolated restoration and migration validation."
+  ],
+  "local_saved_work": "Both stashes and all Git refs are also preserved in the standalone local recovery bundle. Stash-only work is not published to GitHub."
+}
