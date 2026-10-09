@@ -17,7 +17,7 @@ def completed_image(log, image_id, tag):
     if image_id not in {built_id for export_step, built_id in digest if export_step == step}:
         return False
     name = re.escape(tag)
-    named = re.search(rf"^{re.escape(step)}\s+naming to (?:docker\.io/(?:library/)?)?{name} done$", log, re.M)
+    named = re.search(rf"^{re.escape(step)}\s+naming to (?:docker\.io/(?:library/)?)?{name}(?: [0-9.]+s)? done$", log, re.M)
     done = re.search(rf"^{re.escape(step)} DONE [0-9.]+s$", log, re.M)
     return bool(named and done) and "ERROR:" not in log
 

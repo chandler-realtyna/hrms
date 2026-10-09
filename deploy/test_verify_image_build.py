@@ -29,6 +29,12 @@ class TestImageBuildProof(unittest.TestCase):
         log = self.log().replace("writing image", "exporting manifest list").replace(" done\n#17 naming", " 0.0s done\n#17 naming")
         self.assertTrue(completed_image(log, self.image_id, self.tag))
 
+    def test_containerd_naming_includes_duration(self):
+        log = self.log().replace("writing image", "exporting manifest list").replace(f"{self.tag} done", f"library/{self.tag} 0.0s done")
+        self.assertTrue(completed_image(log, self.image_id, self.tag))
+        self.assertFalse(completed_image(log, "sha256:" + "b" * 64, self.tag))
+        self.assertFalse(completed_image(log.replace("#17 DONE 4.2s\n", ""), self.image_id, self.tag))
+
     def test_containerd_export_waits_until_unpacking_completes(self):
         log = self.log().replace("writing image", "exporting config").replace("#17 DONE 4.2s\n", "#17 unpacking to docker.io/library/" + self.tag + "\n")
         self.assertFalse(completed_image(log, self.image_id, self.tag))
