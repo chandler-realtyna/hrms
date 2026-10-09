@@ -1359,6 +1359,7 @@ def return_timesheet_entries(name: str, entries, reason: str, stage: str = "proj
 	entries = frappe.parse_json(entries) if isinstance(entries, str) else entries
 	if not isinstance(entries, list) or not entries or any(not isinstance(item, str) for item in entries):
 		frappe.throw(_("Select at least one time entry."))
+	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
 	check_hr_review_permission(doc, "write")
 	if not cint(doc.custom_is_weekly) or doc.docstatus != 0:
@@ -1369,6 +1370,7 @@ def return_timesheet_entries(name: str, entries, reason: str, stage: str = "proj
 	draft = doc.custom_weekly_status == WEEKLY_DRAFT
 	if stage == "hr":
 		_require_hr()
+		_refresh_review_routing(doc)
 		if not draft and doc.custom_weekly_status not in {PENDING_HR, CORRECTION_REQUIRED}:
 			frappe.throw(_("This weekly timesheet is not ready for HR review."))
 	elif stage == "project":
@@ -1440,9 +1442,11 @@ def hr_return_weekly_timesheet(name: str, reason: str):
 	if not (reason or "").strip():
 		frappe.throw(_("A return reason is required."))
 
+	frappe.db.sql("SELECT name FROM `tabTimesheet` WHERE name=%s FOR UPDATE", name)
 	doc = frappe.get_doc("Timesheet", name)
 	check_hr_review_permission(doc, "write")
-	if not cint(doc.custom_is_weekly) or doc.custom_weekly_status != PENDING_HR:
+	_refresh_review_routing(doc)
+	if not cint(doc.custom_is_weekly) or doc.docstatus != 0 or not doc.custom_weekly_submitted_at or doc.custom_weekly_status != PENDING_HR:
 		frappe.throw(_("This weekly timesheet is not ready for HR review."))
 
 	for row in doc.custom_project_approvals:

@@ -19,10 +19,59 @@ class TestIncrementalReviews(unittest.TestCase):
   def throw(message,*args): raise ValueError(message)
   self.doc=Record(name='week',employee='worker',employee_name='Worker',docstatus=0,custom_is_weekly=1,custom_weekly_status='Draft',custom_weekly_submitted_at=None,custom_week_start='2026-10-04',modified='v1',time_logs=[self.log('one'),self.log('two')],custom_project_approvals=[],flags=Record())
   self.env=dict(check_hr_review_permission=lambda *a,**k:None,hashlib=hashlib,json=json,frappe=NS(parse_json=json.loads,session=NS(user='lead'),db=NS(sql=lambda *a:None),get_doc=lambda *a:self.doc,throw=throw,PermissionError=ValueError), _=lambda s:s,flt=lambda x:float(x or 0),cint=lambda x:int(x or 0),get_datetime=datetime.fromisoformat,now_datetime=lambda:datetime(2026,10,6),_project_lead_user=lambda p:'lead',_project_lead_employee=lambda p:'lead-employee',_project_manager_user=lambda p:'manager',_employee_user=lambda e:'worker',_is_hr=lambda:False,_employee_has_active_account=lambda e:True,_team_review_blockers=lambda d:[],_refresh_ready_lead_weeks=lambda *a:None,_notify=lambda *a:None,_hr_users=lambda:[],_serialize_weekly=lambda d:d,_mark_correction=lambda d,*a:setattr(d,'custom_weekly_status','Correction Required'),WEEKLY_DRAFT='Draft',PENDING_PROJECT='Pending Project Approval',CORRECTION_REQUIRED='Correction Required',PENDING_HR='Pending HR Review',CLOSED='Closed',APPROVAL_PENDING='Pending',APPROVAL_APPROVED='Approved',APPROVAL_RETURNED='Returned',APPROVAL_HR='HR Review')
-  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns','submit_weekly_timesheet','reset_project_review'}
+  names={'_entry_revision','_entry_reviews','_set_project_approvals','_project_reviews_ready','_refresh_review_routing','review_saved_project_entries','reopen_weekly_timesheet','_assert_employee_owns','submit_weekly_timesheet','reset_project_review','return_timesheet_entries','hr_return_weekly_timesheet'}
   nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in names]
   for n in nodes:n.decorator_list=[]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
+ def prepare_hr_return(self):
+  nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in {'_mark_correction','_correction_scope'}]
+  exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
+  self.env['frappe'].as_json=json.dumps
+  self.doc.custom_weekly_status='Pending Project Approval'
+  self.doc.custom_weekly_submitted_at='submitted'
+  self.env['_project_lead_user']=lambda p:'worker'
+  self.env['_project_lead_employee']=lambda p:'worker'
+  self.env['_require_hr']=lambda:None
+  self.env['_is_hr']=lambda:True
+  self.env['frappe'].session.user='hr'
+ def test_hr_selected_return_uses_same_routing_as_display(self):
+  self.prepare_hr_return()
+  times=copy.deepcopy(self.doc.time_logs)
+  result=self.env['return_timesheet_entries']('week',['one'],'Check this entry',stage='hr')
+  self.assertEqual(result,{'status':'Correction Required','returned':1})
+  self.assertEqual([{k:v for k,v in row.items() if k!='custom_return_reason'} for row in self.doc.time_logs],times)
+  self.assertEqual(self.doc.time_logs[0].custom_return_reason,'Check this entry')
+  self.assertIsNone(self.doc.time_logs[1].custom_return_reason)
+  self.assertEqual(json.loads(self.doc.custom_correction_scope)['entries'],['one'])
+  self.assertTrue(self.doc.saved)
+ def test_hr_whole_week_return_uses_same_routing_as_display(self):
+  self.prepare_hr_return()
+  times=copy.deepcopy(self.doc.time_logs)
+  result=self.env['hr_return_weekly_timesheet']('week','Check the week')
+  self.assertEqual(result.custom_weekly_status,'Correction Required')
+  self.assertEqual([{k:v for k,v in row.items() if k!='custom_return_reason'} for row in self.doc.time_logs],times)
+  self.assertEqual(json.loads(self.doc.custom_correction_scope)['entries'],['one','two'])
+ def test_hr_returns_reject_incomplete_project_review(self):
+  self.prepare_hr_return()
+  self.env['_project_lead_user']=lambda p:'other-lead'
+  self.env['_project_lead_employee']=lambda p:'other-worker'
+  for action in (lambda:self.env['return_timesheet_entries']('week',['one'],'Check',stage='hr'),lambda:self.env['hr_return_weekly_timesheet']('week','Check')):
+   with self.assertRaisesRegex(ValueError,'not ready'):action()
+  self.assertFalse(self.doc.saved)
+ def test_whole_week_return_rejects_unsubmitted_and_finalized(self):
+  self.prepare_hr_return()
+  self.doc.custom_weekly_submitted_at=None
+  self.doc.custom_weekly_status='Pending HR Review'
+  with self.assertRaisesRegex(ValueError,'not ready'):self.env['hr_return_weekly_timesheet']('week','Check')
+  self.doc.custom_weekly_submitted_at='submitted';self.doc.docstatus=1
+  with self.assertRaisesRegex(ValueError,'not ready'):self.env['hr_return_weekly_timesheet']('week','Check')
+ def test_hr_return_locks_before_read(self):
+  self.prepare_hr_return()
+  events=[]
+  self.env['frappe'].db.sql=lambda *a:events.append('lock')
+  self.env['frappe'].get_doc=lambda *a:(events.append('read') or self.doc)
+  self.env['return_timesheet_entries']('week',['one'],'Check',stage='hr')
+  self.assertEqual(events[:2],['lock','read'])
  def test_hr_exception_requires_reason(self):
   self.env['_is_hr']=lambda:True
   self.env['frappe'].session.user='hr'
