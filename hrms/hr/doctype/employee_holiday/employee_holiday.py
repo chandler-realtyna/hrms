@@ -9,6 +9,8 @@ from frappe.utils import getdate
 
 class EmployeeHoliday(Document):
 	def validate(self):
+		from hrms.utils.personal_scope import validate_personal_request
+		validate_personal_request(self)
 		self.validate_dates()
 		self.validate_duplicate_submission()
 		self.validate_status_transition()
@@ -113,9 +115,12 @@ class EmployeeHoliday(Document):
 		"""Create (or rebuild) a per-employee Holiday List and link it here."""
 		from hrms.hr.leave_policy_setup import _weekend_dates
 
-		hl_name = f"{self.employee_name} - {self.year}"
+		from hrms.utils.employee_holiday_calendar import personal_calendar_name, ensure_calendar_not_shared
+
+		hl_name = personal_calendar_name(self.employee, self.year)
 
 		if frappe.db.exists("Holiday List", hl_name):
+			ensure_calendar_not_shared(hl_name, self.employee)
 			hl = frappe.get_doc("Holiday List", hl_name)
 			hl.set("holidays", [])
 		else:
@@ -176,26 +181,9 @@ class EmployeeHoliday(Document):
 
 
 def _notify_hr_holiday_submission(doc):
-	"""Email all HR Managers when an employee submits their holiday selection."""
-	hr_emails = _get_hr_emails()
-	if not hr_emails:
-		return
-
-	desk_url = frappe.utils.get_url(f"/app/employee-holiday/{doc.name}")
-	subject = f"[HRMS] Holiday Request Submitted – {doc.employee_name} ({doc.year})"
-	message = f"""
-	<p>Hello,</p>
-	<p><b>{doc.employee_name}</b> has submitted their personal holiday selection for <b>{doc.year}</b>
-	and is awaiting your approval.</p>
-	<p>
-		<a href="{desk_url}" style="background:#3b82f6;color:#fff;padding:8px 18px;
-		border-radius:6px;text-decoration:none;font-weight:600;">Review Request</a>
-	</p>
-	<p style="color:#6b7280;font-size:13px;">
-		Record: {doc.name} &nbsp;·&nbsp; Employee: {doc.employee}
-	</p>
-	"""
-	frappe.sendmail(recipients=hr_emails, subject=subject, message=message)
+	"""Send the approved minimal submission alert only to the HR inbox."""
+	from hrms.utils.review_notifications import queue_review_email
+	queue_review_email(doc)
 
 
 def _notify_employee_holiday_approved(doc):

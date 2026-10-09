@@ -47,7 +47,19 @@ fail() { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 # Run a command on the server. Never enable tracing: secrets may be in env.
 rssh() {
 	ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=20 \
+		-o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
 		-p "$SSH_PORT" "$SSH_USER@$SERVER" "$@"
+}
+
+# Retry only read-only probes; replaying migration or activation is unsafe.
+rssh_read() {
+	local attempt result
+	for attempt in 1 2 3; do
+		if rssh "$@"; then return 0; else result=$?; fi
+		[ "$result" = "255" ] || return "$result"
+		sleep 5
+	done
+	return "$result"
 }
 
 release_lock() {
@@ -70,6 +82,8 @@ PLAN_ONLY=0
 ROLLBACK=0
 BOOTSTRAP=""
 BREAK_LOCK=0
+RESUME_BUILD=0
+PREVIOUS_OVERRIDE_FROM=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--target)    TARGET="${2:?}"; shift 2 ;;
@@ -77,10 +91,15 @@ while [ $# -gt 0 ]; do
 		--plan-only) PLAN_ONLY=1; shift ;;
 		--bootstrap) BOOTSTRAP="${2:?}"; shift 2 ;;
 		--break-lock) BREAK_LOCK=1; shift ;;
+		--resume-build) RESUME_BUILD=1; shift ;;
+		--previous-override-from) PREVIOUS_OVERRIDE_FROM="${2:?}"; shift 2 ;;
 		-h|--help) usage ;;
 		*) fail "unknown flag: $1 (see --help)" ;;
 	esac
 done
+if [ -n "$PREVIOUS_OVERRIDE_FROM" ] && ! [[ "$PREVIOUS_OVERRIDE_FROM" =~ ^deploy-[0-9]{8}-[0-9]{6}$ ]]; then
+	fail "previous override must name an exact deployment id"
+fi
 
 command -v python3 >/dev/null || fail "python3 is required (planner)"
 [ -f "$SSH_KEY" ] || fail "SSH key not found: $SSH_KEY"
@@ -104,8 +123,16 @@ fi
 # Target must exist on origin — the server clones from there.
 # (Capture first: piping a live command into `grep -q` races SIGPIPE.)
 LSR="$(git ls-remote origin 2>/dev/null)" || fail "cannot reach origin"
-printf '%s\n' "$LSR" | grep -q "^$TARGET" \
-	|| fail "target $TARGET is not on origin — push first (only pushed commits deploy)"
+TARGET_ON_ORIGIN=0
+while read -r REMOTE_SHA REMOTE_REF; do
+	if git cat-file -e "$REMOTE_SHA^{commit}" 2>/dev/null \
+		&& git merge-base --is-ancestor "$TARGET" "$REMOTE_SHA"; then
+		TARGET_ON_ORIGIN=1
+		break
+	fi
+done <<< "$LSR"
+[ "$TARGET_ON_ORIGIN" = "1" ] \
+	|| fail "target $TARGET is not reachable from origin — push first (only pushed commits deploy)"
 log "target commit: $TARGET"
 
 # ------------------------------------------------------- 2. remote state -----
@@ -195,7 +222,29 @@ log "release ready: $RELEASES_DIR/$TARGET (exact sha, immutable)"
 # ------------------------------------------------------- 7. compose override -
 # Dual mounts (app source + served assets) for every app service. Written but
 # inert until containers are recreated in step 8.
-rssh "cat > '$REMOTE_DIR/$OVERRIDE_FILE' <<'OVERRIDEEOF'
+OVERRIDE_BACKUP="$REMOTE_DIR/$OVERRIDE_FILE.backup-deploy-$DEPLOY_ID"
+PREVIOUS_OVERRIDE="$REMOTE_DIR/$OVERRIDE_FILE"
+if [ -n "$PREVIOUS_OVERRIDE_FROM" ]; then
+	PREVIOUS_OVERRIDE="$REMOTE_DIR/$OVERRIDE_FILE.backup-deploy-$PREVIOUS_OVERRIDE_FROM"
+	log "using verified previous override from $PREVIOUS_OVERRIDE_FROM (interrupted activation recovery)"
+fi
+rssh "set -e
+if [ -f '$PREVIOUS_OVERRIDE' ]; then
+  grep -qx '# Release: $ACTIVE_SHA' '$PREVIOUS_OVERRIDE'
+  cp '$PREVIOUS_OVERRIDE' '$OVERRIDE_BACKUP'
+else
+  test -z '$PREVIOUS_OVERRIDE_FROM'
+  printf 'services: {}\n' > '$OVERRIDE_BACKUP'
+fi" \
+	|| fail "cannot snapshot the previous release mounts"
+FRONTEND_COMMAND=""
+FRONTEND_PROXY_MOUNT=""
+if git cat-file -e "$TARGET:deploy/nginx.conf" 2>/dev/null; then
+	FRONTEND_COMMAND='    command: ["nginx", "-g", "daemon off;"]'
+	FRONTEND_PROXY_MOUNT="      - $RELEASES_DIR/$TARGET/deploy/nginx.conf:/etc/nginx/conf.d/frappe.conf:ro"
+fi
+rssh "set -e
+cat > '$REMOTE_DIR/$OVERRIDE_FILE' <<'OVERRIDEEOF'
 # Managed by deploy/deploy.sh — release mounts. DO NOT EDIT MANUALLY.
 # Release: $TARGET
 services:
@@ -206,9 +255,11 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: \"1\"
   frontend:
+$FRONTEND_COMMAND
     volumes:
       - $RELEASES_DIR/$TARGET:/home/frappe/frappe-bench/apps/hrms:ro
       - $RELEASES_DIR/$TARGET/hrms/public:/home/frappe/frappe-bench/assets/hrms:ro
+$FRONTEND_PROXY_MOUNT
   websocket:
     volumes:
       - $RELEASES_DIR/$TARGET:/home/frappe/frappe-bench/apps/hrms:ro
@@ -232,8 +283,9 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: \"1\"
 OVERRIDEEOF
+grep -qx '# Release: $TARGET' '$REMOTE_DIR/$OVERRIDE_FILE'
 cd '$REMOTE_DIR' && sudo docker compose -f compose.yaml -f '$OVERRIDE_FILE' config -q" \
-	|| fail "override compose config invalid"
+	|| fail "cannot write or validate the exact release override"
 # NOTE: pwd.yml is deliberately NOT included. It redefines the app services
 # with a stale hardcoded image (realtyna-erpnext-hrms:16, which does not
 # exist). App operations use compose.yaml only (image via $CUSTOM_TAG);
@@ -257,16 +309,29 @@ if [ "$CLASS" = "full" ]; then
 	BUST="deploy-$SHORT-$(date -u +%s)"
 	OPS="$OPS|image-build:$NEW_TAG"
 	log "building image $NEW_TAG (full path)"
-	rssh "cd '$REMOTE_DIR' && setsid nohup sudo docker build --progress=plain --secret id=apps_json,src=/tmp/apps-timer.json --build-arg FRAPPE_PATH=https://github.com/frappe/frappe --build-arg FRAPPE_BRANCH=v16.18.3 --build-arg CACHE_BUST=$BUST --tag realtyna-erpnext-hrms:$NEW_TAG -f images/custom/Containerfile . > '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log' 2>&1 < /dev/null & echo started" \
-		|| fail "build launch failed"
-	# wait for completion (up to ~60 min)
-	for _ in $(seq 1 120); do
-		sleep 30
-		if ! rssh "ps aux | grep -q '[C]ACHE_BUST=$BUST'" 2>/dev/null; then break; fi
-	done
-	rssh "sudo docker images 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Repository}}'" > /tmp/deploy-img-check 2>/dev/null || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
-	grep -q realtyna /tmp/deploy-img-check || fail "image build failed — see $LOG_DIR/build-$NEW_TAG.log on server"
-	rm -f /tmp/deploy-img-check
+	if rssh_read "ps aux | grep -q '[d]ocker build .*--tag realtyna-erpnext-hrms:$NEW_TAG '"; then
+		fail "image build is still running; refusing to activate or start another build"
+	else
+		PROBE_STATUS=$?
+		[ "$PROBE_STATUS" = "1" ] || fail "cannot verify build process state"
+	fi
+	if [ "$RESUME_BUILD" = "1" ]; then
+		log "resuming completed image build (digest and completion proof required)"
+	else
+		rssh "cd '$REMOTE_DIR' && setsid nohup sudo docker build --progress=plain --secret id=apps_json,src=/tmp/apps-timer.json --build-arg FRAPPE_PATH=https://github.com/frappe/frappe --build-arg FRAPPE_BRANCH=v16.18.3 --build-arg CACHE_BUST=$BUST --tag realtyna-erpnext-hrms:$NEW_TAG -f images/custom/Containerfile . > '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log' 2>&1 < /dev/null & echo started" \
+			|| fail "build launch failed"
+		for _ in $(seq 1 120); do
+			sleep 30
+			if rssh_read "ps aux | grep -q '[C]ACHE_BUST=$BUST'" 2>/dev/null; then continue; else PROBE_STATUS=$?; fi
+			[ "$PROBE_STATUS" = "1" ] && break
+			log "build status unavailable; preserving the running build and retrying"
+		done
+	fi
+	IMAGE_ID="$(rssh_read "sudo docker image inspect 'realtyna-erpnext-hrms:$NEW_TAG' --format '{{.Id}}'")" \
+		|| fail "image build incomplete — see $LOG_DIR/build-$NEW_TAG.log on server"
+	rssh_read "cat '$REMOTE_DIR/$LOG_DIR/build-$NEW_TAG.log'" \
+		| python3 "$SCRIPT_DIR/verify_image_build.py" --image-id "$IMAGE_ID" --tag "realtyna-erpnext-hrms:$NEW_TAG" \
+		|| fail "image build completion/digest proof failed — refusing activation"
 	log "image built: $NEW_TAG"
 	rssh "cp '$REMOTE_DIR/.env' '$REMOTE_DIR/.env.backup-deploy-$DEPLOY_ID' && sed -i 's/^CUSTOM_TAG=.*/CUSTOM_TAG=$NEW_TAG/' '$REMOTE_DIR/.env'"
 	OPS="$OPS|tag-flip:$SNAP_TAG->$NEW_TAG"
@@ -288,6 +353,9 @@ log "activating release (recreate: $SERVICES)"
 cx up -d --force-recreate --no-deps $SERVICES >/dev/null \
 	|| fail "container recreate failed"
 OPS="$OPS|recreate:$SERVICES"
+rssh "cd '$REMOTE_DIR' && IDS=\$(sudo docker compose $CFILES ps -q $SERVICES) && test -n \"\$IDS\" && sudo docker inspect \$IDS" \
+	| python3 "$SCRIPT_DIR/verify_release_mounts.py" --release "$RELEASES_DIR/$TARGET" \
+	|| fail "active release mounts do not match the exact target — refusing migration/state advance"
 
 if [ "$NEED_MIGRATE" = "1" ]; then
 	if MIGRATE_OUT="$(cx exec -T backend bench --site $SITE migrate 2>&1)"; then
@@ -295,7 +363,8 @@ if [ "$NEED_MIGRATE" = "1" ]; then
 	else
 		# Automatic recovery: code back to previous release, state untouched.
 		log "MIGRATE FAILED — recovering previous release $ACTIVE_SHA"
-		rssh "sed -i 's|^\(\s*-\s*\).*apps/hrms:ro$|\1$RELEASES_DIR/$ACTIVE_SHA:/home/frappe/frappe-bench/apps/hrms:ro|; s|^\(\s*-\s*\).*assets/hrms:ro$|\1$RELEASES_DIR/$ACTIVE_SHA/hrms/public:/home/frappe/frappe-bench/assets/hrms:ro|' '$REMOTE_DIR/$OVERRIDE_FILE'"
+		rssh "cp '$OVERRIDE_BACKUP' '$REMOTE_DIR/$OVERRIDE_FILE' && sed -i 's/^CUSTOM_TAG=.*/CUSTOM_TAG=$SNAP_TAG/' '$REMOTE_DIR/.env'" \
+			|| fail "migrate failed and previous release configuration could not be restored"
 		cx up -d --force-recreate --no-deps $SERVICES >/dev/null || true
 		printf '%s\n' "$MIGRATE_OUT" | tail -n 5 >&2
 		fail "migrate failed; code rolled back to $ACTIVE_SHA (DB may be partially migrated — backup $BACKUP_ID recorded; inspect tabPatch Log)"
@@ -303,8 +372,17 @@ if [ "$NEED_MIGRATE" = "1" ]; then
 	OPS="$OPS|migrate:ok"
 fi
 
-cx exec -T backend bench --site $SITE clear-cache >/dev/null \
-	|| fail "clear-cache failed"
+CACHE_CLEARED=0
+# Cache invalidation is idempotent; never apply this retry to migration/activation.
+for _ in 1 2 3; do
+	if cx exec -T backend bench --site $SITE clear-cache >/dev/null; then
+		CACHE_CLEARED=1
+		break
+	else CACHE_STATUS=$?; fi
+	[ "$CACHE_STATUS" = "255" ] || fail "clear-cache failed"
+	sleep 5
+done
+[ "$CACHE_CLEARED" = "1" ] || fail "clear-cache connection failed"
 OPS="$OPS|clear-cache"
 
 # ------------------------------------------------------- 9. health gate -----
@@ -312,14 +390,14 @@ log "health verification (polling, no blind sleeps)"
 HEALTH="pending"
 for _ in $(seq 1 18); do
 	sleep 10
-	if rssh "cd '$REMOTE_DIR' && sudo docker compose $CFILES ps --format '{{.Name}} {{.State}}' 2>/dev/null | grep -E 'backend-1|frontend-1|websocket-1|scheduler-1|queue-short-1|queue-long-1' | grep -qv 'running'" 2>/dev/null; then
+	if rssh_read "cd '$REMOTE_DIR' && sudo docker compose $CFILES ps --format '{{.Name}} {{.State}}' 2>/dev/null | grep -E 'backend-1|frontend-1|websocket-1|scheduler-1|queue-short-1|queue-long-1' | grep -qv 'running'" 2>/dev/null; then
 		continue
 	fi
-	UP="$(rssh "curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1:8080/hrms'")"
-	PONG="$(rssh "curl -s --max-time 8 'http://127.0.0.1:8080/api/method/frappe.ping'")"
-	RD="$(rssh "sudo docker exec frappe_docker-redis-cache-1 redis-cli ping 2>/dev/null; sudo docker exec frappe_docker-redis-queue-1 redis-cli ping 2>/dev/null")"
-	DBOK="$(rssh "RPW=\$(grep MARIADB_ROOT_PASSWORD '$REMOTE_DIR/pwd.yml' | head -n 1 | cut -d: -f2 | tr -d '[:space:]'); sudo docker exec frappe_docker-db-1 mariadb -uroot -p\$RPW -N -e 'SELECT 1' 2>/dev/null")"
-	ASSET="$(rssh "REL='$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'; SRV=\$(sudo docker ps --format '{{.Names}}' | grep 'frontend-1' | head -n 1); WANT=\$(grep -o 'assets/index-[^\"]*\.js' \"\$REL\" | head -n 1); sudo docker exec \"\$SRV\" test -f \"/home/frappe/frappe-bench/sites/assets/hrms/frontend/\$WANT\" && echo ok")"
+	UP="$(rssh_read "curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1:8080/hrms'")"
+	PONG="$(rssh_read "curl -s --max-time 8 'http://127.0.0.1:8080/api/method/frappe.ping'")"
+	RD="$(rssh_read "sudo docker exec frappe_docker-redis-cache-1 redis-cli ping 2>/dev/null; sudo docker exec frappe_docker-redis-queue-1 redis-cli ping 2>/dev/null")"
+	DBOK="$(rssh_read "RPW=\$(grep MARIADB_ROOT_PASSWORD '$REMOTE_DIR/pwd.yml' | head -n 1 | cut -d: -f2 | tr -d '[:space:]'); sudo docker exec frappe_docker-db-1 mariadb -uroot -p\$RPW -N -e 'SELECT 1' 2>/dev/null")"
+	ASSET="$(rssh_read "REL='$RELEASES_DIR/$TARGET/hrms/public/frontend/index.html'; SRV=\$(sudo docker ps --format '{{.Names}}' | grep 'frontend-1' | head -n 1); WANT=\$(grep -o 'assets/index-[^\"]*\.js' \"\$REL\" | head -n 1); sudo docker exec \"\$SRV\" test -f \"/home/frappe/frappe-bench/sites/assets/hrms/frontend/\$WANT\" && echo ok")"
 	if [ "$UP" = "200" ] && printf '%s' "$PONG" | grep -q pong \
 		&& [ "$RD" = "$(printf 'PONG\nPONG')" ] && [ "$DBOK" = "1" ] && [ "$ASSET" = "ok" ]; then
 		HEALTH="ok"

@@ -97,8 +97,7 @@
 								Join with Google Meet
 							</a>
 							<p v-if="confirmedMeetLink" style="font-size:.75rem;color:#94a3b8;margin-bottom:1rem">A calendar invite was sent to {{ bookerEmail }}</p>
-							<button v-if="!linkToken" @click="resetForm" class="link-btn" style="margin-top:.5rem">Book another time</button>
-							<p v-else style="font-size:.75rem;color:#94a3b8;margin-top:.5rem">This was a single-use link and has now expired.</p>
+							<button @click="resetForm" class="link-btn" style="margin-top:.5rem">Book another time</button>
 						</div>
 
 						<!-- Split layout -->
@@ -321,21 +320,15 @@ import { IonPage, IonContent } from "@ionic/vue"
 
 const route = useRoute()
 const slug = route.params.slug
-const linkToken = route.params.token || null
 const __ = (str) => str
 
 // ── Page data ──────────────────────────────────────
 const notFound = ref(false)
 const pageInfo = ref({ loading: true, data: null })
 
-function pageInfoUrl() {
-	const base = `/api/method/hrms.api.calendar.get_booking_page_info?slug=${encodeURIComponent(slug)}`
-	return linkToken ? `${base}&token=${encodeURIComponent(linkToken)}` : base
-}
-
 async function loadPageInfo() {
 	try {
-		const res = await fetch(pageInfoUrl())
+		const res = await fetch(`/api/method/hrms.api.calendar.get_booking_page_info?slug=${encodeURIComponent(slug)}`)
 		const json = await res.json()
 		if (json.exc || !json.message) { notFound.value = true }
 		else { pageInfo.value = { loading: false, data: json.message } }
@@ -574,9 +567,7 @@ async function loadSlots() {
 	if (!selectedDate.value||!selectedDuration.value) return
 	selectedSlot.value = null; slotsLoading.value = true; slots.value = []; slotsError.value = ""
 	try {
-		const args = { slug, date:selectedDate.value, duration_minutes:selectedDuration.value }
-		if (linkToken) args.token = linkToken
-		const res = await callApi("hrms.api.calendar.get_available_slots", args)
+		const res = await callApi("hrms.api.calendar.get_available_slots",{ slug, date:selectedDate.value, duration_minutes:selectedDuration.value })
 		slots.value = res?.slots || []
 		slotsTimezone.value = res?.timezone || ""
 	} catch(e) { slots.value = []; slotsError.value = e?.message || "" }
@@ -589,14 +580,12 @@ async function submitBooking() {
 	try {
 		const startStr = `${selectedDate.value} ${selectedSlot.value.start}:00`
 		const endStr   = `${selectedDate.value} ${selectedSlot.value.end}:00`
-		const args = {
+		const result = await callApi("hrms.api.calendar.create_booking",{
 			slug, start:startStr, end:endStr,
 			booker_name:bookerName.value.trim(), booker_email:bookerEmail.value.trim().toLowerCase(),
 			title:meetingTitle.value.trim(), description:meetingDescription.value.trim(),
 			timezone: slotsTimezone.value,
-		}
-		if (linkToken) args.token = linkToken
-		const result = await callApi("hrms.api.calendar.create_booking", args)
+		})
 		confirmedTitle.value   = meetingTitle.value
 		confirmedStart.value   = startStr
 		confirmedMeetLink.value = result?.meet_link||""

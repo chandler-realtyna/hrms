@@ -1,0 +1,10 @@
+{
+ "doctype": "Page",
+ "name": "admin-reviews",
+ "page_name": "admin-reviews",
+ "title": "Admin Reviews",
+ "module": "HR",
+ "standard": "Yes",
+ "system_page": 1,
+ "roles": []
+}

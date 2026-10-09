@@ -226,61 +226,6 @@
 										{{ __("Save Booking Settings") }}
 									</Button>
 								</div>
-
-								<!-- Single-use links: one meeting per link -->
-								<div class="border-t border-gray-100 pt-4 space-y-3">
-									<div>
-										<p class="text-sm font-medium text-gray-800">
-											{{ __("Single-use links") }}
-										</p>
-										<p class="text-xs text-gray-400">
-											{{ __("Each link works for one meeting, then stops working.") }}
-										</p>
-									</div>
-
-									<Button
-										variant="subtle"
-										class="w-full"
-										:loading="generatingLink"
-										@click="generateSingleUseLink"
-									>
-										{{ __("Generate single-use link") }}
-									</Button>
-
-									<div
-										v-if="newSingleUseLink"
-										class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2"
-									>
-										<span class="text-xs text-gray-500 truncate flex-1"
-											>{{ newSingleUseLink }}</span
-										>
-										<button
-											@click="copySingleUseLink"
-											class="text-gray-400 hover:text-blue-600 shrink-0"
-											:title="__('Copy link')"
-										>
-											<FeatherIcon name="copy" class="w-3.5 h-3.5" />
-										</button>
-									</div>
-
-									<div
-										v-for="link in singleUseLinks"
-										:key="link.name"
-										class="flex items-center gap-2 text-xs text-gray-500"
-									>
-										<span class="truncate flex-1">
-											…{{ link.token_tail }} · {{ (link.creation || "").slice(0, 16).replace("T", " ") }}
-											<span v-if="link.used" class="text-gray-400">· {{ __("used") }}</span>
-										</span>
-										<button
-											v-if="!link.used"
-											@click="revokeSingleUseLink(link.name)"
-											class="text-gray-400 hover:text-red-600 shrink-0"
-										>
-											{{ __("Revoke") }}
-										</button>
-									</div>
-								</div>
 							</template>
 						</div>
 
@@ -357,7 +302,6 @@ const bookingSettings = createResource({
 		bookingEnabled.value = Boolean(data.booking_enabled)
 		minNoticeHours.value = data.min_notice_hours ?? 1
 		slotDurationOptions.value = data.slot_duration_options || "30,60"
-		loadSingleUseLinks()
 	},
 })
 
@@ -366,74 +310,6 @@ const bookingEnabled = ref(false)
 const minNoticeHours = ref(1)
 const slotDurationOptions = ref("30,60")
 const savingSettings = ref(false)
-
-// Single-use booking links (owner-only; full token shown once at creation)
-const singleUseLinks = ref([])
-const newSingleUseLink = ref("")
-const generatingLink = ref(false)
-
-async function loadSingleUseLinks() {
-	try {
-		singleUseLinks.value = await call("hrms.api.calendar.list_booking_links")
-	} catch {
-		singleUseLinks.value = []
-	}
-}
-
-async function generateSingleUseLink() {
-	generatingLink.value = true
-	newSingleUseLink.value = ""
-	try {
-		const result = await call("hrms.api.calendar.create_booking_link")
-		newSingleUseLink.value = result?.link || ""
-		await loadSingleUseLinks()
-	} catch (e) {
-		toast({
-			title: __("Error"),
-			text: e?.messages?.[0] || e?.message || __("Failed to generate link"),
-			icon: "alert-circle",
-			position: "bottom-center",
-			iconClasses: "text-red-500",
-		})
-	} finally {
-		generatingLink.value = false
-	}
-}
-
-async function revokeSingleUseLink(name) {
-	try {
-		await call("hrms.api.calendar.revoke_booking_link", { name })
-		await loadSingleUseLinks()
-		toast({
-			title: __("Revoked"),
-			text: __("The link no longer works"),
-			icon: "check-circle",
-			position: "bottom-center",
-			iconClasses: "text-green-500",
-		})
-	} catch (e) {
-		toast({
-			title: __("Error"),
-			text: e?.messages?.[0] || e?.message || __("Failed to revoke link"),
-			icon: "alert-circle",
-			position: "bottom-center",
-			iconClasses: "text-red-500",
-		})
-	}
-}
-
-function copySingleUseLink() {
-	if (!newSingleUseLink.value) return
-	navigator.clipboard.writeText(newSingleUseLink.value).then(() => {
-		toast({
-			title: __("Copied!"),
-			text: newSingleUseLink.value,
-			icon: "check-circle",
-			position: "bottom-center",
-			iconClasses: "text-green-500",
-		})
-	})
-}
 
 // Public booking links always use the isolated gateway domain, never the
 // internal HRMS host (guests must not touch the main site).

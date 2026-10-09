@@ -27,8 +27,13 @@ add_to_apps_screen = [
 app_include_js = [
 	"hrms.bundle.js",
 	"/assets/hrms/js/avatar_settings.js",
+	"/assets/hrms/js/desk_utilities.js",
 ]
-app_include_css = "hrms.bundle.css"
+app_include_css = ["hrms.bundle.css", "/assets/hrms/css/admin_reviews.css?v=20261002-shared-v1"]
+
+page_js = {"admin-reviews": "public/js/admin_reviews.js"}
+boot_session = ["hrms.api.admin_desk.set_admin_reviews_home"]
+standard_queries = {"Project": "hrms.utils.master_access.project_lookup"}
 
 # website
 
@@ -57,7 +62,10 @@ doctype_js = {
 	"Delivery Trip": "public/js/erpnext/delivery_trip.js",
 	"Bank Transaction": "public/js/erpnext/bank_transaction.js",
 }
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+	name: "public/js/review_company_filters.js"
+	for name in ("Leave Application", "Expense Claim", "Employee Invoice", "Employee Holiday", "Employee Schedule")
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -139,11 +147,32 @@ before_app_uninstall = "hrms.setup.before_app_uninstall"
 # Permissions evaluated in scripted ways
 
 permission_query_conditions = {
+	"User": "hrms.utils.master_access.user_query",
+	"Project": "hrms.utils.master_access.project_query",
+	"Employee Booking Settings": "hrms.utils.master_access.booking_settings_query",
+	"Meeting Booking": "hrms.utils.master_access.meeting_query",
+	"Employee": "hrms.utils.personal_scope.employee_query",
+	"Employee Schedule": "hrms.utils.personal_scope.schedule_query",
+	"Employee Holiday": "hrms.utils.personal_scope.holiday_query",
+	"Timesheet": "hrms.utils.personal_scope.timesheet_query",
+	"Leave Application": "hrms.utils.personal_scope.leave_query",
+	"Expense Claim": "hrms.utils.personal_scope.expense_query",
 	"Employee Invoice": "hrms.api.employee_invoice.employee_invoice_query_conditions",
 	"PWA Notification": "hrms.hr.doctype.pwa_notification.pwa_notification.pwa_notification_query_conditions",
 }
 
 has_permission = {
+	"User": "hrms.utils.master_access.user_permission",
+	"Project": "hrms.utils.master_access.project_permission",
+	"Employee Booking Settings": "hrms.utils.personal_scope.has_personal_permission",
+	"Meeting Booking": "hrms.utils.master_access.meeting_permission",
+	"Activity Type": "hrms.utils.master_access.activity_permission",
+	"Employee": "hrms.utils.personal_scope.has_personal_permission",
+	"Employee Schedule": "hrms.utils.personal_scope.has_personal_permission",
+	"Employee Holiday": "hrms.utils.personal_scope.has_personal_permission",
+	"Timesheet": "hrms.utils.personal_scope.has_personal_permission",
+	"Leave Application": "hrms.utils.personal_scope.has_personal_permission",
+	"Expense Claim": "hrms.utils.personal_scope.has_personal_permission",
 	"Employee Invoice": "hrms.api.employee_invoice.employee_invoice_has_permission",
 	"PWA Notification": "hrms.hr.doctype.pwa_notification.pwa_notification.pwa_notification_has_permission",
 }
@@ -166,12 +195,16 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Leave Application": {"before_validate": "hrms.utils.leave_routing.route_personal_leave"},
 	"User": {
 		"validate": [
 			"erpnext.setup.doctype.employee.employee.validate_employee_role",
 			"hrms.overrides.employee_master.update_approver_user_roles",
 		],
-		"on_update": "hrms.api.sync_user_image_to_employee",
+		"on_update": [
+			"hrms.api.sync_user_image_to_employee",
+			"hrms.utils.company_desk.sync_director_scope",
+		],
 	},
 	"Company": {
 		"validate": "hrms.overrides.company.validate_default_accounts",
@@ -185,7 +218,11 @@ doc_events = {
 		"on_update": "hrms.utils.holiday_list.invalidate_cache",
 		"on_trash": "hrms.utils.holiday_list.invalidate_cache",
 	},
-	"Timesheet": {"validate": "hrms.hr.utils.validate_active_employee"},
+	"Timesheet": {
+		"validate": "hrms.hr.utils.validate_active_employee",
+		"on_update": "hrms.utils.week_notifications.publish_week_change",
+		"on_submit": "hrms.utils.week_notifications.publish_week_change",
+	},
 	"Payment Entry": {
 		"on_submit": "hrms.hr.doctype.expense_claim.expense_claim.update_payment_for_expense_claim",
 		"on_cancel": "hrms.hr.doctype.expense_claim.expense_claim.update_payment_for_expense_claim",
@@ -216,6 +253,7 @@ doc_events = {
 			"hrms.overrides.employee_master.update_approver_role",
 			"hrms.overrides.employee_master.publish_update",
 			"hrms.hr.leave_policy_setup.ensure_employee_current_leave_allocations",
+			"hrms.utils.company_desk.sync_employee_director_scope",
 		],
 		"after_insert": "hrms.overrides.employee_master.update_job_applicant_and_offer",
 		"on_trash": "hrms.overrides.employee_master.update_employee_transfer",
@@ -229,6 +267,7 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
+	"cron": {"* * * * *": ["hrms.api.timer_state.save_paused_timers", "hrms.api.timer_state.notify_running_timers"]},
 	"all": [
 		"hrms.hr.doctype.interview.interview.send_interview_reminder",
 	],

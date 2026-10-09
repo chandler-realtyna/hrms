@@ -5,9 +5,9 @@
 				<header class="bg-white border-b px-4 py-5 sticky top-0 z-20">
 					<div class="max-w-5xl mx-auto flex items-center justify-between gap-3">
 						<div class="flex items-center gap-2">
-							<router-link :to="{ name: 'Home' }" class="md:hidden text-gray-500" :aria-label="__('Back')">
+							<a href="/desk" class="md:hidden text-gray-500" :aria-label="__('Back')">
 								<FeatherIcon name="chevron-left" class="h-5 w-5" />
-							</router-link>
+							</a>
 							<div>
 							<h1 class="text-xl font-semibold text-gray-900">{{ __("Invoices") }}</h1>
 							<p class="text-xs text-gray-500 mt-1">
@@ -15,14 +15,14 @@
 							</p>
 						</div>
 						</div>
-						<Button variant="solid" @click="router.push({ name: 'EmployeeInvoiceNewView' })">{{
+						<Button v-if="canCreate" variant="solid" @click="router.push({ name: 'EmployeeInvoiceNewView' })">{{
 							__("New invoice")
 						}}</Button>
 					</div>
 				</header>
 
 				<main class="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
-					<section>
+					<section v-if="canCreate">
 						<h2 class="text-sm font-semibold text-gray-700 mb-3">{{ __("My invoices") }}</h2>
 						<div
 							v-if="loading"
@@ -108,6 +108,7 @@ const router = useRouter()
 const loading = ref(true)
 const mine = ref([])
 const queue = ref([])
+const canCreate = ref(false)
 const isHR = (user.data?.roles || []).some((role) =>
 	["HR Manager", "HR User", "System Manager", "Administrator"].includes(role)
 )
@@ -131,8 +132,16 @@ function statusClass(status) {
 
 onMounted(async () => {
 	try {
-		mine.value = await call("hrms.api.employee_invoice.get_my_invoices")
+		try {
+			mine.value = await call("hrms.api.employee_invoice.get_my_invoices")
+			canCreate.value = true
+		} catch {
+			mine.value = []
+		}
 		if (isHR) queue.value = await call("hrms.api.employee_invoice.get_hr_invoice_queue")
+	} catch (error) {
+		queue.value = []
+		console.error("Failed to load employee invoice review queue", error)
 	} finally {
 		loading.value = false
 	}

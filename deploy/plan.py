@@ -76,7 +76,7 @@ def _is_schema(path: str) -> bool:
         return True
     # Desk reports / workspaces sync into the DB on migrate (a new Report doc
     # only exists after migrate) — no image rebuild needed (released via mounts).
-    if "/report/" in path or "/workspace/" in path:
+    if "/report/" in path or "/workspace/" in path or "/print_format/" in path:
         return True
     if "/doctype/" in path and path.endswith(".json"):
         return True
@@ -87,7 +87,19 @@ def _is_schema(path: str) -> bool:
 
 # Bundled by the esbuild pipeline at image-build time (not present as
 # runnable files in a release checkout) -> must go through a full build.
+RAW_DESK_ASSETS = {
+    "hrms/public/js/admin_reviews.js",
+    "hrms/public/js/desk_utilities.js",
+    "hrms/public/css/admin_reviews.css",
+}
+
+
 def _needs_esbuild(path: str) -> bool:
+    # These exact files are served directly by hooks.py/page_js and are not
+    # imported by hrms.bundle.js or hrms.bundle.scss. Other public sources
+    # remain conservative until their delivery contract is verified.
+    if path in RAW_DESK_ASSETS:
+        return False
     return path.startswith(("hrms/public/js/", "hrms/public/css/", "hrms/public/scss/"))
 
 
@@ -104,6 +116,11 @@ def _is_backend(path: str) -> bool:
 
 # Static frontend assets / Vite sources (built artifacts are committed).
 def _is_frontend(path: str) -> bool:
+    if path in RAW_DESK_ASSETS:
+        return True
+    # This release-mounted proxy file is activated by a frontend restart.
+    if path == "deploy/nginx.conf":
+        return True
     return path.startswith(
         (
             "frontend/",

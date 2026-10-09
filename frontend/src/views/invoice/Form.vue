@@ -13,7 +13,7 @@
 									{{ doc?.name || __("New invoice") }}
 								</h1>
 								<p v-if="doc" class="text-xs text-gray-500 mt-1">
-									{{ doc.employee_name }} · {{ doc.status }}
+									{{ doc.employee_name }} · {{ __(doc.status) }}
 								</p>
 							</div>
 						</div>
@@ -43,15 +43,10 @@
 
 					<section v-else-if="!doc" class="bg-white border rounded-xl p-5 max-w-lg">
 						<h2 class="font-semibold text-gray-900">{{ __("Create invoice") }}</h2>
-						<p class="text-sm text-gray-500 mt-1 mb-4">
-							{{ __("The default period starts on the same day one month before the due date.") }}
-						</p>
-						<label class="text-sm font-medium text-gray-700">{{ __("Due date") }}</label>
-						<input
-							v-model="newDueDate"
-							type="date"
-							class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-						/>
+						<div class="grid grid-cols-2 gap-3 mt-4">
+							<Field label="Issue date"><input :value="defaults.invoice_date" type="date" readonly class="field" /></Field>
+							<Field label="Due date"><input :value="defaults.due_date" type="date" readonly class="field" /></Field>
+						</div>
 						<Button variant="solid" class="mt-4 w-full" :loading="saving" @click="createInvoice">{{
 							__("Create and calculate")
 						}}</Button>
@@ -66,10 +61,11 @@
 						<section class="grid md:grid-cols-2 gap-4">
 							<div class="bg-white border rounded-xl p-5 space-y-3">
 								<h2 class="font-semibold text-gray-900">{{ __("Invoice period") }}</h2>
+								<Field label="Issue date"><input :value="doc.invoice_date" type="date" readonly class="field" /></Field>
 								<Field label="Due date"
 									><input
-										v-model="form.due_date"
-										:disabled="!effectiveEdit"
+										:value="doc.due_date"
+										readonly
 										type="date"
 										class="field"
 								/></Field>
@@ -88,7 +84,8 @@
 											class="field"
 									/></Field>
 								</div>
-								<Field label="Due hours"
+								<p v-if="form.period_start !== doc.period_start || form.period_end !== doc.period_end" class="text-sm text-amber-700">{{ __("Changing the period changes the timesheet hours included. Save to recalculate this period.") }}</p>
+								<Field v-if="doc.calculation_method === 'Fixed Monthly'" label="Scheduled hours for monthly leave deduction"
 									><input
 										v-model.number="form.due_hours"
 										:disabled="!effectiveEdit"
@@ -101,7 +98,7 @@
 							<div class="bg-white border rounded-xl p-5 space-y-3">
 								<h2 class="font-semibold text-gray-900">{{ __("Calculation") }}</h2>
 								<Row label="Method" :value="doc.calculation_method" /><Row
-									label="Worked hours"
+									label="Recorded timesheet hours"
 									:value="formatHours(doc.worked_hours)"
 								/><Row
 									label="Paid leave hours"
@@ -112,7 +109,18 @@
 								/><Row
 									label="Unpaid leave hours"
 									:value="formatHours(doc.unpaid_leave_hours)"
-								/><Row label="Payable hours" :value="formatHours(doc.payable_hours)" /><Row
+								/><Row label="Paid holiday hours" :value="formatHours(doc.paid_holiday_hours)" />
+                                <Row label="System total hours" :value="formatHours(doc.system_total_hours)" />
+                                <label class="flex gap-2 items-center text-sm"><input v-model="form.use_hours_override" type="checkbox" :disabled="!effectiveEdit" />{{ __("Propose a different total") }}</label>
+                                <template v-if="form.use_hours_override">
+                                    <Field label="Proposed total hours"><input v-model.number="form.employee_total_hours" type="number" min="0" step="0.01" class="field" :disabled="!effectiveEdit" /></Field>
+                                    <p class="text-xs text-gray-500">{{ __("Include worked time, paid holidays and paid leave. Enter decimal hours: 1.5 = 1 hour 30 minutes. HR reviews this proposal; recorded timesheets remain unchanged.") }}</p>
+                                    <Field label="Reason for proposed total"><textarea v-model="form.hours_override_reason" class="field" :disabled="!effectiveEdit" /></Field>
+                                    <Row label="Proposed total" :value="formatHours(form.employee_total_hours)" />
+                                </template>
+                                <p v-if="doc.calculation_method === 'Fixed Monthly'" class="text-xs text-gray-500">{{ __("Hours do not change the fixed monthly amount. Unpaid leave is deducted using scheduled hours.") }}</p>
+                                <details v-if="doc.holiday_summary" class="text-sm"><summary>{{ __("Paid holiday details") }}</summary><p class="whitespace-pre-line">{{ doc.holiday_summary }}</p></details>
+                                <Row label="Payable hours" :value="formatHours(doc.payable_hours)" /><Row
 									:label="
 										doc.calculation_method === 'Hourly' ? __('Hourly rate') : __('Monthly amount')
 									"
@@ -391,11 +399,11 @@ const props = defineProps({ id: { type: String, default: null } })
 const __ = inject("$translate")
 const user = inject("$user")
 const router = useRouter()
-const loading = ref(Boolean(props.id))
+const loading = ref(true)
 const saving = ref(false)
 const error = ref("")
 const doc = ref(null)
-const newDueDate = ref(new Date().toISOString().slice(0, 10))
+const defaults = ref({})
 const form = reactive({})
 const isHR = (user.data?.roles || []).some((role) =>
 	["HR Manager", "HR User", "System Manager", "Administrator"].includes(role)
@@ -416,10 +424,12 @@ const adjustmentTypes = [
 	"Other",
 ]
 const editableFields = [
-	"due_date",
 	"period_start",
 	"period_end",
 	"due_hours",
+	"use_hours_override",
+	"employee_total_hours",
+	"hours_override_reason",
 	"payee_name",
 	"payee_address",
 	"preferred_payment_method",
@@ -489,7 +499,7 @@ async function run(action) {
 
 async function createInvoice() {
 	const result = await run(() =>
-		call("hrms.api.employee_invoice.create_employee_invoice", { due_date: newDueDate.value })
+		call("hrms.api.employee_invoice.create_employee_invoice")
 	)
 	router.replace({ name: "EmployeeInvoiceDetailView", params: { id: result.name } })
 }
@@ -575,9 +585,12 @@ async function markPaid() {
 }
 
 onMounted(async () => {
-	if (!props.id) return
 	try {
-		fillForm(await call("hrms.api.employee_invoice.get_employee_invoice", { name: props.id }))
+		if (props.id) {
+			fillForm(await call("hrms.api.employee_invoice.get_employee_invoice", { name: props.id }))
+		} else {
+			defaults.value = await call("hrms.api.employee_invoice.get_invoice_defaults")
+		}
 	} catch (err) {
 		error.value = message(err)
 	} finally {

@@ -36,15 +36,15 @@
 								{{ __(item.expense_type) }}
 							</div>
 							<div class="text-xs font-normal text-gray-500">
-								<span>
+								<span v-if="isReadOnly && expenseClaim.approval_status !== 'Draft'">
 									{{
 										__("{0}: {1}", [
-											__("Sanctioned"),
+												__("Approved amount"),
 											formatCurrency(item.sanctioned_amount || 0, expenseClaim.currency),
 										])
 									}}
 								</span>
-								<span class="whitespace-pre"> &middot; </span>
+								<span v-if="isReadOnly && expenseClaim.approval_status !== 'Draft'" class="whitespace-pre"> &middot; </span>
 								<span class="whitespace-nowrap" v-if="item.expense_date">
 									{{ dayjs(item.expense_date).format("D MMM") }}
 								</span>
@@ -77,13 +77,15 @@
 				<div class="w-full flex flex-col items-center justify-center gap-5 p-4 max-h-[80vh]">
 					<div class="flex flex-col w-full space-y-4 overflow-y-auto px-0.5">
 						<FormField
-							v-for="field in expensesTableFields.data"
+							v-for="field in visibleFields"
 							:key="field.fieldname"
 							class="w-full"
 							:label="__(field.label, null, 'Expense Claim Detail')"
 							:fieldtype="field.fieldtype"
 							:fieldname="field.fieldname"
 							:options="field.options"
+							:documentList="field.fieldname === 'expense_type' ? claimTypeOptions : undefined"
+							:linkQuery="field.fieldname === 'project' ? 'hrms.api.search_employee_projects' : undefined"
 							:hidden="field.hidden"
 							:reqd="field.reqd"
 							:default="field.default"
@@ -137,7 +139,7 @@ import FormField from "@/components/FormField.vue"
 import EmptyState from "@/components/EmptyState.vue"
 import CustomIonModal from "@/components/CustomIonModal.vue"
 
-import { claimTypesByID } from "@/data/claims"
+import { claimTypesByID, claimTypesResource } from "@/data/claims"
 import { formatCurrency } from "@/utils/formatters"
 
 import { useCurrencyConversion } from "@/composables/useCurrencyConversion"
@@ -169,7 +171,10 @@ const openModal = async (item, idx) => {
 	if (item) {
 		expenseItem.value = { ...item }
 		editingIdx.value = idx
+	} else {
+		expenseItem.value = { expense_date: dayjs().format("YYYY-MM-DD"), cost_center: props.expenseClaim.cost_center };
 	}
+	claimTypesResource.reload()
 	isFirstRender.value = true
 	isModalOpen.value = true
 }
@@ -199,11 +204,17 @@ const expensesTableFields = createResource({
 	url: "hrms.api.get_doctype_fields",
 	params: { doctype: "Expense Claim Detail" },
 	transform(data) {
-		const excludeFields = ["description_sb", "amounts_sb", "base_amount", "base_sanctioned_amount"]
-		return data.filter((field) => !excludeFields.includes(field.fieldname))
+		const excludeFields = ["base_amount", "base_sanctioned_amount", "cost_center"]
+		const order = ["expense_date", "expense_type", "amount", "description", "project", "sanctioned_amount"]
+		return data.filter(field => !excludeFields.includes(field.fieldname) && !["Section Break", "Column Break"].includes(field.fieldtype))
+			.map(field => ({ ...field, label: field.fieldname === "sanctioned_amount" ? "Approved amount" : field.fieldname === "amount" ? "Amount paid" : field.label }))
+			.sort((a, b) => (order.indexOf(a.fieldname) < 0 ? 99 : order.indexOf(a.fieldname)) - (order.indexOf(b.fieldname) < 0 ? 99 : order.indexOf(b.fieldname)))
 	},
 })
 expensesTableFields.reload()
+
+const visibleFields = computed(() => (expensesTableFields.data || []).filter(field => props.isReadOnly || field.fieldname !== "sanctioned_amount"))
+const claimTypeOptions = computed(() => (claimTypesResource.data || []).map(row => ({ label: __(row.name), value: row.name })))
 
 const expenseClaimRef = computed(() => props.expenseClaim)
 useCurrencyConversion(
@@ -219,7 +230,7 @@ const modalTitle = computed(() => {
 })
 
 const addButtonDisabled = computed(() => {
-	return expensesTableFields.data?.some((field) => {
+		return visibleFields.value.some((field) => {
 		if (field.reqd && !expenseItem.value[field.fieldname]) {
 			return true
 		}

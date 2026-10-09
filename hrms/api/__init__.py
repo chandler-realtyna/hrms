@@ -55,6 +55,8 @@ def get_current_user_info() -> dict:
 	user["roles"] = frappe.get_roles(current_user)
 	user["is_project_manager"] = is_project_manager(current_user)
 	user["is_project_lead"] = is_project_lead(current_user)
+	employee = frappe.db.get_value("Employee", {"user_id": current_user, "status": "Active"}, "name")
+	user["has_led_projects"] = bool(employee and frappe.db.exists("Project", {"custom_project_lead": employee, "status": "Open"}))
 
 	return user
 
@@ -159,7 +161,8 @@ def upload_own_profile_image(content: str, filename: str) -> dict:
 
 @frappe.whitelist()
 def get_all_employees() -> list[dict]:
-	return frappe.get_list(
+	from hrms.api.profile_photo import directory_image
+	rows = frappe.get_list(
 		"Employee",
 		fields=[
 			"name",
@@ -176,6 +179,9 @@ def get_all_employees() -> list[dict]:
 		ignore_permissions=True,
 		limit=999999,
 	)
+	for row in rows:
+		row.image = directory_image(row.name, row.image)
+	return rows
 
 
 def get_current_employee() -> str:
@@ -207,7 +213,9 @@ def search_employee_projects(
 
 	normalized_query = normalize_search_text(txt)
 	compact_query = normalized_query.replace(" ", "")
-	projects = frappe.get_list(
+	# Self-service lookup exposes names only, not the financial/master form.
+	frappe.has_permission("Project", "read", throw=True)
+	projects = frappe.get_all(
 		"Project",
 		fields=["name", "project_name", "custom_project_lead"],
 		filters={"status": "Open", "is_active": "Yes"},
@@ -643,6 +651,12 @@ def get_holidays_for_employee(employee: str) -> list[dict]:
 @frappe.whitelist()
 def get_leave_approval_details(employee: str) -> dict:
 	frappe.has_permission("Employee", "read", employee, throw=True)
+	if frappe.db.get_value("Employee", employee, "user_id") == frappe.session.user:
+		from hrms.utils.leave_routing import default_approver
+		approver = default_approver()
+		full_name = frappe.db.get_value("User", approver, "full_name")
+		return dict(leave_approver=approver, leave_approver_name=full_name,
+			department_approvers=[dict(name=approver, full_name=full_name)], is_mandatory=True, fixed_approver=True)
 	leave_approver, department = frappe.get_cached_value(
 		"Employee",
 		employee,
@@ -1065,11 +1079,19 @@ def save_timer_log(
 ) -> str:
 	"""Save a timer entry into the employee's weekly timesheet."""
 	from hrms.api.weekly_timesheet import save_weekly_timer_log
+	from hrms.api.timer_state import reject_legacy_save
+	reject_legacy_save(frappe.session.user)
+	from zoneinfo import ZoneInfo
+	from frappe.utils import get_system_timezone
+	start, end = get_datetime(from_time), get_datetime(to_time)
+	if start.tzinfo is None or end.tzinfo is None:
+		frappe.throw(_("This old timer has no timezone. Reload the synchronized timer; your local draft is kept."))
+	zone = ZoneInfo(get_system_timezone())
 
 	return save_weekly_timer_log(
 		employee=employee,
-		from_time=from_time,
-		to_time=to_time,
+		from_time=start.astimezone(zone).replace(tzinfo=None),
+		to_time=end.astimezone(zone).replace(tzinfo=None),
 		project=project,
 		activity_type=activity_type,
 		description=description,
@@ -1082,6 +1104,12 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 	current = get_current_employee()
 	if current != employee:
 		frappe.throw(_("You can only receive timer alerts for yourself."), frappe.PermissionError)
+	from hrms.api.timer_state import STATE, _locked_state, _timer, _internal_write
+	if frappe.db.exists(STATE, {"user": frappe.session.user, "initialized": 1}):
+		doc = _locked_state()
+		timer = _timer(doc)
+		if timer.get("startTime") != started_at or timer["form"]["project"] != project or doc.notified_start == started_at:
+			return False
 	started = get_datetime(started_at)
 	if getattr(started, "tzinfo", None) is not None:
 		# Browser timestamps carry an offset (ISO "...Z") while now_datetime()
@@ -1092,6 +1120,10 @@ def notify_long_running_timer(employee: str, project: str, started_at: str) -> b
 		started = convert_utc_to_system_timezone(started).replace(tzinfo=None)
 	if not project or (now_datetime() - started).total_seconds() < 2 * 60 * 60:
 		return False
+	if frappe.db.exists(STATE, {"user": frappe.session.user, "initialized": 1}):
+		doc.notified_start = started_at
+		with _internal_write():
+			doc.save(ignore_permissions=True)
 	user = frappe.session.user
 	project_label = project
 	project_name = frappe.db.get_value("Project", project, "project_name")
@@ -1409,7 +1441,7 @@ def save_employee_holiday_draft(year: str, dates: str) -> dict:
 
 @frappe.whitelist()
 def submit_employee_holidays(name: str) -> dict:
-	"""Submit an employee's Draft holiday request (locks it for HR review)."""
+	"""Submit an employee's Draft or Rejected holiday request (locks it for HR review)."""
 	doc = frappe.get_doc("Employee Holiday", name)
 
 	# Ownership check
@@ -1417,8 +1449,8 @@ def submit_employee_holidays(name: str) -> dict:
 	if doc.employee != employee and not _is_hr_or_admin():
 		frappe.throw(_("You can only submit your own holiday request."))
 
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft holiday requests can be submitted."))
+	if doc.status not in {"Draft", "Rejected"}:
+		frappe.throw(_("Only Draft or Rejected holiday requests can be submitted."))
 
 	if not (1 <= len(doc.holidays) <= 15):
 		frappe.throw(_("Select between 1 and 15 holiday dates before submitting."))
@@ -1434,7 +1466,9 @@ def approve_employee_holiday(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can approve holiday requests."))
 
-	doc = frappe.get_doc("Employee Holiday", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Holiday", name, "write")
 	if doc.status != "Submitted":
 		frappe.throw(_("Only Submitted holiday requests can be approved."))
 
@@ -1456,7 +1490,9 @@ def reject_employee_holiday(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can reject holiday requests."))
 
-	doc = frappe.get_doc("Employee Holiday", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Holiday", name, "write")
 	if doc.status not in ("Submitted", "Approved"):
 		frappe.throw(_("Only Submitted or Approved holiday requests can be rejected."))
 
@@ -1485,7 +1521,9 @@ def get_holiday_approval_detail(name: str) -> dict:
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can view holiday approval details."))
 
-	return frappe.get_doc("Employee Holiday", name).as_dict()
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	return get_personal_review_doc("Employee Holiday", name, "read").as_dict()
 
 
 # ── Employee Schedule API ─────────────────────────────────────────────────────
@@ -1614,7 +1652,9 @@ def approve_employee_schedule(name: str) -> dict:
 	"""Approve a Submitted schedule (HR only)."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can approve schedules."))
-	doc = frappe.get_doc("Employee Schedule", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Schedule", name, "write")
 	if doc.status != "Submitted":
 		frappe.throw(_("Only Submitted schedules can be approved."))
 	doc.status = "Approved"
@@ -1627,7 +1667,9 @@ def reject_employee_schedule(name: str) -> dict:
 	"""Reject a Submitted schedule (HR only)."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can reject schedules."))
-	doc = frappe.get_doc("Employee Schedule", name)
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	doc = get_personal_review_doc("Employee Schedule", name, "write")
 	if doc.status not in ("Submitted", "Approved"):
 		frappe.throw(_("Only Submitted or Approved schedules can be rejected."))
 	doc.status = "Rejected"
@@ -1653,7 +1695,9 @@ def get_schedule_approval_detail(name: str) -> dict:
 	"""Full schedule detail for HR review."""
 	if not _is_hr_or_admin():
 		frappe.throw(_("Only HR can view schedule details."))
-	return frappe.get_doc("Employee Schedule", name).as_dict()
+	from hrms.utils.personal_review_access import get_personal_review_doc
+
+	return get_personal_review_doc("Employee Schedule", name, "read").as_dict()
 
 
 # ── Team Availability API ─────────────────────────────────────────────────────
@@ -1738,7 +1782,8 @@ def get_team_availability(
 	schedule_map = {}
 	for row in schedule_rows:
 		doc = frappe.get_doc("Employee Schedule", row["name"], ignore_permissions=True)
-		employee_image = frappe.db.get_value("Employee", row["employee"], "image") or ""
+		from hrms.api.profile_photo import directory_image
+		employee_image = directory_image(row["employee"], frappe.db.get_value("Employee", row["employee"], "image"))
 		schedule_map[row["employee"]] = {
 			"employee_name": row["employee_name"],
 			"image": employee_image,

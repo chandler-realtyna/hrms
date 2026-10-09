@@ -1,0 +1,190 @@
+# HRMS completion acceptance - 2026-10-02
+
+## Release boundaries
+
+The urgent permission/loading repair was independently published as
+`a80677b83f18f2626fb7b502fb7d9023c6a6c06c` using the canonical deploy script.
+Production health passed. Read-only framework checks confirmed personal draft
+read/write and denied foreign writes. No employee business decision was taken.
+
+The second candidate adds shared timer state, fixed personal leave routing,
+weekly freshness/conflicts, scoped team pagination/history and utilities-only
+Desk navigation. Its final activation receipt is recorded below after deployment.
+The original dirty checkout and independent production-branch changes remain
+untouched. The review branch does not force-update the production branch.
+
+## Isolated verification
+
+Writes ran only on `qa.local`, created from an empty MariaDB database on a private
+Docker network with independent Redis/sites/logs. No production database, user
+sessions, documents or credentials were copied. The QA image uses the same
+installed Frappe/ERPNext runtime as the production base. Synthetic account names
+end in `@qa.invalid`. Mail and background scheduling are paused for QA.
+
+- 15 real framework/database acceptance tests passed: actual own/foreign
+  permissions, original Timesheet writes, locked sibling correction, project
+  review then final HR closure, optimistic save conflict, account-private state,
+  timer replay/failure preservation, legacy migration/guard, fixed leave routing,
+  two-hour autosave and 505 source-record pagination fixtures.
+- 67 existing focused regressions passed in that runtime, for a combined
+  82-test run. These include mock-based tests and are not all end-to-end tests.
+- Four independent-connection/Redis checks passed: conflicting devices,
+  simultaneous identical operation replay, private after-commit notification,
+  and simultaneous weekly saves with one explicit version conflict.
+- 17 frontend script tests passed: retry/deadline/stale-route loading, shared
+  timer/favorites, clock offset, response loss, offline controls, migration,
+  concurrent metadata preservation, weekly freshness and draft conflicts.
+- Real authenticated HTTP/browser flows passed in two separate contexts at
+  desktop and mobile viewport sizes: start, observe, pause, resume, switch,
+  save an inactive project without stopping the active one and offline controls.
+- Real weekly browser checks passed: automatic thirty-second refresh without
+  reload, an offline unsaved note retained, and explicit remote version conflict.
+- Real Desk browser check passed: visible sidebar text is Search, Notification,
+  Log out; team navigation stays in Desk.
+- Visual checks passed at widths 1280 and 390 in light/dark modes. Native time
+  inputs have dark backgrounds and contrasting text. Build and whitespace/JS
+  syntax checks passed; existing font/chunk-size build warnings remain.
+- Seven deployment planner tests passed. Only the three verified directly
+  served Desk assets avoid an image build; unknown public sources remain full,
+  and schema changes still require backup and migration.
+
+## Reproduction
+
+Use the isolated checkout transfer procedure and `deploy/qa-isolated.sh`; never
+point the write runners at the production site. Runner site names and browser
+origins are fixed to isolated QA/local tunnel destinations.
+
+```sh
+env/bin/python apps/hrms/deploy/qa_acceptance.py \
+  hrms.tests.test_shared_work_state hrms.tests.test_personal_scope \
+  hrms.tests.test_admin_desk hrms.tests.test_director_profiles \
+  hrms.tests.test_director_scope hrms.tests.test_timesheet_entry_corrections \
+  hrms.tests.test_workflow_readiness hrms.tests.test_management_reports
+env/bin/python apps/hrms/deploy/qa_concurrency.py
+env/bin/python apps/hrms/deploy/qa_http_fixture.py
+
+# Frontend checkout; HTTP runners require the private QA SSH tunnel on 18880.
+node --test tests/timer.test.cjs tests/form_loading.test.cjs tests/weekly_freshness.test.cjs
+node tests/visual.test.cjs
+node tests/qa_http.test.cjs
+node tests/qa_desk.test.cjs
+```
+
+Set `PLAYWRIGHT_MODULE` and `CHROME_PATH` to the installed runtime/browser paths
+when they are not available through the default Node module lookup.
+
+## Readiness limits
+
+Mobile viewport emulation is not acceptance on a physical phone or Safari.
+Private event publication to actual Redis was verified; a complete Socket.IO
+notification delivery to a real employee browser was not exercised by the QA
+web server. Visible-page polling provides the tested fallback. Two-hour autosave
+logic ran with a controlled clock; an unattended two-hour wall-clock scheduler
+run remains a post-release observation, not a claimed completed test.
+
+No real leave approval, expense approval, correction, invoice decision or final
+employee timesheet closure was executed in production. Existing submitted leave
+destinations/history are intentionally unchanged. Historical malformed workflow
+records are not automatically closed or rewritten.
+
+## Production activation
+
+Published successfully through the canonical schema path:
+
+- Active application: `12aae44fd52e4cf73276617c56a3f93bc08ad039`.
+- Previous known-good application: `a80677b83f18f2626fb7b502fb7d9023c6a6c06c`.
+- Release ID: `deploy-20261002-114148`; state recorded at 11:44:04 UTC.
+- Migration and health: passed; no image rebuild ran.
+- Retry backup: `20261002_064225-frontend-database.sql.gz`. The first backup
+  before the shared-state migration is `20261002_063429-frontend-database.sql.gz`.
+- All six source/asset mounts matched the exact target before migration.
+- The actually served main bundle matched its release SHA-256:
+  `feccc1e3bf91a4ebec112b1a3e6faa31c5f3c8a1b0ad43c34a401be7b5c6912c`.
+- Read-only live checks verified Invoice/Contractor labels, issue date and
+  fifteen-day due date, read-only payment fields, standard print source,
+  shared-state schema and an enabled configured HR leave destination.
+- Guest realtime origin checks passed: HTTPS/same-origin polling connected,
+  and five invalid origin/host cases returned 403. This is not proof of private
+  notification delivery to a real contractor browser.
+- The deployment lock is absent and all temporary QA containers are stopped.
+
+### Interrupted attempts and recovery
+
+The original canonical attempt for
+`6aec02d176ae62d4779c9bb1d7f2a1968df082b8` started at 10:06:58 UTC. It staged
+the immutable release and compose override, then launched the full image build
+at 10:07:30 UTC. No successful build, activation, migration, health gate or
+state advancement was observed. The last verified active state was the urgent
+`a80677b83f18f2626fb7b502fb7d9023c6a6c06c` repair.
+
+SSH subsequently timed out during banner exchange, and a fresh read-only live
+review request failed. At 10:31:26 UTC the task-owned local SSH launcher was
+stopped; the canonical script exited with failure. After connectivity recovered,
+the exact detached build process was identified by its command and release tag
+and terminated without recreating any production service. Its build log ended
+with `CANCELED` and `failed to solve: Canceled: context canceled`. No build
+process remained. Production still mounted the urgent permission repair.
+
+At 10:56:00 UTC the origin API returned `{"message":"pong"}`. This is recovery
+of basic reachability, not acceptance of every user journey. The database had
+restarted during the build; its cause is not established. No migration or
+activation of the shared-state candidate took place.
+
+The inactive staged compose override and old lock were recovered after checking
+the exact attempt owner, absent build, unchanged active state/image tag and all
+six live source mounts. The override was atomically restored from the original
+pre-attempt backup, the cancelled configuration was preserved, and only that
+attempt's lock was released. No service restart or migration occurred during
+recovery. The recovery receipt is stored in the server deployment history.
+
+An attempt to activate `c5322ea7b7e1f7c6726db46177d7e421b2937b13` then failed
+because the recovery's atomic file replacement inherited root ownership. The
+old script did not fail on the override redirection error: it backed up and
+recreated the old mounts and migrated the unchanged old code. The new-asset
+health check failed and state did not advance. Ownership was restored from the
+original backup. The canonical writer now fails immediately on write errors
+and checks the exact marker; a separate six-service source/asset mount proof
+must pass before migration. Six additional mount-proof tests passed.
+
+The next attempt activated `6c6104bcf4895b9ff5e994e6785a7949a6863e3f`, passed
+the exact mount proof and migration, then lost SSH during cache invalidation.
+State was not advanced. Recovery preserves the original rollback override;
+only idempotent cache clearing and read-only probes retry transport errors.
+Four isolated shell tests cover invalid recovery IDs and bounded cache retries,
+including refusal to retry application errors. Migration/activation are never
+automatically replayed. The app payload is unchanged from invoice QA.
+
+The planner incorrectly treated three raw Desk assets as bundled inputs. Their
+direct hook delivery was checked in source and in the isolated native Desk
+browser. The narrow classifier repair selects schema for this candidate while
+retaining the required backup/migration. The final successful release used that
+narrow classification and the verified original rollback snapshot.
+
+## Invoice and Contractor terminology
+
+The additional invoice changes are included in the published application. English display labels
+use Invoice/Invoices and Contractor/Contractors, including Desk, self-service,
+invoice printing and report export. Internal DocType/role/field/status names
+remain unchanged. No historical record renaming or bulk financial update ran.
+
+New and editable invoices use a server issue date and a read-only due date
+fifteen calendar days later. Both personal and HR update APIs ignore forged
+payment dates. Finalized financial history is intentionally not backfilled.
+
+- Eight invoice framework/database tests passed on synthetic `qa.local` data,
+  including creation, personal/HR saves, actual document validation, date
+  boundaries, print rendering and preserved internal roles/statuses.
+- The same run also passed fifteen shared-state regressions and four Desk
+  tests: twenty-seven tests combined, not twenty-seven new invoice tests.
+- Twenty frontend script tests passed, including three invoice regressions.
+- Eight deployment planner and seven image-build proof tests passed.
+- The reproducible English catalog contains 350 checked translations. The
+  frontend build passed with the existing font/chunk warnings.
+- Authenticated invoice browser checks passed at widths 1280 and 390: server
+  issue/due dates, creation, read-only payment terms, Contractor notes, no
+  horizontal overflow and light/dark date inputs. The native Desk entry opens
+  the Invoice list with Contractor column/filter labels. These are synthetic
+  browser-sized checks, not physical-device or production financial decisions.
+
+The behavioral reference is [workflows.md](workflows.md). Production health and
+QA acceptance are distinct; health alone does not prove each employee journey.

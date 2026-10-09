@@ -7,24 +7,69 @@ deploy/deploy.sh                 # deploy origin/realtyna-production tip
 deploy/deploy.sh --target <sha>  # deploy an exact pushed commit
 deploy/deploy.sh --plan-only     # classify only, touches nothing
 deploy/deploy.sh --rollback      # back to previous known-good release
+deploy/deploy.sh --target <sha> --resume-build # continue a completed full build after SSH interruption
 ```
 
 Only pushed commits deploy. Tracked tree must be clean.
+
+For an interrupted full build, first check its server build log and process.
+Do not start a second build while the original is running. After it finishes,
+`--resume-build` verifies the completed export log, exact tag, and stored image
+digest before normal backup, activation, migration, health checks, and state
+recording. An incomplete build or stale tag is rejected. The image tag includes
+the UTC date, so resume this way on the same UTC day as the original build.
+Read-only build probes retry SSH failures; mutating commands are never replayed
+automatically, except idempotent cache invalidation on SSH transport failure.
+Migration and container activation are never automatically replayed.
+
+After an interrupted activation, inspect live mounts, active state and lock
+first. A canonical retry can preserve the original rollback snapshot with
+`--previous-override-from <deploy-id>`. The named backup must carry the recorded
+active SHA; otherwise the retry refuses it. Without this flag, a mismatch
+between the current override and recorded active state is rejected, preventing
+an unrecorded candidate from becoming the previous known-good configuration.
+
+After a proxy/realtime change, run `check_realtime_origin.py` through Python on
+the production host (for example through SSH stdin). It uses only a Guest
+handshake and prints no session identifiers or employee data. The site HTTPS
+origin and Origin-less browser polling with same-origin Fetch Metadata must
+connect. Unrelated, insecure, mismatched-host and missing-origin requests without
+trusted browser metadata must receive 403. This does not bypass the external access gateway or verify
+delivery of a real employee notification.
 
 ## How it works
 
 1. `plan.py` diffs deployed commit → target and classifies:
    **frontend** (Vite/static assets) · **backend** (Python-only) ·
-   **schema** (doctypes, patches, hooks/setup) · **full** (deps, base image,
+   **schema** (doctypes, patches, hooks/setup, standard print formats) · **full** (deps, base image,
    build config, anything unknown). Unknown always escalates to full.
+   The directly served `admin_reviews.js`, `desk_utilities.js` and
+   `admin_reviews.css` files are exact, verified static exceptions. Other
+   `public/js`, `public/css` and `public/scss` sources still require an image
+   build. Combining these static exceptions with hooks/doctype changes still
+   requires a schema deployment, including backup and migration.
 2. App code activates via **immutable release dirs** (`/srv/hrms-releases/<sha>`,
    exact SHA, read-only) bind-mounted into containers
    (`apps/hrms` + served `assets/hrms`), never by copying files into containers.
+   Releases containing `deploy/nginx.conf` also mount the versioned proxy
+   configuration read-only and start nginx directly. The proxy rejects any
+   browser Origin/Host pair other than the production site's HTTPS origin
+   (or Origin-less same-origin polling verified by browser Fetch Metadata),
+   then normalizes only the accepted realtime hop to `http://frontend:8080`.
+   Frappe's session and document authorization stay intact; authentication
+   requests remain internal rather than hitting the Cloudflare Access login.
+   Site selection remains `frontend`.
+   Older rollback targets retain their original compose proxy mount/startup.
+   Origin behavior follows the [Fetch Standard](https://fetch.spec.whatwg.org/#origin-header)
+   and [Fetch Metadata](https://www.w3.org/TR/fetch-metadata/).
 3. `schema` runs `bench backup` first, then `migrate`. Everything else skips both.
    App operations use `compose.yaml` only: `pwd.yml` redefines app services
    with a stale hardcoded image and must never be mixed into deploy commands.
 4. Health is polled (containers, HTTP, API, Redis, DB, served assets).
    `DEPLOY_STATE.json` advances **only** on success.
+   Writing the override is fail-fast and its exact release marker is checked.
+   All six running app services must mount both the exact source and assets
+   release before migration; stale or incomplete mounts refuse state advancement.
 5. `flock`-style lock dir prevents overlapping deploys.
 
 ## Rollback
@@ -37,6 +82,8 @@ Only pushed commits deploy. Tracked tree must be clean.
   (`migrate` is idempotent, pending-only) → if data recovery is needed,
   verify the backup on a scratch site first, then restore over production
   in a maintenance window. Never auto-restore production data.
+  Failed migration recovery restores the complete prior compose override and
+  image tag, including proxy mounts/startup, not just the HRMS source mounts.
 
 ## Health, locking, retention
 

@@ -25,6 +25,7 @@ from erpnext.controllers.accounts_controller import AccountsController
 import hrms
 from hrms.hr.utils import set_employee_name, share_doc_with_approver, validate_active_employee
 from hrms.mixins.pwa_notifications import PWANotificationsMixin
+from hrms.utils.expense_claimant import validate_claimant
 
 
 class InvalidExpenseApproverError(frappe.ValidationError):
@@ -50,6 +51,7 @@ class ExpenseClaim(AccountsController, PWANotificationsMixin):
 		self.notify_approver()
 
 	def validate(self):
+		validate_claimant(self)
 		validate_active_employee(self.employee)
 		set_employee_name(self)
 		self.validate_sanctioned_amount()

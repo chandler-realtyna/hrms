@@ -7,13 +7,17 @@ import frappe
 from frappe import _
 from frappe.utils import add_months, cint, flt, getdate, now_datetime, nowdate
 
+from hrms.utils.invoice_terms import apply_invoice_terms, invoice_defaults
 
-HR_ROLES = {"HR Manager", "HR User", "System Manager"}
+
+HR_ROLES = {"HR Manager", "HR User", "System Manager", "Administrator"}
 EMPLOYEE_EDITABLE_FIELDS = {
-	"due_date",
 	"period_start",
 	"period_end",
 	"due_hours",
+	"use_hours_override",
+	"employee_total_hours",
+	"hours_override_reason",
 	"payee_name",
 	"payee_address",
 	"preferred_payment_method",
@@ -87,6 +91,8 @@ def _get_doc(name):
 	if doc.status == "Draft":
 		frappe.throw(_("Employee invoice drafts are private."), frappe.PermissionError)
 	if _is_hr() and _can_access_company(frappe.session.user, doc.company):
+		# Match native list/document user permissions for known invoice names.
+		doc.check_permission("read")
 		return doc
 	if _is_hr():
 		frappe.throw(_("You do not have access to this company."), frappe.PermissionError)
@@ -219,7 +225,7 @@ def _timesheet_rows(employee, period_start, period_end):
 	return result, all_final
 
 
-def _leave_rows(employee, period_start, period_end):
+def _leave_rows(employee, period_start, period_end, holiday_dates=()):
 	from hrms.hr.doctype.leave_application.leave_application import get_number_of_leave_days
 
 	leaves = frappe.get_all(
@@ -262,6 +268,19 @@ def _leave_rows(employee, period_start, period_end):
 			hourly_start_time=row.hourly_start_time,
 			hourly_end_time=row.hourly_end_time,
 		)
+		# A paid holiday is credited separately, even when a leave type includes holidays.
+		if holiday_dates:
+			from datetime import timedelta
+			days = 0
+			day = from_date
+			while day <= to_date:
+				if str(day) not in holiday_dates:
+					days += flt(get_number_of_leave_days(employee, row.leave_type, day, day,
+						half_day=cint(half_day and getdate(row.half_day_date) == day),
+						half_day_date=row.half_day_date if half_day else None,
+						is_hourly_leave=row.is_hourly_leave, hourly_start_time=row.hourly_start_time,
+						hourly_end_time=row.hourly_end_time))
+				day += timedelta(days=1)
 		hours = flt(flt(days) * LEAVE_HOURS_PER_DAY, 2)
 		if hours <= 0:
 			continue
@@ -276,6 +295,57 @@ def _leave_rows(employee, period_start, period_end):
 			}
 		)
 	return result
+
+
+def _paid_holiday_rows(employee, period_start, period_end):
+	"""Approved personal/assigned public holidays: eight paid hours per unique date.
+
+	Weekly days off are not paid holiday credits. Respect dated list assignments.
+	"""
+	from datetime import timedelta
+	from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
+
+	start, end = getdate(period_start), getdate(period_end)
+	dates = {}
+	parents = frappe.get_all("Employee Holiday", filters={"employee": employee, "status": "Approved"}, pluck="name")
+	if parents:
+		for row in frappe.get_all("Employee Holiday Date", filters={"parent": ("in", parents), "parenttype": "Employee Holiday", "date": ("between", [start, end])}, fields=["date", "description"]):
+			dates[str(row.date)] = row.description or "Holiday"
+	lists = {}
+	day = start
+	while day <= end:
+		name = get_holiday_list_for_employee(employee, raise_exception=False, as_on=day)
+		if name and name not in lists:
+			lists[name] = {str(row.holiday_date): row.description or "Holiday" for row in frappe.get_all("Holiday", filters={"parent": name, "parenttype": "Holiday List", "weekly_off": 0, "holiday_date": ("between", [start, end])}, fields=["holiday_date", "description"])}
+		if name and str(day) in lists[name]:
+			dates.setdefault(str(day), lists[name][str(day)])
+		day += timedelta(days=1)
+	return [{"date": date, "description": dates[date], "hours": LEAVE_HOURS_PER_DAY} for date in sorted(dates)]
+
+
+def _system_total_hours(doc):
+	"""Read old calculation snapshots without rewriting historical invoice amounts."""
+	if doc.get("holiday_source_hash"):
+		return flt(doc.get("system_total_hours"), 2)
+	return flt(flt(doc.worked_hours) + flt(doc.paid_leave_hours) + flt(doc.sick_leave_hours), 2)
+
+
+def _effective_total_hours(doc):
+	system_total = flt(doc.worked_hours) + flt(doc.paid_leave_hours) + flt(doc.sick_leave_hours) + flt(doc.get("paid_holiday_hours"))
+	if not cint(doc.get("use_hours_override")):
+		return flt(system_total, 2)
+	value = doc.get("employee_total_hours")
+	try:
+		import math
+		number = float(value)
+		valid = math.isfinite(number) and number >= 0
+	except (TypeError, ValueError):
+		valid = False
+	if not valid:
+		frappe.throw(_("Proposed total hours must be a non-negative number."))
+	if not (doc.get("hours_override_reason") or "").strip():
+		frappe.throw(_("Explain why the proposed total differs from the system calculation."))
+	return flt(number, 2)
 
 
 def _leave_totals(rows):
@@ -306,6 +376,8 @@ def _calculate_amounts(
 	paid_leave_hours=0,
 	sick_leave_hours=0,
 	unpaid_leave_hours=0,
+	paid_holiday_hours=0,
+	total_hours_override=None,
 ):
 	if calculation_method == "Fixed Monthly":
 		base_amount = flt(monthly_amount, 2)
@@ -317,8 +389,13 @@ def _calculate_amounts(
 		)
 	else:
 		payable_hours = flt(worked_hours) + flt(paid_leave_hours) + flt(sick_leave_hours)
+		payable_hours += flt(paid_holiday_hours)
+		if total_hours_override is not None:
+			payable_hours = flt(total_hours_override)
 		base_amount = flt(payable_hours * flt(hourly_rate), 2)
 		unpaid_leave_deduction = 0
+	if calculation_method == "Fixed Monthly" and total_hours_override is not None:
+		payable_hours = flt(total_hours_override)
 	additions = deductions = 0
 	for row in adjustments:
 		if flt(row.quantity) <= 0 or flt(row.unit_amount) < 0 or not row.note:
@@ -353,6 +430,14 @@ def _material_payload(doc):
 		"due_date": str(doc.due_date),
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
+		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
+		"system_total_hours": _system_total_hours(doc),
+		"use_hours_override": cint(doc.get("use_hours_override")),
+		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
+		"hours_override_reason": doc.get("hours_override_reason") or "",
+		"holiday_source_hash": doc.get("holiday_source_hash"),
+		"holiday_summary": doc.get("holiday_summary") or "",
+
 		"paid_leave_hours": flt(doc.paid_leave_hours, 2),
 		"sick_leave_hours": flt(doc.sick_leave_hours, 2),
 		"unpaid_leave_hours": flt(doc.unpaid_leave_hours, 2),
@@ -388,6 +473,7 @@ def _material_payload(doc):
 
 
 def _recalculate(doc):
+	apply_invoice_terms(doc)
 	rows, all_final = _timesheet_rows(doc.employee, doc.period_start, doc.period_end)
 	doc.set("time_summary", [])
 	for row in rows:
@@ -395,13 +481,19 @@ def _recalculate(doc):
 	doc.worked_hours = flt(sum(row["hours"] for row in rows), 2)
 	doc.time_approval_ready = cint(all_final)
 	doc.time_source_hash = _hash(rows)
-	leave_rows = _leave_rows(doc.employee, doc.period_start, doc.period_end)
+	holiday_rows = _paid_holiday_rows(doc.employee, doc.period_start, doc.period_end)
+	leave_rows = _leave_rows(doc.employee, doc.period_start, doc.period_end, {row["date"] for row in holiday_rows})
 	leave_totals = _leave_totals(leave_rows)
 	doc.paid_leave_hours = leave_totals["Paid Leave"]
 	doc.sick_leave_hours = leave_totals["Sick Leave"]
 	doc.unpaid_leave_hours = leave_totals["Unpaid Leave"]
 	doc.leave_source_hash = _hash(leave_rows)
 	doc.leave_summary = _leave_summary(leave_rows)
+	doc.paid_holiday_hours = flt(sum(row["hours"] for row in holiday_rows), 2)
+	doc.holiday_source_hash = _hash(holiday_rows)
+	doc.holiday_summary = "\n".join(f"{row['date']}: {row['description']} ({row['hours']} hours)" for row in holiday_rows)
+	doc.system_total_hours = flt(doc.worked_hours + doc.paid_leave_hours + doc.sick_leave_hours + doc.paid_holiday_hours, 2)
+	effective_hours = _effective_total_hours(doc)
 
 	(
 		doc.base_amount,
@@ -420,6 +512,8 @@ def _recalculate(doc):
 		doc.paid_leave_hours,
 		doc.sick_leave_hours,
 		doc.unpaid_leave_hours,
+		doc.paid_holiday_hours,
+		effective_hours if cint(doc.get("use_hours_override")) else None,
 	)
 	return doc
 
@@ -447,6 +541,14 @@ def _serialize(doc):
 		"period_end": str(doc.period_end),
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
+		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
+		"system_total_hours": _system_total_hours(doc),
+		"use_hours_override": cint(doc.get("use_hours_override")),
+		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
+		"hours_override_reason": doc.get("hours_override_reason") or "",
+		"holiday_source_hash": doc.get("holiday_source_hash"),
+		"holiday_summary": doc.get("holiday_summary") or "",
+
 		"paid_leave_hours": flt(doc.paid_leave_hours, 2),
 		"sick_leave_hours": flt(doc.sick_leave_hours, 2),
 		"unpaid_leave_hours": flt(doc.unpaid_leave_hours, 2),
@@ -537,8 +639,8 @@ def _queue_email(doc, kind):
 def send_invoice_email(invoice, kind):
 	doc = frappe.get_doc("Employee Invoice", invoice)
 	if kind == "review":
-		recipients = _hr_users(doc.company)
-		subject = _("Invoice {0} is ready for HR review").format(doc.name)
+		from hrms.utils.review_notifications import review_payload, send_review_email
+		return send_review_email(review_payload(doc))
 	else:
 		recipients = list(set(_hr_users(doc.company) + [doc.employee_user]))
 		subject = _("Invoice {0} has been paid").format(doc.name)
@@ -585,11 +687,23 @@ def get_employee_invoice(name):
 	return _serialize(_get_doc(name))
 
 
+@frappe.whitelist()
+def get_employee_invoice_review_readiness(name):
+	"""Read current time sources without changing the invoice snapshot."""
+	_require_hr()
+	doc = _get_doc(name)
+	rows, ready = _timesheet_rows(doc.employee, doc.period_start, doc.period_end)
+	unfinalized = {row["timesheet"] for row in rows if row["approval_status"] != "Finalized"}
+	return {"ready": bool(ready), "unfinalized_count": len(unfinalized)}
+
+
 @frappe.whitelist(methods=["POST"])
-def create_employee_invoice(due_date):
+def create_employee_invoice(due_date=None):
 	employee = _configured_employee(_current_employee())
-	due = getdate(due_date)
-	period_start = add_months(due, -1)
+	# Keep the old argument accepted, but never trust caller-controlled payment terms.
+	defaults = invoice_defaults()
+	issue_date = getdate(defaults["invoice_date"])
+	period_start = add_months(issue_date, -1)
 	bill_to_name, bill_to_address = _company_snapshot(employee.company)
 	doc = frappe.new_doc("Employee Invoice")
 	doc.update(
@@ -599,10 +713,10 @@ def create_employee_invoice(due_date):
 			"employee_user": employee.user_id,
 			"company": employee.company,
 			"status": "Draft",
-			"invoice_date": nowdate(),
-			"due_date": due,
+			"invoice_date": defaults["invoice_date"],
+			"due_date": defaults["due_date"],
 			"period_start": period_start,
-			"period_end": due,
+			"period_end": issue_date,
 			"calculation_method": employee.custom_invoice_calculation_method,
 			"monthly_amount": employee.custom_monthly_invoice_amount,
 			"hourly_rate": employee.custom_invoice_hourly_rate,
@@ -621,6 +735,11 @@ def create_employee_invoice(due_date):
 	_recalculate(doc)
 	_persist(doc, insert=True)
 	return _serialize(doc)
+
+
+@frappe.whitelist()
+def get_invoice_defaults():
+	return invoice_defaults()
 
 
 @frappe.whitelist(methods=["POST"])
@@ -651,7 +770,6 @@ def confirm_employee_invoice(name):
 	doc.employee_confirmation_hash = _hash(_material_payload(doc))
 	_persist(doc)
 	_notify(_hr_users(doc.company), doc, _("Invoice {0} is ready for HR review.").format(frappe.bold(doc.name)))
-	_queue_email(doc, "review")
 	return _serialize(doc)
 
 

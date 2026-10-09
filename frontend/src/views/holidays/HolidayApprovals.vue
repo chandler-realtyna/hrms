@@ -3,7 +3,7 @@
 		<ion-header>
 			<ion-toolbar>
 				<ion-buttons slot="start">
-					<ion-back-button default-href="/home" />
+					<ion-back-button default-href="/desk" />
 				</ion-buttons>
 				<ion-title>{{ __("Holiday Approvals") }}</ion-title>
 			</ion-toolbar>

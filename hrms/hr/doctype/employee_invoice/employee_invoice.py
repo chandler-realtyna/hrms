@@ -5,11 +5,25 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, getdate
 
+from hrms.utils.invoice_terms import apply_invoice_terms
+
 
 FINAL_STATES = {"Approved for Payment", "Paid", "Cancelled"}
 
 
 class EmployeeInvoice(Document):
+	def onload(self):
+		# Display the legacy snapshot total; never backfill or recalculate money on GET.
+		from hrms.api.employee_invoice import _system_total_hours
+
+		self.system_total_hours = _system_total_hours(self)
+
+	def on_update(self):
+		previous = self.get_doc_before_save()
+		if self.status == "Pending HR Review" and (not previous or previous.status != self.status):
+			from hrms.utils.review_notifications import queue_review_email
+			queue_review_email(self)
+
 	def before_insert(self):
 		if not self.flags.invoice_api_action:
 			frappe.throw(_("Invoices must be created through the HRMS invoice workflow."), frappe.PermissionError)
@@ -17,6 +31,7 @@ class EmployeeInvoice(Document):
 	def validate(self):
 		if not self.is_new() and not self.flags.invoice_api_action:
 			frappe.throw(_("Invoices must be changed through the HRMS invoice workflow."), frappe.PermissionError)
+		apply_invoice_terms(self)
 		if getdate(self.period_start) > getdate(self.period_end):
 			frappe.throw(_("Period start cannot be after period end."))
 		if getdate(self.due_date) < getdate(self.period_start):

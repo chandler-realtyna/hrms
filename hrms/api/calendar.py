@@ -10,156 +10,11 @@ are enabled.
 from __future__ import annotations
 
 import datetime as _dt
-import hashlib
-import re
-import secrets
 
 import frappe
 import pytz
 from frappe import _
 from frappe.utils import get_datetime
-
-
-# ── Single-use booking links ────────────────────────────────────────────────
-#
-# A Booking Link grants one meeting through a unique URL:
-#   book.realtyna.com/<slug>/<token>
-# The full token is shown to the owner once at creation; only its SHA-256
-# hash is stored. The token dies atomically with the first created meeting.
-# Invalid, used, revoked, and slug-mismatched tokens all fail with the same
-# generic message so tokens cannot be probed or enumerated.
-
-BOOKING_PUBLIC_ORIGIN = "https://book.realtyna.com"
-BOOKING_LINK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
-BOOKING_LINK_INVALID_MESSAGE = _("This booking link is no longer valid.")
-MAX_ACTIVE_BOOKING_LINKS = 20
-
-
-def _hash_booking_token(token: str) -> str:
-	return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _get_booking_link(token: str):
-	"""Return the unused Booking Link doc for a token, or None.
-
-	One generic outcome for every failure mode (bad format, unknown, used,
-	revoked, owner disabled booking) so guests learn nothing by probing.
-	"""
-	if not token or not BOOKING_LINK_TOKEN_RE.match(token):
-		return None
-	link = frappe.db.get_value(
-		"Booking Link", {"token_hash": _hash_booking_token(token), "used": 0}, ["name", "employee"], as_dict=True
-	)
-	if not link:
-		return None
-	# Owner-level kill switch: disabling the booking page kills all its links.
-	settings = frappe.db.get_value(
-		"Employee Booking Settings",
-		{"employee": link.employee},
-		["booking_slug", "booking_enabled", "slot_duration_options", "min_notice_hours"],
-		as_dict=True,
-	)
-	if not settings or not settings.get("booking_enabled"):
-		return None
-	return {"name": link.name, "employee": link.employee, "slug": settings["booking_slug"], "settings": settings}
-
-
-def _require_booking_link(token: str):
-	resolved = _get_booking_link(token)
-	if not resolved:
-		frappe.throw(BOOKING_LINK_INVALID_MESSAGE, frappe.DoesNotExistError)
-	return resolved
-
-
-def _resolve_booking_employee(slug: str, token: str | None = None) -> dict:
-	"""Resolve (employee, settings) for guest booking calls.
-
-	Token path: employee comes from the single-use link; the URL slug must
-	still match the owner's current slug. Legacy path: persistent slug page.
-	"""
-	if token:
-		resolved = _require_booking_link(token)
-		if slug != resolved["slug"]:
-			frappe.throw(BOOKING_LINK_INVALID_MESSAGE, frappe.DoesNotExistError)
-		return {"employee": resolved["employee"], "settings": resolved["settings"], "link": resolved["name"]}
-	settings = frappe.db.get_value(
-		"Employee Booking Settings",
-		{"booking_slug": slug, "booking_enabled": 1},
-		["employee", "slot_duration_options", "min_notice_hours"],
-		as_dict=True,
-	)
-	if not settings:
-		frappe.throw(_("Booking page not found"), frappe.DoesNotExistError)
-	return {"employee": settings["employee"], "settings": settings, "link": None}
-
-
-@frappe.whitelist()
-def create_booking_link() -> dict:
-	"""Generate a single-use booking link for the current employee.
-
-	The full token is returned once; afterwards only its hash and last 4
-	characters exist on the server.
-	"""
-	employee = _current_employee()
-	settings_name = frappe.db.get_value("Employee Booking Settings", {"employee": employee}, "name")
-	if not settings_name:
-		frappe.throw(_("Enable your booking page before creating single-use links."))
-	settings = frappe.get_doc("Employee Booking Settings", settings_name)
-	if not settings.booking_enabled:
-		frappe.throw(_("Enable your booking page before creating single-use links."))
-	if not settings.booking_slug:
-		frappe.throw(_("Set a booking URL slug before creating single-use links."))
-
-	active = frappe.db.count("Booking Link", {"employee": employee, "used": 0})
-	if active >= MAX_ACTIVE_BOOKING_LINKS:
-		frappe.throw(_("Revoke an unused link before creating a new one (limit {0}).").format(MAX_ACTIVE_BOOKING_LINKS))
-
-	for _ in range(5):
-		token = secrets.token_urlsafe(24)
-		token_hash = _hash_booking_token(token)
-		if not frappe.db.exists("Booking Link", {"token_hash": token_hash}):
-			break
-	else:
-		frappe.throw(_("Could not generate a unique link, please try again."))
-
-	link = frappe.new_doc("Booking Link")
-	link.employee = employee
-	link.token_hash = token_hash
-	link.token_tail = token[-4:]
-	link.used = 0
-	link.insert(ignore_permissions=True)
-
-	return {
-		"link": f"{BOOKING_PUBLIC_ORIGIN}/{settings.booking_slug}/{token}",
-		"token_tail": link.token_tail,
-		"name": link.name,
-	}
-
-
-@frappe.whitelist()
-def list_booking_links() -> list[dict]:
-	"""Unused + recently used links of the current employee (no token material)."""
-	employee = _current_employee()
-	return frappe.get_all(
-		"Booking Link",
-		filters={"employee": employee},
-		fields=["name", "token_tail", "used", "used_at", "booking", "creation"],
-		order_by="creation desc",
-		limit_page_length=50,
-	)
-
-
-@frappe.whitelist()
-def revoke_booking_link(name: str) -> dict:
-	"""Delete an unused link of the current employee. Used links are history."""
-	employee = _current_employee()
-	link_employee = frappe.db.get_value("Booking Link", name, "employee")
-	if link_employee != employee:
-		frappe.throw(_("Link not found."), frappe.DoesNotExistError)
-	if frappe.db.get_value("Booking Link", name, "used"):
-		frappe.throw(_("Used links cannot be revoked."))
-	frappe.delete_doc("Booking Link", name, ignore_permissions=True)
-	return {"revoked": name}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -526,62 +381,56 @@ def save_booking_settings(
 
 
 @frappe.whitelist(allow_guest=True)
-def get_booking_page_info(slug: str, token: str | None = None) -> dict:
-	"""Return public employee info for the booking page.
-
-	With *token*, the page is served for a single-use link instead of the
-	persistent slug page. Invalid/used tokens fail exactly like a missing
-	page so they cannot be probed.
-	"""
-	resolved = _resolve_booking_employee(slug, token)
-	settings = resolved["settings"]
+def get_booking_page_info(slug: str) -> dict:
+	"""Return public employee info for the booking page."""
+	settings = frappe.db.get_value(
+		"Employee Booking Settings",
+		{"booking_slug": slug, "booking_enabled": 1},
+		["employee", "slot_duration_options", "min_notice_hours"],
+		as_dict=True,
+	)
+	if not settings:
+		frappe.throw(_("Booking page not found"), frappe.DoesNotExistError)
 
 	employee_data = frappe.db.get_value(
 		"Employee",
-		resolved["employee"],
+		settings["employee"],
 		["employee_name", "designation", "image"],
 		as_dict=True,
 	)
 
-	durations = [int(d.strip()) for d in (settings.get("slot_duration_options") or "30,60").split(",") if d.strip().isdigit()]
+	durations = [int(d.strip()) for d in (settings["slot_duration_options"] or "30,60").split(",") if d.strip().isdigit()]
 
 	return {
-		"employee": resolved["employee"],
+		"employee": settings["employee"],
 		"employee_name": employee_data["employee_name"],
 		"designation": employee_data["designation"] or "",
 		"image": employee_data["image"] or "",
 		"duration_options": durations,
-		"min_notice_hours": settings.get("min_notice_hours") or 1,
-		"single_use": bool(token),
+		"min_notice_hours": settings["min_notice_hours"] or 1,
 	}
 
 
 @frappe.whitelist(allow_guest=True)
-def get_available_slots(slug: str, date: str, duration_minutes: int, token: str | None = None) -> list[dict]:
+def get_available_slots(slug: str, date: str, duration_minutes: int) -> list[dict]:
 	"""
 	Return available booking slots for an employee on a given date.
 	Respects: working hours, leaves, personal holidays, existing bookings, Google Calendar busy times.
-	With *token*, slots are served for a single-use link; spent links get no slots.
 	"""
 	duration_minutes = int(duration_minutes)
 
-	if token:
-		resolved = _resolve_booking_employee(slug, token)
-		employee = resolved["employee"]
-		min_notice_hours = int(resolved["settings"].get("min_notice_hours") or 1)
-	else:
-		settings = frappe.db.get_value(
-			"Employee Booking Settings",
-			{"booking_slug": slug, "booking_enabled": 1},
-			["employee", "min_notice_hours"],
-			as_dict=True,
-		)
-		if not settings:
-			return []
+	settings = frappe.db.get_value(
+		"Employee Booking Settings",
+		{"booking_slug": slug, "booking_enabled": 1},
+		["employee", "min_notice_hours"],
+		as_dict=True,
+	)
+	if not settings:
+		return []
 
-		employee = settings["employee"]
-		min_notice_hours = int(settings["min_notice_hours"] or 1)
+	employee = settings["employee"]
 	date_obj = frappe.utils.getdate(date)
+	min_notice_hours = int(settings["min_notice_hours"] or 1)
 
 	# Check if employee is off that day
 	if _is_on_leave(employee, date_obj) or _is_personal_holiday(employee, date_obj):
@@ -640,35 +489,22 @@ def create_booking(
 	title: str,
 	description: str = "",
 	timezone: str = "",
-	token: str | None = None,
 ) -> dict:
-	"""Create a confirmed meeting booking and a Google Calendar event with Meet link.
-
-	With *token*, the booking consumes a single-use link: the link dies
-	atomically with this meeting, and any concurrent second use fails closed
-	(its booking is rolled back). Spent links fail with a generic message.
-	"""
-	if token:
-		resolved = _resolve_booking_employee(slug, token)
-		employee = resolved["employee"]
-		link_name = resolved["link"]
-	else:
-		settings = frappe.db.get_value(
-			"Employee Booking Settings",
-			{"booking_slug": slug, "booking_enabled": 1},
-			["employee"],
-			as_dict=True,
-		)
-		if not settings:
-			frappe.throw(_("Booking page not found"), frappe.DoesNotExistError)
-		employee = settings["employee"]
-		link_name = None
+	"""Create a confirmed meeting booking and a Google Calendar event with Meet link."""
+	settings = frappe.db.get_value(
+		"Employee Booking Settings",
+		{"booking_slug": slug, "booking_enabled": 1},
+		["employee"],
+		as_dict=True,
+	)
+	if not settings:
+		frappe.throw(_("Booking page not found"), frappe.DoesNotExistError)
 
 	start_dt = get_datetime(start)
 	end_dt = get_datetime(end)
 
 	booking = frappe.new_doc("Meeting Booking")
-	booking.host_employee = employee
+	booking.host_employee = settings["employee"]
 	booking.booker_name = booker_name.strip()
 	booking.booker_email = booker_email.strip().lower()
 	booking.start_datetime = start_dt
@@ -677,29 +513,12 @@ def create_booking(
 	booking.description = description.strip()
 	booking.status = "Confirmed"
 	booking.insert(ignore_permissions=True)
-	if link_name is None:
-		frappe.db.commit()  # commit immediately so slot is blocked for concurrent requests
-	else:
-		# Atomic single-use: lock the link row for this transaction. A
-		# concurrent request blocks here until we commit, then sees used=1
-		# and rolls its own booking back — at most one meeting per link.
-		locked = frappe.db.sql(
-			"SELECT used FROM `tabBooking Link` WHERE name = %s FOR UPDATE", (link_name,), as_dict=True
-		)
-		if not locked or locked[0]["used"]:
-			frappe.db.rollback()
-			frappe.throw(BOOKING_LINK_INVALID_MESSAGE, frappe.DoesNotExistError)
-		frappe.db.set_value(
-			"Booking Link",
-			link_name,
-			{"used": 1, "used_at": frappe.utils.now_datetime(), "booking": booking.name},
-		)
-		frappe.db.commit()
+	frappe.db.commit()  # commit immediately so slot is blocked for concurrent requests
 
 	# Create Google Calendar event with Meet link and booker as guest
 	meet_link = None
 	try:
-		host_user = frappe.db.get_value("Employee", employee, "user_id")
+		host_user = frappe.db.get_value("Employee", settings["employee"], "user_id")
 		gcal_name = _get_google_calendar_for_user(host_user) if host_user else None
 
 		if gcal_name:
@@ -709,7 +528,7 @@ def create_booking(
 			# Use the timezone the booking page already showed the user (passed from
 			# the frontend). If not provided, fall back to the employee's schedule tz.
 			if not timezone:
-				_ws = _get_employee_schedule_for_date(employee, start_dt.date())
+				_ws = _get_employee_schedule_for_date(settings["employee"], start_dt.date())
 				timezone = (
 					_ws[0].get("timezone")
 					if _ws

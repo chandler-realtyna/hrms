@@ -111,38 +111,37 @@
 						<span class="text-xs text-gray-400 ml-auto">{{ periodLabel }}</span>
 					</div>
 
-					<!-- Bar chart -->
-					<div v-if="hasHours" class="flex flex-col gap-1.5">
-						<div class="flex items-end gap-0.5" style="height: 80px">
+					<!-- Every day has a readable duration; long ranges scroll instead of compressing labels. -->
+					<div v-if="hasHours" class="working-hours-chart-wrap">
+						<div class="working-hours-chart-legend text-gray-400">{{ __("Hours:minutes") }}</div>
+						<div class="working-hours-chart-scroll" tabindex="0" :aria-label="__('Daily working hours')">
 							<div
-								v-for="day in hoursData.daily"
-								:key="day.date"
-								class="flex-1 rounded-t transition-all duration-300 cursor-default"
-								:class="
-									isToday(day.date)
-										? 'bg-blue-600'
-										: day.hours > 0
-										? 'bg-blue-400 hover:bg-blue-500'
-										: 'bg-gray-100'
-								"
-								:style="{ height: `${barHeight(day.hours)}%` }"
-								:title="`${formatDateFull(day.date)}: ${formatHours(day.hours)}`"
-							/>
-						</div>
-						<!-- X labels -->
-						<div class="flex gap-0.5">
-							<div
-								v-for="(day, idx) in hoursData.daily"
-								:key="day.date"
-								class="flex-1 text-center"
+								class="working-hours-chart"
+								role="list"
+								:style="{ gridTemplateColumns: `repeat(${hoursData.daily.length}, minmax(40px, 1fr))` }"
 							>
-								<span
-									v-if="showXLabel(idx)"
-									class="text-[9px] leading-none"
-									:class="isToday(day.date) ? 'text-blue-600 font-semibold' : 'text-gray-400'"
+								<div
+									v-for="day in hoursData.daily"
+									:key="day.date"
+									class="working-hours-chart-day"
+									role="listitem"
+									:aria-label="`${formatDateFull(day.date)}: ${formatHours(day.hours)}`"
+									:title="`${formatDateFull(day.date)}: ${formatHours(day.hours)}`"
 								>
-									{{ xLabel(day.date) }}
-								</span>
+									<span class="working-hours-chart-value" :class="day.hours > 0 ? 'text-gray-700' : 'text-gray-400'">
+										{{ day.hours > 0 ? formatHours(day.hours) : '—' }}
+									</span>
+									<div class="working-hours-chart-track">
+										<div
+											class="w-full rounded-t transition-all duration-300 cursor-default"
+											:class="isToday(day.date) ? 'bg-blue-600' : day.hours > 0 ? 'bg-blue-400 hover:bg-blue-500' : 'bg-gray-100'"
+											:style="{ height: `${barHeight(day.hours)}%` }"
+										/>
+									</div>
+									<span class="working-hours-chart-date" :class="isToday(day.date) ? 'text-blue-600 font-semibold' : 'text-gray-400'">
+										{{ xLabel(day.date) }}
+									</span>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -357,16 +356,10 @@ const __ = inject("$translate")
 const dayjs = inject("$dayjs")
 const employee = inject("$employee")
 
-// Team hours are restricted: project leads see hours on projects they lead,
-// HR/admins see all. Everyone else gets the Me view only (the API also
-// enforces this server-side and returns [] for anyone without access).
+// The employee home shows team controls only for an actual project lead.
+// Managerial permissions and the Desk queues remain unchanged.
 const userInfo = createResource({ url: "hrms.api.get_current_user_info", auto: true })
-const canViewTeam = computed(() => {
-	const roles = userInfo.data?.roles || []
-	if (roles.some((r) => ["HR Manager", "HR User", "System Manager", "Administrator"].includes(r)))
-		return true
-	return Boolean(userInfo.data?.is_project_lead)
-})
+const canViewTeam = computed(() => Boolean(userInfo.data?.has_led_projects))
 
 // ── Viewer timezone ────────────────────────────────────────────────────────────
 const viewerTz      = getViewerTimezone()
@@ -587,12 +580,6 @@ function formatDateFull(date) {
 	return dayjs(date).format("ddd, D MMM")
 }
 
-function showXLabel(idx) {
-	const n    = hoursData.value.daily?.length ?? 7
-	const step = n <= 7 ? 1 : n <= 14 ? 2 : 5
-	return idx % step === 0 || idx === n - 1
-}
-
 function xLabel(date) {
 	const n = hoursData.value.daily?.length ?? 7
 	return n <= 14
@@ -636,3 +623,15 @@ if (employee?.data?.name) {
 	)
 }
 </script>
+
+
+<style scoped>
+.working-hours-chart-wrap { min-width: 0; }
+.working-hours-chart-legend { margin-bottom: 4px; font-size: 10px; }
+.working-hours-chart-scroll { overflow-x: auto; max-width: 100%; padding-bottom: 4px; }
+.working-hours-chart { display: grid; column-gap: 2px; }
+.working-hours-chart-day { display: grid; grid-template-rows: 18px 80px 14px; gap: 4px; min-width: 40px; }
+.working-hours-chart-value { font-size: 11px; line-height: 18px; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.working-hours-chart-track { display: flex; align-items: flex-end; height: 80px; }
+.working-hours-chart-date { font-size: 9px; line-height: 14px; text-align: center; }
+</style>

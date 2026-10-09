@@ -158,7 +158,7 @@ router.beforeEach(async (to, _, next) => {
 		}
 	}
 
-	if (isLoggedIn && to.name !== "InvalidEmployee") {
+	if (isLoggedIn && to.name !== "InvalidEmployee" && to.meta.requiresEmployee !== false) {
 		await employeeResource.promise
 		// user should be an employee to access the app
 		// since all views are employee specific

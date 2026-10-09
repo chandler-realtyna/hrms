@@ -9,6 +9,14 @@ from erpnext.projects.doctype.project.project import Project
 
 
 class EmployeeProject(Project):
+	def on_update(self):
+		parent_update = getattr(super(), "on_update", None)
+		if parent_update:
+			parent_update()
+		from hrms.api.weekly_timesheet import refresh_project_timesheet_routing
+
+		refresh_project_timesheet_routing(self)
+
 	def calculate_gross_margin(self):
 		expense_amount = (
 			flt(self.total_costing_amount)

@@ -309,6 +309,8 @@ function getFilteredFields(fields) {
 		"base_total_claimed_amount",
 		"base_total_taxes_and_charges",
 		"total_amount_reimbursed",
+		"total_sanctioned_amount",
+		"total_taxes_and_charges",
 		"total_exchange_gain_loss",
 		"gain_loss_account",
 		"posting_date",
@@ -346,6 +348,9 @@ function getFilteredFields(fields) {
 }
 
 function applyFilters(field) {
+	if (["employee", "employee_name", "company"].includes(field.fieldname)) {
+		field.read_only = 1
+	}
 	if (field.fieldname === "payable_account") {
 		field.linkFilters = {
 			report_type: "Balance Sheet",

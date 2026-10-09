@@ -17,8 +17,12 @@ frappe.listview_settings["Leave Application"] = {
 			Cancelled: "red",
 			Submitted: "blue",
 		};
-		const status =
-			!doc.docstatus && ["Approved", "Rejected"].includes(doc.status) ? "Draft" : doc.status;
-		return [__(status), status_color[status], "status,=," + doc.status];
+		if (!doc.docstatus && ["Approved", "Rejected"].includes(doc.status)) {
+			const label = doc.status === "Approved"
+				? __("Approved · Awaiting confirmation")
+				: __("Rejected · Awaiting confirmation");
+			return [label, "orange", "docstatus,=,0|status,=," + doc.status];
+		}
+		return [__(doc.status), status_color[doc.status], "status,=," + doc.status];
 	},
 };

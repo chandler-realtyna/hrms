@@ -1,5 +1,11 @@
 <template>
 	<div class="flex flex-col gap-3 mt-2">
+		<label v-if="isWeekly" class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+			<span>{{ __("Display time zone") }}</span>
+			<select v-model="displayTimezone" :disabled="showModal" class="min-w-0 max-w-full rounded-lg border bg-white px-3 py-2" :aria-label="__('Display time zone')">
+				<option v-for="zone in zones" :key="zone" :value="zone">{{ zone }}</option>
+			</select>
+		</label>
 		<div
 			v-if="overlapPairs.length"
 			class="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
@@ -51,7 +57,10 @@
 						{{ log.description }}
 					</div>
 					<div v-if="!rowEditable(log) && !isReadOnly" class="text-[11px] text-amber-600">
-						{{ __("Approved project — locked") }}
+						{{ __("Entry locked for review") }}
+					</div>
+					<div v-if="log.return_reason" class="text-xs text-red-600">
+						{{ log.return_reason }}
 					</div>
 				</div>
 				<div v-if="rowEditable(log)" class="flex items-center gap-2 ml-3 pt-0.5">
@@ -70,7 +79,7 @@
 		</template>
 
 		<button
-			v-if="!isReadOnly"
+			v-if="!isReadOnly && (timesheet.custom_weekly_status !== 'Correction Required' || editableProjects.length)"
 			class="flex items-center gap-2 text-sm text-blue-600 font-medium py-2"
 			@click="openAdd"
 		>
@@ -78,7 +87,7 @@
 			{{ __("Add time entry") }}
 		</button>
 
-		<ion-modal :is-open="showModal" class="ion-disable-focus-trap" @did-dismiss="closeModal">
+		<ion-modal :is-open="showModal" class="ion-disable-focus-trap time-entry-modal" @did-dismiss="closeModal">
 			<ion-header>
 				<ion-toolbar>
 					<ion-title>{{
@@ -90,14 +99,21 @@
 				</ion-toolbar>
 			</ion-header>
 
-			<div class="overflow-y-auto flex flex-col gap-4 p-4 bg-white h-full">
+			<ion-content class="time-entry-content">
+				<div class="flex flex-col gap-4 p-4 bg-white">
+				<label v-if="isWeekly" class="flex flex-col gap-1.5 text-sm text-gray-700">
+					<span>{{ __("Entry time zone") }}</span>
+					<select :value="entryTimezone" @change="changeEntryTimezone($event.target.value)" class="max-w-full rounded-lg border bg-white px-3 py-2" :aria-label="__('Entry time zone')">
+						<option v-for="zone in zones" :key="zone" :value="zone">{{ zone }}</option>
+					</select>
+				</label>
 				<FormField
 					v-if="isWeekly"
 					fieldtype="Date"
 					fieldname="log_date"
 					:label="__('Date')"
-					:minDate="weekStart"
-					:maxDate="weekEnd"
+					:minDate="entryWeekBounds.min"
+					:maxDate="entryWeekBounds.max"
 					v-model="currentLog._date"
 				/>
 				<div v-if="isWeekly" class="flex flex-col gap-1.5">
@@ -159,20 +175,28 @@
 
 				<p v-if="formError" class="text-sm text-red-600">{{ formError }}</p>
 
-				<Button variant="solid" class="w-full mt-2" @click="saveLog">
-					{{ editIndex === null ? __("Add") : __("Update") }}
-				</Button>
-			</div>
+				</div>
+			</ion-content>
+			<ion-footer class="bg-white border-t p-4">
+				<div class="flex gap-3">
+					<Button class="flex-1" @click="closeModal">{{ __("Cancel") }}</Button>
+					<Button variant="solid" class="flex-1" @click="saveLog">
+						{{ editIndex === null ? __("Add") : __("Update") }}
+					</Button>
+				</div>
+			</ion-footer>
 		</ion-modal>
 	</div>
 </template>
 
 <script setup>
 import { computed, inject, onMounted, ref } from "vue"
-import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton } from "@ionic/vue"
+import { IonModal, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter } from "@ionic/vue"
 import { FeatherIcon, Button } from "frappe-ui"
 import FormField from "@/components/FormField.vue"
 import { useProjectLabels } from "@/composables/useProjectLabels.js"
+import { displayedTime, getViewerTimezone, timezoneOptions, localEntryTimes, localWeekBounds } from "@/utils/timesheetTimezone.js"
+import { MAX_OVERLAP_MS, overlapMilliseconds } from "@/utils/timeOverlap.js"
 
 const __ = inject("$translate")
 const props = defineProps({
@@ -182,6 +206,7 @@ const props = defineProps({
 	weekStart: { type: String, default: "" },
 	weekEnd: { type: String, default: "" },
 	editableProjects: { type: Array, default: () => [] },
+	editableEntries: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(["update:timesheet", "addLog", "updateLog", "deleteLog"])
@@ -191,13 +216,33 @@ const editIndex = ref(null)
 const formError = ref("")
 const { displayName: projectDisplayName, load: loadProjectLabels } = useProjectLabels()
 const isWeekly = computed(() => Boolean(props.weekStart))
+const sourceTimezone = computed(() => props.timesheet.source_timezone || "EST")
+const displayTimezone = ref(getViewerTimezone())
+const entryTimezone = ref(getViewerTimezone())
+const zones = computed(() => timezoneOptions(displayTimezone.value, entryTimezone.value, sourceTimezone.value))
+const entryWeekBounds = computed(() => isWeekly.value ? localWeekBounds(props.weekStart, props.weekEnd, sourceTimezone.value, entryTimezone.value) : {})
+function localTime(value, zone = displayTimezone.value) {
+	return isWeekly.value ? displayedTime(value, sourceTimezone.value, zone) : String(value || "")
+}
+function changeEntryTimezone(zone) {
+	if (editIndex.value !== null && currentLog.value._date && currentLog.value._start_time) {
+		try {
+			const times = localEntryTimes(currentLog.value._date, currentLog.value._start_time, currentLog.value._minutes || 1, entryTimezone.value, sourceTimezone.value, props.timesheet.time_logs[editIndex.value])
+			const start = displayedTime(times.from_time, sourceTimezone.value, zone)
+			currentLog.value._date = start.substring(0, 10)
+			currentLog.value._start_time = start.substring(11, 16)
+		} catch (error) { formError.value = __(error.message); return }
+	}
+	entryTimezone.value = zone
+	formError.value = ""
+}
 const sortedLogs = computed(() =>
 	[...(props.timesheet.time_logs || [])].sort((a, b) =>
 		String(a.from_time || "").localeCompare(String(b.from_time || ""))
 	)
 )
 
-// ── Overlap detection (same strict rule as the server: touching endpoints OK)
+// Weekly tolerance matches the server; legacy nonweekly rules are unchanged.
 function logKey(log) {
 	return `${log.from_time || ""}|${log.to_time || ""}|${log.project || ""}`
 }
@@ -213,6 +258,15 @@ function intervalsOverlap(aFrom, aTo, bFrom, bTo) {
 const overlapPairs = computed(() => {
 	const pairs = []
 	const logs = sortedLogs.value
+	if (isWeekly.value) {
+		const blocked = logs.map((log, index) => overlapMilliseconds(log, logs.filter((_, other) => other !== index)) > MAX_OVERLAP_MS)
+		for (let i = 0; i < logs.length; i++) {
+			for (let j = i + 1; j < logs.length; j++) {
+				if ((blocked[i] || blocked[j]) && overlapMilliseconds(logs[i], [logs[j]]) > 0) pairs.push([logs[i], logs[j]])
+			}
+		}
+		return pairs
+	}
 	for (let i = 0; i + 1 < logs.length; i++) {
 		const a = logs[i]
 		const b = logs[i + 1]
@@ -233,7 +287,7 @@ const conflictKeys = computed(() => {
 })
 
 function describeLog(log) {
-	const t = `${String(log.from_time || "").substring(11, 16)}–${String(log.to_time || "").substring(11, 16)}`
+	const t = `${localTime(log.from_time).substring(11, 16)}–${localTime(log.to_time).substring(11, 16)}`
 	return `${projectDisplayName(log.project)} ${t}`
 }
 
@@ -242,7 +296,7 @@ const logsByDate = computed(() => {
 	const groups = []
 	const byDate = new Map()
 	for (const log of sortedLogs.value) {
-		const date = String(log.from_time || "").substring(0, 10)
+		const date = localTime(log.from_time).substring(0, 10)
 		if (!byDate.has(date)) {
 			const group = { date, logs: [], totalMinutes: 0 }
 			byDate.set(date, group)
@@ -263,15 +317,18 @@ function localDateStr(date) {
 }
 
 function defaultDate() {
-	const today = localDateStr(new Date())
+	const today = isWeekly.value ? displayedTime(new Date().toISOString(), sourceTimezone.value, entryTimezone.value).substring(0, 10) : localDateStr(new Date())
 	if (!isWeekly.value) return props.date || today
-	if (today < props.weekStart) return props.weekStart
-	if (today > props.weekEnd) return props.weekEnd
+	if (today < entryWeekBounds.value.min) return entryWeekBounds.value.min
+	if (today > entryWeekBounds.value.max) return entryWeekBounds.value.max
 	return today
 }
 
 function rowEditable(log) {
 	if (props.isReadOnly) return false
+	if (props.timesheet.custom_weekly_status === "Correction Required") {
+		return props.editableEntries.includes(log.name) || props.editableProjects.includes(log.project)
+	}
 	if (!props.editableProjects.length) return true
 	return props.editableProjects.includes(log.project)
 }
@@ -281,6 +338,7 @@ function originalIndex(log) {
 }
 
 function openAdd() {
+	entryTimezone.value = getViewerTimezone()
 	editIndex.value = null
 	formError.value = ""
 	currentLog.value = {
@@ -295,13 +353,14 @@ function openAdd() {
 }
 
 function openEdit(idx) {
+	entryTimezone.value = displayTimezone.value
 	editIndex.value = idx
 	formError.value = ""
 	const log = props.timesheet.time_logs[idx]
 	currentLog.value = {
 		...log,
-		_date: String(log.from_time || "").substring(0, 10),
-		_start_time: String(log.from_time || "").substring(11, 16) || "09:00",
+		_date: localTime(log.from_time, entryTimezone.value).substring(0, 10),
+		_start_time: localTime(log.from_time, entryTimezone.value).substring(11, 16) || "09:00",
 		_minutes: log.hours ? Math.round(log.hours * 60) : null,
 	}
 	showModal.value = true
@@ -329,25 +388,40 @@ function saveLog() {
 		formError.value = __("Project is required")
 		return
 	}
-	if (!date || !startTime || !minutes || minutes <= 0) {
+	const originalLog = editIndex.value === null ? null : props.timesheet.time_logs[editIndex.value]
+	const unchangedShortDuration = originalLog && Number(originalLog.hours) > 0 && Math.round(Number(originalLog.hours) * 60) === 0 && minutes === 0
+	if (!date || !startTime || !Number.isFinite(minutes) || minutes <= 0 && !unchangedShortDuration) {
 		formError.value = __("Date, start time, and duration are required")
 		return
 	}
 
+	let times
+	try {
+		times = isWeekly.value ? localEntryTimes(date, startTime, minutes, entryTimezone.value, sourceTimezone.value, editIndex.value === null ? null : props.timesheet.time_logs[editIndex.value]) : { from_time: `${date} ${startTime}:00`, to_time: addMinutes(date, startTime, minutes) }
+	} catch (error) { formError.value = __(error.message); return }
+	if (times.to_time <= times.from_time) { formError.value = __("Duration must be greater than zero."); return }
+	if (isWeekly.value && (times.from_time < `${props.weekStart} 00:00:00` || times.to_time > addMinutes(props.weekEnd, "00:00", 1440))) {
+		formError.value = __("This time falls outside the selected week. Week boundaries use {0}.", [sourceTimezone.value])
+		return
+	}
 	const log = {
 		name: currentLog.value.name || null,
 		activity_type: currentLog.value.activity_type || "Unassigned",
 		project: currentLog.value.project,
 		description: currentLog.value.description || null,
-		hours: parseFloat((minutes / 60).toFixed(4)),
-		from_time: `${date} ${startTime}:00`,
-		to_time: addMinutes(date, startTime, minutes),
+		hours: editIndex.value !== null && times.from_time === props.timesheet.time_logs[editIndex.value].from_time && times.to_time === props.timesheet.time_logs[editIndex.value].to_time ? props.timesheet.time_logs[editIndex.value].hours : parseFloat((minutes / 60).toFixed(4)),
+		...times,
 		is_billable: currentLog.value.is_billable || 0,
 	}
 
-	// Block overlaps at creation time (same rule as the server) and name the
-	// conflicting entry so the user can fix it instead of failing the save.
-	const clash = (props.timesheet.time_logs || []).find(
+	const others = (props.timesheet.time_logs || []).filter((_, index) => index !== editIndex.value)
+	const prospective = [...others, log]
+	if (isWeekly.value && prospective.some((row, index) =>
+		overlapMilliseconds(row, prospective.filter((_, other) => other !== index)) > MAX_OVERLAP_MS)) {
+		formError.value = __("Overlaps exceed 5 minutes. Review the intersecting entries.")
+		return
+	}
+	const clash = !isWeekly.value && others.find(
 		(other) =>
 			(!currentLog.value.name || other.name !== currentLog.value.name) &&
 			intervalsOverlap(log.from_time, log.to_time, other.from_time, other.to_time)
@@ -372,9 +446,19 @@ function formatDuration(hours) {
 }
 
 function formatLogTime(log) {
-	const from = String(log.from_time || "")
-	const to = String(log.to_time || "")
+	const from = localTime(log.from_time)
+	const to = localTime(log.to_time)
 	if (!from) return ""
-	return `${from.substring(0, 10)} · ${from.substring(11, 16)}–${to.substring(11, 16)}`
+	return `${from.substring(0, 10)} · ${from.substring(11, 16)}–${from.substring(0, 10) === to.substring(0, 10) ? "" : to.substring(0, 10) + " "}${to.substring(11, 16)}`
 }
 </script>
+
+<style scoped>
+.time-entry-modal {
+	--height: min(720px, calc(100% - 2rem));
+	--max-height: calc(100% - 2rem);
+}
+.time-entry-content {
+	--background: white;
+}
+</style>

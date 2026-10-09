@@ -62,6 +62,29 @@ const routes = [
 		path: "/dashboard/invoices",
 		name: "InvoicesDashboard",
 		component: () => import("@/views/invoice/List.vue"),
+		meta: { requiresEmployee: false },
+	},
+	{
+		path: "/admin-requests",
+		redirect: "/admin-requests/leave",
+	},
+	{
+		path: "/admin-requests/leave",
+		name: "AdminLeaveRequests",
+		component: () => import("@/views/AdminRequests.vue"),
+		meta: { requiresEmployee: false, requestType: "Leave Application" },
+	},
+	{
+		path: "/admin-requests/expense",
+		name: "AdminExpenseRequests",
+		component: () => import("@/views/AdminRequests.vue"),
+		meta: { requiresEmployee: false, requestType: "Expense Claim" },
+	},
+	{
+		path: "/admin-timesheets",
+		name: "AdminTimesheets",
+		component: () => import("@/views/HrTimesheetApprovals.vue"),
+		meta: { requiresEmployee: false },
 	},
 	{
 		path: "/login",
@@ -108,15 +131,7 @@ const routes = [
 	...meetingRoutes,
 	// Public short links (book.realtyna.com/<slug>): the gateway serves the
 	// app shell transparently at /<slug>, so the router must resolve it here.
-	// Keep LAST: they only catch paths nothing else matched. Two-segment
-	// single-use links (/book.realtyna.com/<slug>/<token>) resolve the same
-	// BookingPage with a token param.
-	{
-		path: "/:slug/:token",
-		name: "BookingShortToken",
-		component: () => import("@/views/booking/BookingPage.vue"),
-		meta: { isPublic: true },
-	},
+	// Keep LAST: it only catches single-segment paths nothing else matched.
 	{
 		path: "/:slug",
 		name: "BookingShort",

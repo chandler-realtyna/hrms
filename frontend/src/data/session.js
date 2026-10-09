@@ -16,6 +16,9 @@ export function clearLocalAccountState() {
 		localStorage.removeItem(TIMER_STORAGE_KEY)
 		localStorage.removeItem(TIMER_NOTIFIED_KEY)
 		localStorage.removeItem(FAVORITES_KEY)
+		for (const key of Object.keys(localStorage)) {
+			if (key.startsWith("hrms_timer_operation:")) localStorage.removeItem(key)
+		}
 	} catch {
 		// storage is best-effort; logout must never fail because of it
 	}

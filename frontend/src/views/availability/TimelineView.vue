@@ -59,10 +59,11 @@
 							:aria-label="__('Select person')"
 						>
 							<img
-								v-if="emp.image"
+								v-if="emp.image && failedImages[emp.employee] !== emp.image"
 								:src="emp.image"
 								:alt="emp.employee_name"
 								class="h-7 w-7 rounded-full object-cover"
+								@error="failedImages[emp.employee] = emp.image"
 							/>
 							<div v-else class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">
 								{{ initials(emp.employee_name) }}
@@ -168,6 +169,7 @@ const LABEL_WIDTH_REM = 10
 
 const visibleHours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => START_HOUR + i)
 const now = ref(new Date())
+const failedImages = ref({})
 const nowInterval = setInterval(() => {
 	now.value = new Date()
 }, 60 * 1000)
