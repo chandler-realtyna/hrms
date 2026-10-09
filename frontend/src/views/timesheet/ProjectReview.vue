@@ -63,12 +63,12 @@
 					</div>
 
 					<template v-for="(row, index) in orderedSections" :key="row.approval_name || `${row.project}|${row.week_start}|${row.employee}`">
-						<div v-if="view === 'current' && (index === 0 || Boolean(row.actionable) !== Boolean(orderedSections[index - 1].actionable))" class="pt-2 text-sm font-semibold text-gray-700">
-							{{ row.actionable ? __("To review") : __("Waiting on others") }}
+						<div v-if="view === 'current' && (index === 0 || canApprove(row) !== canApprove(orderedSections[index - 1]))" class="pt-2 text-sm font-semibold text-gray-700">
+							{{ canApprove(row) ? __("To review") : __("Waiting on others") }}
 						</div>
 					<article
 						class="border rounded-xl overflow-hidden"
-						:class="row.actionable ? 'bg-white' : 'bg-gray-50'"
+						:class="canApprove(row) ? 'bg-white' : 'bg-gray-50'"
 					>
 						<button class="w-full text-left p-4" @click="openDetail(row)">
 							<div class="flex items-start justify-between gap-3">
@@ -103,8 +103,8 @@
 								{{ __("Returned") }}: {{ row.return_reason }}
 							</p>
 						</button>
-						<p v-if="row.actionable" class="px-4 pb-2 text-xs text-gray-600">{{ __("Approve saved entries now. Changes require another review; HR finalizes after the employee submits the week.") }}</p>
-						<div v-if="row.actionable" class="px-4 pb-4 flex gap-2">
+						<p v-if="canApprove(row)" class="px-4 pb-2 text-xs text-gray-600">{{ __("Approve saved entries now. Changes require another review; HR finalizes after the employee submits the week.") }}</p>
+						<div v-if="canApprove(row)" class="px-4 pb-4 flex gap-2">
 							<input
 								v-model="reasons[row.timesheet + '|' + row.project]"
 								class="min-w-0 flex-1 border rounded-lg px-2.5 py-2 text-xs"
@@ -117,7 +117,7 @@
 								{{ __("Return") }}
 							</Button>
 						</div>
-						<p v-else class="px-4 pb-4 text-xs text-gray-600">{{ __(row.selection_reason || "This section is not ready for approval.") }}</p>
+						<p v-else class="px-4 pb-4 text-xs text-gray-600">{{ reviewHint(row) }}</p>
 					</article>
 					</template>
 					<Button v-if="cursor" :disabled="loading" @click="loadMore">{{ __("Load more") }}</Button>
@@ -145,7 +145,7 @@
 							{{ __("Returned") }}: {{ detail.return_reason }}
 						</p>
 					</div>
-					<div v-if="detail.actionable" class="p-4 border-t flex gap-2">
+					<div v-if="canApprove(detail)" class="p-4 border-t flex gap-2">
 						<input
 							v-model="detailReason"
 							class="min-w-0 flex-1 border rounded-lg px-2.5 py-2 text-xs"
@@ -159,9 +159,21 @@
 						</Button>
 					</div>
 					<div v-else class="p-4 border-b bg-gray-50 flex flex-wrap items-center gap-3">
-						<Button variant="solid" size="sm" disabled>{{ __("Approve") }}</Button>
-						<p class="text-xs text-gray-600">{{ __(detail.selection_reason || "This section is not ready for approval.") }}</p>
+						<p class="text-xs text-gray-600">{{ reviewHint(detail) }}</p>
 					</div>
+					<details v-if="detail.hr_exception" class="p-4 border-b">
+						<summary class="cursor-pointer text-sm font-medium">{{ __("Exceptional HR actions") }}</summary>
+						<p class="mt-3 text-xs text-gray-600">{{ __("Use only when the assigned project reviewer cannot act. A reason is required and recorded in the review history.") }}</p>
+						<label class="block mt-3 text-sm">
+							<span>{{ __("Intervention reason") }}</span>
+							<textarea v-model="exceptionReason" class="mt-1 w-full border rounded-lg p-2" :aria-label="__('Intervention reason')" />
+						</label>
+						<div class="mt-3 flex flex-wrap gap-2">
+							<Button v-if="detail.actionable" :disabled="exceptionBusy || !exceptionReason.trim()" @click="exceptionalReview('approve')">{{ __("Approve on behalf of project reviewer") }}</Button>
+							<Button v-if="detail.can_return_entries" :disabled="exceptionBusy || !exceptionReason.trim()" @click="exceptionalReview('return')">{{ __("Return project section for correction") }}</Button>
+							<Button v-if="detail.can_reset_review" :disabled="exceptionBusy || !exceptionReason.trim()" @click="exceptionalReview('reset')">{{ __("Revoke approval and request project review") }}</Button>
+						</div>
+					</details>
 					<div class="divide-y divide-gray-50">
 						<div v-for="(log, i) in detail.logs" :key="i" class="px-4 py-3">
 							<div class="flex items-baseline justify-between gap-2">
@@ -177,11 +189,11 @@
 								{{ log.description }}
 							</div>
 							<p v-if="log.approved" class="mt-1 text-xs text-green-700">{{ __("Approved saved version") }}</p>
-							<Button v-else-if="detail.can_review_entries && !log.return_reason" variant="solid" size="sm" class="mt-2" @click="approveEntry(log)">
+							<Button v-else-if="detail.regular_reviewer && detail.can_review_entries && !log.return_reason" variant="solid" size="sm" class="mt-2" @click="approveEntry(log)">
 								{{ __("Approve entry") }}
 							</Button>
 							<p v-if="log.return_reason" class="mt-1 text-xs text-red-600">{{ log.return_reason }}</p>
-							<Button v-if="detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
+							<Button v-if="detail.regular_reviewer && detail.can_return_entries" variant="subtle" size="sm" class="mt-2" @click="returnEntry(log)">
 								{{ __("Return entry for correction") }}
 							</Button>
 						</div>
@@ -219,6 +231,7 @@ const sections = ref([])
 const reasons = reactive({})
 const detail = ref(null)
 const detailReason = ref("")
+const exceptionReason = ref(""), exceptionBusy = ref(false)
 const approvingAll = ref(false)
 const search = ref(""), view = ref("current"), total = ref(0), cursor = ref(null), loadError = ref("")
 let requestVersion = 0, searchTimer
@@ -254,7 +267,12 @@ const orderedSections = computed(() =>
 	(sections.value || []).filter(row => !row.is_own_section)
 )
 
-const actionableSections = computed(() => orderedSections.value.filter((row) => row.actionable))
+function canApprove(row) { return Boolean(row?.regular_reviewer && row?.actionable) }
+function reviewHint(row) {
+	if (!row?.regular_reviewer && row?.actionable) return __("Awaiting the assigned project reviewer. Open details for exceptional HR actions.")
+	return __(row?.selection_reason || "This section is not ready for approval.")
+}
+const actionableSections = computed(() => orderedSections.value.filter(canApprove))
 
 // One-click approve for the whole pending queue. Reuses the same
 // single-section endpoint as the per-record button, one call per section.
@@ -345,6 +363,7 @@ function toastFailed(error) {
 async function openDetail(row) {
 	try {
 		detailReason.value = ""
+		exceptionReason.value = ""
 		detail.value = await call("hrms.api.weekly_timesheet.get_project_review_detail", {
 			project: row.project,
 			week_start: row.week_start,
@@ -356,6 +375,7 @@ async function openDetail(row) {
 }
 
 async function approveRow(row) {
+	if (!canApprove(row)) return
 	try {
 		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
 			name: row.timesheet, project: row.project, expected_modified: row.modified,
@@ -369,6 +389,7 @@ async function approveRow(row) {
 }
 
 async function returnRow(row) {
+	if (!canApprove(row)) return
 	const reason = (reasons[row.timesheet + "|" + row.project] || "").trim()
 	if (!reason) {
 		toast({
@@ -394,14 +415,11 @@ async function returnRow(row) {
 
 async function approveDetail() {
 	if (!detail.value) return
-	await approveRow({
-		timesheet: detail.value.timesheet, modified: detail.value.modified,
-		project: detail.value.project,
-	})
+	await approveRow(detail.value)
 }
 
 async function returnDetail() {
-	if (!detail.value) return
+	if (!canApprove(detail.value)) return
 	const reason = detailReason.value.trim()
 	if (!reason) {
 		toast({
@@ -426,6 +444,7 @@ async function returnDetail() {
 }
 
 async function approveEntry(log) {
+	if (!detail.value?.regular_reviewer || !detail.value.can_review_entries) return
 	try {
 		await call("hrms.api.weekly_timesheet.review_saved_project_entries", {
 			name: detail.value.timesheet, project: detail.value.project,
@@ -438,6 +457,7 @@ async function approveEntry(log) {
 }
 
 async function returnEntry(log) {
+	if (!detail.value?.regular_reviewer || !detail.value.can_return_entries) return
 	const reason = window.prompt(__("Correction reason for this time entry"))?.trim()
 	if (!reason) return
 	try {
@@ -448,6 +468,25 @@ async function returnEntry(log) {
 		await openDetail(detail.value)
 		await load()
 	} catch (error) { toastFailed(error) }
+}
+
+async function exceptionalReview(action) {
+	const section = detail.value, reason = exceptionReason.value.trim()
+	if (!section?.hr_exception || !reason || exceptionBusy.value) return
+	if (action === "approve" && !section.actionable || action === "return" && !section.can_return_entries || action === "reset" && !section.can_reset_review) return
+	if (!["approve", "return", "reset"].includes(action)) return
+	exceptionBusy.value = true
+	try {
+		const method = action === "reset" ? "reset_project_review" : "review_saved_project_entries"
+		await call(`hrms.api.weekly_timesheet.${method}`, {
+			name: section.timesheet, project: section.project, expected_modified: section.modified,
+			reason, ...(action === "reset" ? {} : { action }),
+		})
+		toastSaved(__("Exceptional HR action recorded"))
+		await openDetail(section)
+		await load()
+	} catch (error) { toastFailed(error) }
+	finally { exceptionBusy.value = false }
 }
 
 // Reload every time the page is shown (first mount included) so a lead
