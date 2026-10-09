@@ -59,3 +59,4 @@ hrms.patches.v16_0.setup_timesheet_entry_corrections #2026-10-01
 hrms.patches.v16_0.attach_company_director_profiles #2026-10-01
 hrms.patches.v16_0.setup_company_director_scope #2026-10-01
 hrms.patches.v16_0.setup_company_director_scope #2026-10-01-refresh-metadata
+hrms.patches.v16_0.backfill_project_approval_hours #2026-09-29
