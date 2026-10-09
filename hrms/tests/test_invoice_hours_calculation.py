@@ -17,10 +17,17 @@ class InvoiceHours(unittest.TestCase):
    result=float(value or 0)
    return round(result,precision) if precision is not None else result
   self.env=dict(frappe=NS(throw=throw),_=lambda x:x,flt=flt,cint=lambda x:int(x or 0),getdate=lambda x:x if isinstance(x,date) else date.fromisoformat(x),hashlib=hashlib,json=json,LEAVE_HOURS_PER_DAY=8,INVOICE_LEAVE_TYPES=('Paid Leave','Sick Leave','Unpaid Leave'),ADDITION_TYPES={'Bonus','Commission','Paid Leave Adjustment','Other'},DEDUCTION_TYPES={'Prepayment','Deduction'},apply_invoice_terms=lambda d:None)
-  names={'_effective_total_hours','_calculate_amounts','_hash','_material_payload','_recalculate','_leave_totals','_leave_summary','_paid_holiday_rows','_leave_rows'}
+  names={'_system_total_hours','_effective_total_hours','_calculate_amounts','_hash','_material_payload','_recalculate','_leave_totals','_leave_summary','_paid_holiday_rows','_leave_rows'}
   nodes=[n for n in ast.parse(SOURCE.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in names]
   for n in nodes:n.decorator_list=[]
   exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),self.env)
+ def test_legacy_snapshot_total_is_projected_without_mutation(self):
+  doc=Record(worked_hours=136.49,paid_leave_hours=8,sick_leave_hours=0,system_total_hours=0)
+  before=copy.deepcopy(doc)
+  self.assertEqual(self.env['_system_total_hours'](doc),144.49)
+  self.assertEqual(doc,before)
+  doc.holiday_source_hash='calculated';doc.system_total_hours=152.49
+  self.assertEqual(self.env['_system_total_hours'](doc),152.49)
  def test_169_worked_plus_one_paid_holiday(self):
   result=self.env['_calculate_amounts']('Hourly',169,0,10,[],due_hours=177,paid_holiday_hours=8)
   self.assertEqual(result,(1770,0,0,1770,177,0))

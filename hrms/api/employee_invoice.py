@@ -323,6 +323,13 @@ def _paid_holiday_rows(employee, period_start, period_end):
 	return [{"date": date, "description": dates[date], "hours": LEAVE_HOURS_PER_DAY} for date in sorted(dates)]
 
 
+def _system_total_hours(doc):
+	"""Read old calculation snapshots without rewriting historical invoice amounts."""
+	if doc.get("holiday_source_hash"):
+		return flt(doc.get("system_total_hours"), 2)
+	return flt(flt(doc.worked_hours) + flt(doc.paid_leave_hours) + flt(doc.sick_leave_hours), 2)
+
+
 def _effective_total_hours(doc):
 	system_total = flt(doc.worked_hours) + flt(doc.paid_leave_hours) + flt(doc.sick_leave_hours) + flt(doc.get("paid_holiday_hours"))
 	if not cint(doc.get("use_hours_override")):
@@ -424,7 +431,7 @@ def _material_payload(doc):
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
 		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
-		"system_total_hours": flt(doc.get("system_total_hours"), 2),
+		"system_total_hours": _system_total_hours(doc),
 		"use_hours_override": cint(doc.get("use_hours_override")),
 		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
 		"hours_override_reason": doc.get("hours_override_reason") or "",
@@ -535,7 +542,7 @@ def _serialize(doc):
 		"due_hours": flt(doc.due_hours, 2),
 		"worked_hours": flt(doc.worked_hours, 2),
 		"paid_holiday_hours": flt(doc.get("paid_holiday_hours"), 2),
-		"system_total_hours": flt(doc.get("system_total_hours"), 2),
+		"system_total_hours": _system_total_hours(doc),
 		"use_hours_override": cint(doc.get("use_hours_override")),
 		"employee_total_hours": flt(doc.get("employee_total_hours"), 2),
 		"hours_override_reason": doc.get("hours_override_reason") or "",

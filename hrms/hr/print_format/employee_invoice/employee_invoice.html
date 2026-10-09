@@ -52,14 +52,14 @@
   <div class="box">
     <h3>Base calculation</h3>
     <table>
-      <thead><tr><th>Method</th><th class="num">Scheduled hours (monthly deduction)</th><th class="num">Rate / monthly amount</th><th class="num">Base amount</th><th class="num">Unpaid leave deduction</th></tr></thead>
-      <tbody><tr><td>{{ doc.calculation_method }}</td><td class="num">{{ '%.2f'|format(doc.due_hours) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.monthly_amount if doc.calculation_method == 'Fixed Monthly' else doc.hourly_rate, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.base_amount, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.unpaid_leave_deduction, currency=doc.currency) }}</td></tr></tbody>
+      <thead><tr><th>Method</th>{% if doc.calculation_method == 'Fixed Monthly' %}<th class="num">Scheduled hours (monthly deduction)</th>{% endif %}<th class="num">Rate / monthly amount</th><th class="num">Base amount</th><th class="num">Unpaid leave deduction</th></tr></thead>
+      <tbody><tr><td>{{ doc.calculation_method }}</td>{% if doc.calculation_method == 'Fixed Monthly' %}<td class="num">{{ '%.2f'|format(doc.due_hours) }}</td>{% endif %}<td class="num">{{ frappe.utils.fmt_money(doc.monthly_amount if doc.calculation_method == 'Fixed Monthly' else doc.hourly_rate, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.base_amount, currency=doc.currency) }}</td><td class="num">{{ frappe.utils.fmt_money(doc.unpaid_leave_deduction, currency=doc.currency) }}</td></tr></tbody>
     </table>
   </div>
 
   <div class="box section">
     <h3>Time, paid holidays and approved leave</h3>
-    <p>System total hours: {{ '%.2f'|format(doc.system_total_hours or 0) }}</p>
+    <p>System total hours: {{ '%.2f'|format(doc.system_total_hours if doc.holiday_source_hash else (doc.worked_hours or 0) + (doc.paid_leave_hours or 0) + (doc.sick_leave_hours or 0)) }}</p>
     {% if doc.use_hours_override %}<p><strong>Employee proposed total: {{ '%.2f'|format(doc.employee_total_hours or 0) }}</strong><br>{{ doc.hours_override_reason | e }}</p>{% endif %}
     <table>
       <thead><tr><th class="num">Worked hours</th><th class="num">Paid holidays</th><th class="num">Paid leave</th><th class="num">Sick leave</th><th class="num">Unpaid leave</th><th class="num">Payable hours</th></tr></thead>

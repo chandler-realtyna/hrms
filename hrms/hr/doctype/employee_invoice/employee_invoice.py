@@ -12,6 +12,12 @@ FINAL_STATES = {"Approved for Payment", "Paid", "Cancelled"}
 
 
 class EmployeeInvoice(Document):
+	def onload(self):
+		# Display the legacy snapshot total; never backfill or recalculate money on GET.
+		from hrms.api.employee_invoice import _system_total_hours
+
+		self.system_total_hours = _system_total_hours(self)
+
 	def on_update(self):
 		previous = self.get_doc_before_save()
 		if self.status == "Pending HR Review" and (not previous or previous.status != self.status):
