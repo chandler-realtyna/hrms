@@ -48,3 +48,20 @@ does not claim to repair the larger legacy-timezone conflict.
   overflow or uncaught browser exceptions. Screenshots inspected.
 - Exact live release receipt is recorded after publication. Writable acceptance
   scenarios use the isolated synthetic QA site only.
+
+## Live Release Receipt
+
+- Application commit: `35603026b22b3aa4656dbed19c2a57578833fd5e`.
+- Canonical deployment: `deploy-20261002-193806`, backend path with frontend
+  assets included; no schema migration or database backup was required.
+- Production state advanced after health passed at `2026-10-02T19:39:32Z`.
+  The deployment lock is free and all six app service mounts were verified.
+- The script returned a cleanup warning about permissions on an older release's
+  Python cache after health/state advancement. No manual service or file cleanup
+  was attempted; the active release and successful health receipt were verified.
+- A read-only production check confirmed the active limit is 300 seconds.
+  On an in-memory copy only, shifting the five proposed legacy intervals back
+  nine hours and adding the pending timer interval passed time-row validation.
+  The real weekly rows and shared timer state/revision were verified unchanged.
+- Historical data repair remains pending separate user approval. The production
+  validation did not save any real interval or invoke a timer action.
